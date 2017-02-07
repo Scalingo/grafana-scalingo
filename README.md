@@ -2,6 +2,11 @@
 
 Run your own Grafana instance with one click.
 
+To login, use the environment variables value defined in:
+
+* `GF_SECURITY_ADMIN_USER`
+* `GF_SECURITY_ADMIN_PASSWORD`
+
 Version used: v4.1.1
 
 [![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://my.scalingo.com/deploy)

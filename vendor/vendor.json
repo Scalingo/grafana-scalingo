@@ -1,6 +1,8 @@
 {
 	"scalingo": {
-		"install": ["./pkg/cmd/..."]
+		"goVersion": "1.7.4",
+		"install": ["./pkg/cmd/..."],
+		"sync": "false"
 	},
 	"comment": "",
 	"ignore": "test",

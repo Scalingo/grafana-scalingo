@@ -1,4 +1,7 @@
 {
+	"scalingo": {
+		"install": ["./pkg/cmd/..."]
+	},
 	"comment": "",
 	"ignore": "test",
 	"package": [

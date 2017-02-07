@@ -1,0 +1,45 @@
+{
+  "name": "Grafana",
+  "description": "The tool for beautiful monitoring and metric analytics & dashboards for Graphite, InfluxDB & Prometheus & More",
+  "keywords": [
+    "kibana", "time-series", "metrics", "analytics", "dataviz", "visualization",
+    "influxdb"
+  ],
+  "website": "http://grafana.org/",
+  "repository": "https://github.com/Scalingo/grafana-scalingo",
+  "logo": "http://cdn.scalingo.com/documentation/technologies/grafana-logo.png",
+  "success_url": "/",
+  "env": {
+    "BUILDPACK_URL": {
+      "description": "Buildpack to use to deploy kibana",
+      "value": "https://github.com/Scalingo/multi-buildpack.git",
+      "required": true
+    },
+    "GF_DATABASE_URL": {
+      "description": "Alias to the database connection string",
+      "value": "$SCALINGO_POSTGRESQL_URL",
+      "required": true
+    },
+    "GF_SECURITY_ADMIN_PASSWORD": {
+      "description": "Password for the admin user of Grafana",
+      "generator": "secret",
+      "required": true
+    },
+    "GF_SECURITY_ADMIN_USER": {
+      "description": "Username of the admin user of Grafana",
+      "value": "admin",
+      "required": true
+    },
+    "GF_SERVER_HTTP_PORT": {
+      "description": "Alias to the environment variable $PORT",
+      "value": "$PORT",
+      "required": true
+    },
+    "NPM_CONFIG_PRODUCTION": {
+      "description": "Install all dependencies for building project",
+      "value": "false",
+      "required": true
+    }
+  },
+  "addons": ["scalingo-postgresql"]
+}

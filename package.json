@@ -63,7 +63,7 @@
     "build": "grunt",
     "test": "grunt test",
     "coveralls": "grunt karma:coveralls && rm -rf ./coverage",
-    "postinstall": "npm run build"
+    "postinstall": "grunt build"
   },
   "license": "Apache-2.0",
   "dependencies": {

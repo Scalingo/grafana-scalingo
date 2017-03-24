@@ -1,4 +1,26 @@
-[Grafana](http://grafana.org) [![Circle CI](https://circleci.com/gh/grafana/grafana.svg?style=svg)](https://circleci.com/gh/grafana/grafana) 
+![Grafana](grafana.png)
+
+Run your own Grafana instance with one click.
+
+To login, use the environment variables value defined in:
+
+* `GF_SECURITY_ADMIN_USER`
+* `GF_SECURITY_ADMIN_PASSWORD`
+
+Version used: v4.2.0
+
+[![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://my.scalingo.com/deploy)
+
+## How to update when new version is released:
+
+```
+git clone git@github.com:Scalingo/grafana-scalingo
+cd grafana-scalingo
+git remote add <app name> git@scalingo.com:<app name>.git
+git push <app name> master
+```
+
+[Grafana](http://grafana.org) [![Circle CI](https://circleci.com/gh/grafana/grafana.svg?style=svg)](https://circleci.com/gh/grafana/grafana)
 ================
 [Website](http://grafana.org) |
 [Twitter](https://twitter.com/grafana) |

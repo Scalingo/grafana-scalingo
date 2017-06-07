@@ -1,3 +1,5 @@
+var path = require('path');
+
 module.exports = function(grunt) {
   "use strict";
 
@@ -6,10 +8,10 @@ module.exports = function(grunt) {
     'jshint:source',
     'jshint:tests',
     'jscs',
-    'exec:tslint',
     'clean:release',
     'copy:node_modules',
     'copy:public_to_gen',
+    'exec:tslint',
     'exec:tscompile',
     'karma:test',
     'phantomjs',
@@ -67,6 +69,8 @@ module.exports = function(grunt) {
     grunt.task.run('copy:public_gen_to_temp');
     grunt.task.run('copy:backend_bin');
     grunt.task.run('copy:backend_files');
+
+    grunt.file.write(path.join(grunt.config('tempDir'), 'VERSION'), grunt.config('pkg.version'));
   });
 
 };

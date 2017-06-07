@@ -252,6 +252,8 @@ func (hs *HttpServer) registerRoutes() {
 		// metrics
 		r.Post("/tsdb/query", bind(dtos.MetricRequest{}), wrap(QueryMetrics))
 		r.Get("/tsdb/testdata/scenarios", wrap(GetTestDataScenarios))
+		r.Get("/tsdb/testdata/gensql", reqGrafanaAdmin, wrap(GenerateSqlTestData))
+		r.Get("/tsdb/testdata/random-walk", wrap(GetTestDataRandomWalk))
 
 		// metrics
 		r.Get("/metrics", wrap(GetInternalMetrics))
@@ -276,7 +278,10 @@ func (hs *HttpServer) registerRoutes() {
 		}, reqEditorRole)
 
 		r.Get("/annotations", wrap(GetAnnotations))
-		r.Post("/annotations/mass-delete", reqOrgAdmin, bind(dtos.DeleteAnnotationsCmd{}), wrap(DeleteAnnotations))
+
+		r.Group("/annotations", func() {
+			r.Post("/", bind(dtos.PostAnnotationsCmd{}), wrap(PostAnnotation))
+		}, reqEditorRole)
 
 		// error test
 		r.Get("/metrics/error", wrap(GenerateError))

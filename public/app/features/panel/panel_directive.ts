@@ -57,7 +57,7 @@ var panelTemplate = `
   </div>
 `;
 
-module.directive('grafanaPanel', function($rootScope) {
+module.directive('grafanaPanel', function($rootScope, $document) {
   return {
     restrict: 'E',
     template: panelTemplate,
@@ -156,11 +156,20 @@ module.directive('grafanaPanel', function($rootScope) {
             content: function() {
               return ctrl.getInfoContent({mode: 'tooltip'});
             },
-            position: 'top center',
             classes: ctrl.error ? 'drop-error' : 'drop-help',
             openOn: 'hover',
             hoverOpenDelay: 100,
-            constrainToScrollParent: false,
+            tetherOptions: {
+              attachment: 'bottom left',
+              targetAttachment: 'top left',
+              constraints: [
+                {
+                  to: 'window',
+                  attachment: 'together',
+                  pin: true
+                }
+              ],
+            }
           });
         }
       }

@@ -95,7 +95,9 @@ func main() {
 
 		case "package":
 			grunt(gruntBuildArg("release")...)
-			createLinuxPackages()
+      if runtime.GOOS != "windows" {
+			  createLinuxPackages()
+      }
 
 		case "pkg-rpm":
 			grunt(gruntBuildArg("release")...)
@@ -235,7 +237,7 @@ func createRpmPackages() {
 		defaultFileSrc: "packaging/rpm/sysconfig/grafana-server",
 		systemdFileSrc: "packaging/rpm/systemd/grafana-server.service",
 
-		depends: []string{"/sbin/service", "fontconfig"},
+		depends: []string{"/sbin/service", "fontconfig", "freetype", "urw-fonts"},
 	})
 }
 
@@ -345,7 +347,11 @@ func ChangeWorkingDir(dir string) {
 }
 
 func grunt(params ...string) {
-	runPrint("./node_modules/.bin/grunt", params...)
+  if runtime.GOOS == "windows" {
+    runPrint(`.\node_modules\.bin\grunt`, params...)
+  } else {
+    runPrint("./node_modules/.bin/grunt", params...)
+  }
 }
 
 func gruntBuildArg(task string) []string {

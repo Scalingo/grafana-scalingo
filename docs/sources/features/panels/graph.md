@@ -50,15 +50,11 @@ populate the template variable to a desired value from the link.
 The metrics tab defines what series data and sources to render.  Each datasource provides different
 options.
 
-## Axes & Grid
+## Axes
 
 ![](/img/docs/v43/graph_axes_grid_options.png)
 
-The Axes & Grid tab controls the display of axes, grids and legend.
-
-### Axes
-
-The ``Left Y`` and ``Right Y`` can be customized using:
+The Axes tab controls the display of axes, grids and legend.  The ``Left Y`` and ``Right Y`` can be customized using:
 
 - ``Unit`` - The display unit for the Y value
 - ``Grid Max`` - The maximum Y value. (default auto)
@@ -66,6 +62,20 @@ The ``Left Y`` and ``Right Y`` can be customized using:
 - ``Label`` - The Y axis label (default "")
 
 Axes can also be hidden by unchecking the appropriate box from `Show Axis`.
+
+### X-Axis Mode
+
+There are three options:
+
+- The default option is `Time` and means the x-axis represents time and that the data is grouped by time (for example, by hour or by minute).
+
+- The `Series` option means that the data is grouped by series and not by time. The y-axis still represents the value.
+
+    <img src="/img/docs/v4/x_axis_mode_series.png" class="no-shadow">
+
+- The `Histogram` option converts the graph into a histogram. A Histogram is a kind of bar chart that groups numbers into ranges, often called buckets or bins. Taller bars show that more data falls in that range. Histograms and buckets are described in more detail [here](http://docs.grafana.org/features/panels/heatmap/#histograms-and-buckets).
+
+    <img src="/img/docs/v43/heatmap_histogram.png" class="no-shadow">
 
 ### Legend
 

@@ -11,6 +11,8 @@ define([
 function (angular, _, moment, kbn, ElasticQueryBuilder, IndexPattern, ElasticResponse) {
   'use strict';
 
+  ElasticResponse = ElasticResponse.ElasticResponse;
+
   /** @ngInject */
   function ElasticDatasource(instanceSettings, $q, backendSrv, templateSrv, timeSrv) {
     this.basicAuth = instanceSettings.basicAuth;
@@ -173,9 +175,9 @@ function (angular, _, moment, kbn, ElasticQueryBuilder, IndexPattern, ElasticRes
       return this.getFields({type: 'date'}).then(function(dateFields) {
         var timeField = _.find(dateFields, {text: this.timeField});
         if (!timeField) {
-          return { status: "error", message: "No date field named " + this.timeField + ' found', title: "Error" };
+          return { status: "error", message: "No date field named " + this.timeField + ' found' };
         }
-        return { status: "success", message: "Index OK. Time field name OK.", title: "Success" };
+        return { status: "success", message: "Index OK. Time field name OK." };
       }.bind(this), function(err) {
         console.log(err);
         if (err.data && err.data.error) {
@@ -183,9 +185,9 @@ function (angular, _, moment, kbn, ElasticQueryBuilder, IndexPattern, ElasticRes
           if (err.data.error.reason) {
             message = err.data.error.reason;
           }
-          return { status: "error", message: message, title: "Error" };
+          return { status: "error", message: message };
         } else {
-          return { status: "error", message: err.status, title: "Error" };
+          return { status: "error", message: err.status };
         }
       });
     };
@@ -270,10 +272,17 @@ function (angular, _, moment, kbn, ElasticQueryBuilder, IndexPattern, ElasticRes
             var subObj = obj[key];
 
             // Check mapping field for nested fields
-            if (subObj.hasOwnProperty('properties')) {
+            if (_.isObject(subObj.properties)) {
               fieldNameParts.push(key);
               getFieldsRecursively(subObj.properties);
-            } else {
+            }
+
+            if (_.isObject(subObj.fields)) {
+              fieldNameParts.push(key);
+              getFieldsRecursively(subObj.fields);
+            }
+
+            if (_.isString(subObj.type)) {
               var fieldName = fieldNameParts.concat(key).join('.');
 
               // Hide meta-fields and check field type
@@ -323,23 +332,27 @@ function (angular, _, moment, kbn, ElasticQueryBuilder, IndexPattern, ElasticRes
 
         var buckets = res.responses[0].aggregations["1"].buckets;
         return _.map(buckets, function(bucket) {
-          return {text: bucket.key, value: bucket.key};
+          return {
+            text: bucket.key_as_string || bucket.key,
+            value: bucket.key
+          };
         });
       });
     };
 
     this.metricFindQuery = function(query) {
       query = angular.fromJson(query);
-      query.query = templateSrv.replace(query.query || '*', {}, 'lucene');
-
       if (!query) {
         return $q.when([]);
       }
 
       if (query.find === 'fields') {
+        query.field = templateSrv.replace(query.field, {}, 'lucene');
         return this.getFields(query);
       }
+
       if (query.find === 'terms') {
+        query.query = templateSrv.replace(query.query || '*', {}, 'lucene');
         return this.getTerms(query);
       }
     };

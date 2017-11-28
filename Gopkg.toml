@@ -19,6 +19,11 @@
 #  name = "github.com/x/y"
 #  version = "2.4.0"
 
+[metadata.scalingo]
+  root-package = "github.com/grafana/grafana"
+  go-version = "go1.9.3"
+  install = [ "./pkg/cmd/..." ]
+
 ignored = [
   "github.com/grafana/grafana/data/*",
   "github.com/grafana/grafana/public/*",

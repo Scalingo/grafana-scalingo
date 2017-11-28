@@ -3,6 +3,9 @@
     "name": "Torkel Ödegaard",
     "company": "Grafana Labs"
   },
+  "engines": {
+	  "node": "6.11.4"
+  },
   "name": "grafana",
   "version": "5.0.1-pre1",
   "repository": {

@@ -1,4 +1,9 @@
 {
+	"scalingo": {
+		 "goVersion": "go1.9",
+		 "install": ["./pkg/cmd/..."],
+		 "sync": "false"
+	},
 	"comment": "",
 	"ignore": "test",
 	"package": [

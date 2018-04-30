@@ -7,48 +7,15 @@ package notifications
 import (
 	"bytes"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"html/template"
 	"net"
 	"strconv"
-	"strings"
 
-	"github.com/grafana/grafana/pkg/log"
 	m "github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/setting"
-	"gopkg.in/gomail.v2"
+	gomail "gopkg.in/mail.v2"
 )
-
-var mailQueue chan *Message
-
-func initMailQueue() {
-	mailQueue = make(chan *Message, 10)
-	go processMailQueue()
-}
-
-func processMailQueue() {
-	for {
-		select {
-		case msg := <-mailQueue:
-			num, err := send(msg)
-			tos := strings.Join(msg.To, "; ")
-			info := ""
-			if err != nil {
-				if len(msg.Info) > 0 {
-					info = ", info: " + msg.Info
-				}
-				log.Error(4, fmt.Sprintf("Async sent email %d succeed, not send emails: %s%s err: %s", num, tos, info, err))
-			} else {
-				log.Trace(fmt.Sprintf("Async sent email %d succeed, sent emails: %s%s", num, tos, info))
-			}
-		}
-	}
-}
-
-var addToMailQueue = func(msg *Message) {
-	mailQueue <- msg
-}
 
 func send(msg *Message) (int, error) {
 	dialer, err := createDialer()
@@ -135,7 +102,7 @@ func buildEmailMessage(cmd *m.SendEmailCommand) (*Message, error) {
 		subjectText, hasSubject := subjectData["value"]
 
 		if !hasSubject {
-			return nil, errors.New(fmt.Sprintf("Missing subject in Template %s", cmd.Template))
+			return nil, fmt.Errorf("Missing subject in Template %s", cmd.Template)
 		}
 
 		subjectTmpl, err := template.New("subject").Parse(subjectText.(string))

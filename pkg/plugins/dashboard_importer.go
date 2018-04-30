@@ -80,7 +80,7 @@ func ImportDashboard(cmd *ImportDashboardCommand) error {
 		User:      cmd.User,
 	}
 
-	savedDash, err := dashboards.NewService().SaveDashboard(dto)
+	savedDash, err := dashboards.NewService().ImportDashboard(dto)
 
 	if err != nil {
 		return err
@@ -148,11 +148,11 @@ func (this *DashTemplateEvaluator) evalValue(source *simplejson.Json) interface{
 	switch v := sourceValue.(type) {
 	case string:
 		interpolated := this.varRegex.ReplaceAllStringFunc(v, func(match string) string {
-			if replacement, exists := this.variables[match]; exists {
+			replacement, exists := this.variables[match]
+			if exists {
 				return replacement
-			} else {
-				return match
 			}
+			return match
 		})
 		return interpolated
 	case bool:

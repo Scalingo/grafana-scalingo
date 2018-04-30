@@ -104,6 +104,14 @@
   version = "v1.1.0"
 
 [[projects]]
+  name = "github.com/denisenkom/go-mssqldb"
+  packages = [
+    ".",
+    "internal/cp"
+  ]
+  revision = "270bc3860bb94dd3a3ffd047377d746c5e276726"
+
+[[projects]]
   name = "github.com/fatih/color"
   packages = ["."]
   revision = "570b54cabe6b8eb0bc2dfce68d964677d63b5260"
@@ -145,7 +153,6 @@
   packages = [
     ".",
     "memcache",
-    "mysql",
     "postgres",
     "redis"
   ]
@@ -171,12 +178,14 @@
 [[projects]]
   name = "github.com/go-xorm/core"
   packages = ["."]
-  revision = "e8409d73255791843585964791443dbad877058c"
+  revision = "da1adaf7a28ca792961721a34e6e04945200c890"
+  version = "v0.5.7"
 
 [[projects]]
   name = "github.com/go-xorm/xorm"
   packages = ["."]
-  revision = "6687a2b4e824f4d87f2d65060ec5cb0d896dff1e"
+  revision = "1933dd69e294c0a26c0266637067f24dbb25770c"
+  version = "v0.6.4"
 
 [[projects]]
   branch = "master"
@@ -343,6 +352,12 @@
   version = "v2.1.0"
 
 [[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
   name = "github.com/prometheus/client_golang"
   packages = [
     "api",
@@ -462,7 +477,10 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["pbkdf2"]
+  packages = [
+    "md4",
+    "pbkdf2"
+  ]
   revision = "3d37316aaa6bd9929127ac9a527abf408178ea7b"
 
 [[projects]]
@@ -599,12 +617,6 @@
   version = "v1"
 
 [[projects]]
-  branch = "v2"
-  name = "gopkg.in/gomail.v2"
-  packages = ["."]
-  revision = "81ebce5c23dfd25c6c67194b37d3dd3f338c98b1"
-
-[[projects]]
   name = "gopkg.in/ini.v1"
   packages = ["."]
   revision = "32e4c1e6bc4e7d0d8451aa6b75200d19e37a536a"
@@ -615,6 +627,12 @@
   packages = ["."]
   revision = "75f2e9b42e99652f0d82b28ccb73648f44615faa"
   version = "v1.2.4"
+
+[[projects]]
+  branch = "v2"
+  name = "gopkg.in/mail.v2"
+  packages = ["."]
+  revision = "5bc5c8bb07bd8d2803831fbaf8cbd630fcde2c68"
 
 [[projects]]
   name = "gopkg.in/redis.v2"
@@ -631,6 +649,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4de68f1342ba98a637ec8ca7496aeeae2021bf9e4c7c80db7924e14709151a62"
+  inputs-digest = "2bd5b309496d57e2189a1cc28f5c1c41398c19729ba0cf53c8cbb17ea3f706b5"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -1,9 +1,11 @@
 import './dashboard_loaders';
 import './ReactContainer';
-import { ServerStats } from 'app/containers/ServerStats/ServerStats';
-import { AlertRuleList } from 'app/containers/AlertRuleList/AlertRuleList';
-import { FolderSettings } from 'app/containers/ManageDashboards/FolderSettings';
-import { FolderPermissions } from 'app/containers/ManageDashboards/FolderPermissions';
+
+import ServerStats from 'app/containers/ServerStats/ServerStats';
+import AlertRuleList from 'app/containers/AlertRuleList/AlertRuleList';
+// import Explore from 'app/containers/Explore/Explore';
+import FolderSettings from 'app/containers/ManageDashboards/FolderSettings';
+import FolderPermissions from 'app/containers/ManageDashboards/FolderPermissions';
 
 /** @ngInject **/
 export function setupAngularRoutes($routeProvider, $locationProvider) {
@@ -17,6 +19,12 @@ export function setupAngularRoutes($routeProvider, $locationProvider) {
       pageClass: 'page-dashboard',
     })
     .when('/d/:uid/:slug', {
+      templateUrl: 'public/app/partials/dashboard.html',
+      controller: 'LoadDashboardCtrl',
+      reloadOnSearch: false,
+      pageClass: 'page-dashboard',
+    })
+    .when('/d/:uid', {
       templateUrl: 'public/app/partials/dashboard.html',
       controller: 'LoadDashboardCtrl',
       reloadOnSearch: false,
@@ -97,6 +105,17 @@ export function setupAngularRoutes($routeProvider, $locationProvider) {
       templateUrl: 'public/app/features/dashboard/partials/folder_dashboards.html',
       controller: 'FolderDashboardsCtrl',
       controllerAs: 'ctrl',
+    })
+    .when('/dashboards/f/:uid', {
+      templateUrl: 'public/app/features/dashboard/partials/folder_dashboards.html',
+      controller: 'FolderDashboardsCtrl',
+      controllerAs: 'ctrl',
+    })
+    .when('/explore', {
+      template: '<react-container />',
+      resolve: {
+        component: () => import(/* webpackChunkName: "explore" */ 'app/containers/Explore/Explore'),
+      },
     })
     .when('/org', {
       templateUrl: 'public/app/features/org/partials/orgDetails.html',

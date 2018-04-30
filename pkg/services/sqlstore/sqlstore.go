@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/log"
@@ -23,6 +24,8 @@ import (
 	"github.com/go-xorm/xorm"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
+
+	_ "github.com/grafana/grafana/pkg/tsdb/mssql"
 )
 
 type DatabaseConfig struct {
@@ -33,6 +36,7 @@ type DatabaseConfig struct {
 	ServerCertName                             string
 	MaxOpenConn                                int
 	MaxIdleConn                                int
+	ConnMaxLifetime                            int
 }
 
 var (
@@ -73,7 +77,7 @@ func EnsureAdminUser() {
 	log.Info("Created default admin user: %v", setting.AdminUser)
 }
 
-func NewEngine() {
+func NewEngine() *xorm.Engine {
 	x, err := getEngine()
 
 	if err != nil {
@@ -87,6 +91,8 @@ func NewEngine() {
 		sqlog.Error("Fail to initialize orm engine", "error", err)
 		os.Exit(1)
 	}
+
+	return x
 }
 
 func SetEngine(engine *xorm.Engine) (err error) {
@@ -157,18 +163,20 @@ func getEngine() (*xorm.Engine, error) {
 	engine, err := xorm.NewEngine(DbCfg.Type, cnnstr)
 	if err != nil {
 		return nil, err
-	} else {
-		engine.SetMaxOpenConns(DbCfg.MaxOpenConn)
-		engine.SetMaxIdleConns(DbCfg.MaxIdleConn)
-		debugSql := setting.Cfg.Section("database").Key("log_queries").MustBool(false)
-		if !debugSql {
-			engine.SetLogger(&xorm.DiscardLogger{})
-		} else {
-			engine.SetLogger(NewXormLogger(log.LvlInfo, log.New("sqlstore.xorm")))
-			engine.ShowSQL(true)
-			engine.ShowExecTime(true)
-		}
 	}
+
+	engine.SetMaxOpenConns(DbCfg.MaxOpenConn)
+	engine.SetMaxIdleConns(DbCfg.MaxIdleConn)
+	engine.SetConnMaxLifetime(time.Second * time.Duration(DbCfg.ConnMaxLifetime))
+	debugSql := setting.Cfg.Section("database").Key("log_queries").MustBool(false)
+	if !debugSql {
+		engine.SetLogger(&xorm.DiscardLogger{})
+	} else {
+		engine.SetLogger(NewXormLogger(log.LvlInfo, log.New("sqlstore.xorm")))
+		engine.ShowSQL(true)
+		engine.ShowExecTime(true)
+	}
+
 	return engine, nil
 }
 
@@ -202,6 +210,7 @@ func LoadConfig() {
 	}
 	DbCfg.MaxOpenConn = sec.Key("max_open_conn").MustInt(0)
 	DbCfg.MaxIdleConn = sec.Key("max_idle_conn").MustInt(0)
+	DbCfg.ConnMaxLifetime = sec.Key("conn_max_lifetime").MustInt(14400)
 
 	if DbCfg.Type == "sqlite3" {
 		UseSQLite3 = true
@@ -225,8 +234,8 @@ var (
 
 func InitTestDB(t *testing.T) *xorm.Engine {
 	selectedDb := dbSqlite
-	//selectedDb := dbMySql
-	//selectedDb := dbPostgres
+	// selectedDb := dbMySql
+	// selectedDb := dbPostgres
 
 	var x *xorm.Engine
 	var err error
@@ -245,10 +254,13 @@ func InitTestDB(t *testing.T) *xorm.Engine {
 		x, err = xorm.NewEngine(sqlutil.TestDB_Sqlite3.DriverName, sqlutil.TestDB_Sqlite3.ConnStr)
 	}
 
+	x.DatabaseTZ = time.UTC
+	x.TZLocation = time.UTC
+
 	// x.ShowSQL()
 
 	if err != nil {
-		t.Fatalf("Failed to init in memory sqllite3 db %v", err)
+		t.Fatalf("Failed to init test database: %v", err)
 	}
 
 	sqlutil.CleanDB(x)
@@ -258,4 +270,20 @@ func InitTestDB(t *testing.T) *xorm.Engine {
 	}
 
 	return x
+}
+
+func IsTestDbMySql() bool {
+	if db, present := os.LookupEnv("GRAFANA_TEST_DB"); present {
+		return db == dbMySql
+	}
+
+	return false
+}
+
+func IsTestDbPostgres() bool {
+	if db, present := os.LookupEnv("GRAFANA_TEST_DB"); present {
+		return db == dbPostgres
+	}
+
+	return false
 }

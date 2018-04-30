@@ -22,6 +22,7 @@
 [metadata.scalingo]
   root-package = "github.com/grafana/grafana"
   go-version = "go1.10"
+  ensure = false
   install = [ "./pkg/cmd/..." ]
 
 ignored = [

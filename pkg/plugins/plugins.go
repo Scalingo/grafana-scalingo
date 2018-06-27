@@ -26,6 +26,7 @@ var (
 	Apps         map[string]*AppPlugin
 	Plugins      map[string]*PluginBase
 	PluginTypes  map[string]interface{}
+	Renderer     *RendererPlugin
 
 	GrafanaLatestVersion string
 	GrafanaHasUpdate     bool
@@ -58,6 +59,7 @@ func (pm *PluginManager) Init() error {
 		"panel":      PanelPlugin{},
 		"datasource": DataSourcePlugin{},
 		"app":        AppPlugin{},
+		"renderer":   RendererPlugin{},
 	}
 
 	pm.log.Info("Starting plugin search")
@@ -132,7 +134,7 @@ func (pm *PluginManager) Run(ctx context.Context) error {
 }
 
 func checkPluginPaths() error {
-	for _, section := range setting.Cfg.Sections() {
+	for _, section := range setting.Raw.Sections() {
 		if strings.HasPrefix(section.Name(), "plugin.") {
 			path := section.Key("path").String()
 			if path != "" {

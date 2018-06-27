@@ -60,8 +60,14 @@ func getOrgIdForNewUser(cmd *m.CreateUserCommand, sess *DBSession) (int64, error
 	org.Created = time.Now()
 	org.Updated = time.Now()
 
-	if _, err := sess.Insert(&org); err != nil {
-		return 0, err
+	if org.Id != 0 {
+		if _, err := sess.InsertId(&org); err != nil {
+			return 0, err
+		}
+	} else {
+		if _, err := sess.InsertOne(&org); err != nil {
+			return 0, err
+		}
 	}
 
 	sess.publishAfterCommit(&events.OrgCreated{
@@ -284,14 +290,18 @@ func SetUsingOrg(cmd *m.SetUsingOrgCommand) error {
 	}
 
 	return inTransaction(func(sess *DBSession) error {
-		user := m.User{
-			Id:    cmd.UserId,
-			OrgId: cmd.OrgId,
-		}
-
-		_, err := sess.Id(cmd.UserId).Update(&user)
-		return err
+		return setUsingOrgInTransaction(sess, cmd.UserId, cmd.OrgId)
 	})
+}
+
+func setUsingOrgInTransaction(sess *DBSession, userID int64, orgID int64) error {
+	user := m.User{
+		Id:    userID,
+		OrgId: orgID,
+	}
+
+	_, err := sess.Id(userID).Update(&user)
+	return err
 }
 
 func GetUserProfile(query *m.GetUserProfileQuery) error {

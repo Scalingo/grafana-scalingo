@@ -3,7 +3,6 @@ import './ReactContainer';
 
 import ServerStats from 'app/containers/ServerStats/ServerStats';
 import AlertRuleList from 'app/containers/AlertRuleList/AlertRuleList';
-// import Explore from 'app/containers/Explore/Explore';
 import FolderSettings from 'app/containers/ManageDashboards/FolderSettings';
 import FolderPermissions from 'app/containers/ManageDashboards/FolderPermissions';
 
@@ -111,10 +110,11 @@ export function setupAngularRoutes($routeProvider, $locationProvider) {
       controller: 'FolderDashboardsCtrl',
       controllerAs: 'ctrl',
     })
-    .when('/explore', {
+    .when('/explore/:initial?', {
       template: '<react-container />',
       resolve: {
-        component: () => import(/* webpackChunkName: "explore" */ 'app/containers/Explore/Explore'),
+        roles: () => ['Editor', 'Admin'],
+        component: () => import(/* webpackChunkName: "explore" */ 'app/containers/Explore/Wrapper'),
       },
     })
     .when('/org', {

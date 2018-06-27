@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"fmt"
-	"net"
 	"net/mail"
+	"reflect"
 	"strings"
 	"time"
 
@@ -28,7 +28,7 @@ func initContextWithAuthProxy(ctx *m.ReqContext, orgID int64) bool {
 	}
 
 	// if auth proxy ip(s) defined, check if request comes from one of those
-	if err := checkAuthenticationProxy(ctx.Req.RemoteAddr, proxyHeaderValue); err != nil {
+	if err := checkAuthenticationProxy(ctx.RemoteAddr(), proxyHeaderValue); err != nil {
 		ctx.Handle(407, "Proxy authentication required", err)
 		return true
 	}
@@ -111,6 +111,16 @@ func initContextWithAuthProxy(ctx *m.ReqContext, orgID int64) bool {
 			return true
 		}
 
+		for _, field := range []string{"Name", "Email", "Login"} {
+			if setting.AuthProxyHeaders[field] == "" {
+				continue
+			}
+
+			if val := ctx.Req.Header.Get(setting.AuthProxyHeaders[field]); val != "" {
+				reflect.ValueOf(extUser).Elem().FieldByName(field).SetString(val)
+			}
+		}
+
 		// add/update user in grafana
 		cmd := &m.UpsertUserCommand{
 			ReqContext:    ctx,
@@ -186,18 +196,23 @@ func checkAuthenticationProxy(remoteAddr string, proxyHeaderValue string) error 
 		return nil
 	}
 
-	proxies := strings.Split(setting.AuthProxyWhitelist, ",")
-	sourceIP, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		return err
+	// Multiple ip addresses? Right-most IP address is the IP address of the most recent proxy
+	if strings.Contains(remoteAddr, ",") {
+		sourceIPs := strings.Split(remoteAddr, ",")
+		remoteAddr = strings.TrimSpace(sourceIPs[len(sourceIPs)-1])
 	}
+
+	remoteAddr = strings.TrimPrefix(remoteAddr, "[")
+	remoteAddr = strings.TrimSuffix(remoteAddr, "]")
+
+	proxies := strings.Split(setting.AuthProxyWhitelist, ",")
 
 	// Compare allowed IP addresses to actual address
 	for _, proxyIP := range proxies {
-		if sourceIP == strings.TrimSpace(proxyIP) {
+		if remoteAddr == strings.TrimSpace(proxyIP) {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("Request for user (%s) from %s is not from the authentication proxy", proxyHeaderValue, sourceIP)
+	return fmt.Errorf("Request for user (%s) from %s is not from the authentication proxy", proxyHeaderValue, remoteAddr)
 }

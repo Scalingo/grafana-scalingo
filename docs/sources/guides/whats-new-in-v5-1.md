@@ -100,8 +100,8 @@ In the table below you can see some examples and you can find all different opti
 Filter Option | Example | Raw | Interpolated | Description
 ------------ | ------------- | ------------- | -------------  | -------------
 `glob` | ${servers:glob} |  `'test1', 'test2'` | `{test1,test2}` | Formats multi-value variable into a glob
-`regex` | ${servers:regex} | `'test.', 'test2'` |  `(test\\.|test2)` | Formats multi-value variable into a regex string
-`pipe` | ${servers:pipe} | `'test.', 'test2'` |  `test.|test2` | Formats multi-value variable into a pipe-separated string
+`regex` | ${servers:regex} | `'test.', 'test2'` |  <code>(test\.&#124;test2)</code> | Formats multi-value variable into a regex string
+`pipe` | ${servers:pipe} | `'test.', 'test2'` |  <code>test.&#124;test2</code> | Formats multi-value variable into a pipe-separated string
 `csv`| ${servers:csv} |  `'test1', 'test2'` | `test1,test2` | Formats multi-value variable as a comma-separated string
 
 ## Improved workflow for provisioned dashboards
@@ -115,7 +115,7 @@ Grafana v5.1 brings an improved workflow for provisioned dashboards:
 
 
 Available options in the dialog will let you `Copy JSON to Clipboard` and/or `Save JSON to file` which can help you synchronize your dashboard changes back to the provisioning source.
-More information in the [Provisioning documentation](/features/datasources/prometheus/).
+More information in the [Provisioning documentation](/administration/provisioning/).
 
 <div class="clearfix"></div>
 

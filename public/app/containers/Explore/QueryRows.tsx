@@ -6,13 +6,16 @@ class QueryRow extends PureComponent<any, any> {
   constructor(props) {
     super(props);
     this.state = {
-      query: '',
+      edited: false,
+      query: props.query || '',
     };
   }
 
   handleChangeQuery = value => {
     const { index, onChangeQuery } = this.props;
-    this.setState({ query: value });
+    const { query } = this.state;
+    const edited = query !== value;
+    this.setState({ edited, query: value });
     if (onChangeQuery) {
       onChangeQuery(value, index);
     }
@@ -41,18 +44,25 @@ class QueryRow extends PureComponent<any, any> {
 
   render() {
     const { request } = this.props;
+    const { edited, query } = this.state;
     return (
       <div className="query-row">
         <div className="query-row-tools">
-          <button className="btn btn-small btn-inverse" onClick={this.handleClickAddButton}>
+          <button className="btn navbar-button navbar-button--tight" onClick={this.handleClickAddButton}>
             <i className="fa fa-plus" />
           </button>
-          <button className="btn btn-small btn-inverse" onClick={this.handleClickRemoveButton}>
+          <button className="btn navbar-button navbar-button--tight" onClick={this.handleClickRemoveButton}>
             <i className="fa fa-minus" />
           </button>
         </div>
         <div className="query-field-wrapper">
-          <QueryField onPressEnter={this.handlePressEnter} onQueryChange={this.handleChangeQuery} request={request} />
+          <QueryField
+            initialQuery={edited ? null : query}
+            onPressEnter={this.handlePressEnter}
+            onQueryChange={this.handleChangeQuery}
+            placeholder="Enter a PromQL query"
+            request={request}
+          />
         </div>
       </div>
     );
@@ -63,7 +73,9 @@ export default class QueryRows extends PureComponent<any, any> {
   render() {
     const { className = '', queries, ...handlers } = this.props;
     return (
-      <div className={className}>{queries.map((q, index) => <QueryRow key={q.key} index={index} {...handlers} />)}</div>
+      <div className={className}>
+        {queries.map((q, index) => <QueryRow key={q.key} index={index} query={q.query} {...handlers} />)}
+      </div>
     );
   }
 }

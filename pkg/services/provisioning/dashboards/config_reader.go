@@ -69,7 +69,7 @@ func (cr *configReader) readConfig() ([]*DashboardsAsConfig, error) {
 
 		parsedDashboards, err := cr.parseConfigs(file)
 		if err != nil {
-
+			return nil, err
 		}
 
 		if len(parsedDashboards) > 0 {
@@ -80,6 +80,10 @@ func (cr *configReader) readConfig() ([]*DashboardsAsConfig, error) {
 	for i := range dashboards {
 		if dashboards[i].OrgId == 0 {
 			dashboards[i].OrgId = 1
+		}
+
+		if dashboards[i].UpdateIntervalSeconds == 0 {
+			dashboards[i].UpdateIntervalSeconds = 3
 		}
 	}
 

@@ -77,6 +77,9 @@ func (hs *HTTPServer) registerRoutes() {
 	r.Get("/dashboards/", reqSignedIn, Index)
 	r.Get("/dashboards/*", reqSignedIn, Index)
 
+	r.Get("/explore/", reqEditorRole, Index)
+	r.Get("/explore/*", reqEditorRole, Index)
+
 	r.Get("/playlists/", reqSignedIn, Index)
 	r.Get("/playlists/*", reqSignedIn, Index)
 	r.Get("/alerting/", reqSignedIn, Index)
@@ -107,7 +110,8 @@ func (hs *HTTPServer) registerRoutes() {
 	r.Post("/api/snapshots/", bind(m.CreateDashboardSnapshotCommand{}), CreateDashboardSnapshot)
 	r.Get("/api/snapshot/shared-options/", GetSharingOptions)
 	r.Get("/api/snapshots/:key", GetDashboardSnapshot)
-	r.Get("/api/snapshots-delete/:key", reqEditorRole, wrap(DeleteDashboardSnapshot))
+	r.Get("/api/snapshots-delete/:deleteKey", wrap(DeleteDashboardSnapshotByDeleteKey))
+	r.Delete("/api/snapshots/:key", reqEditorRole, wrap(DeleteDashboardSnapshot))
 
 	// api renew session based on remember cookie
 	r.Get("/api/login/ping", quota("session"), LoginAPIPing)
@@ -374,7 +378,7 @@ func (hs *HTTPServer) registerRoutes() {
 	}, reqGrafanaAdmin)
 
 	// rendering
-	r.Get("/render/*", reqSignedIn, RenderToPng)
+	r.Get("/render/*", reqSignedIn, hs.RenderToPng)
 
 	// grafana.net proxy
 	r.Any("/api/gnet/*", reqSignedIn, ProxyGnetRequest)

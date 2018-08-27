@@ -115,7 +115,7 @@
     "jest": "jest --notify --watch",
     "api-tests": "jest --notify --watch --config=tests/api/jest.js",
     "precommit": "lint-staged && grunt precommit",
-    "scalingo-postbuild": "./install-plugins.sh"
+    "scalingo-postbuild": "bash ./install-plugins.sh"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

@@ -10,7 +10,7 @@ IFS=','
 
 for plugin in $GRAFANA_PLUGINS ; do
   echo "Installing $plugin"
-  grafana-cli plugins install $plugin
+  ./bin/grafana-cli plugins install $plugin
 done
 
 IFS=$OLD_IFS

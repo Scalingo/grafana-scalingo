@@ -114,7 +114,8 @@
     "karma": "grunt karma:dev",
     "jest": "jest --notify --watch",
     "api-tests": "jest --notify --watch --config=tests/api/jest.js",
-    "precommit": "lint-staged && grunt precommit"
+    "precommit": "lint-staged && grunt precommit",
+    "scalingo-postbuild": "./install-plugins.sh"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

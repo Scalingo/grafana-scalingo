@@ -9,7 +9,7 @@ export class BackendSrv {
   private noBackendCache: boolean;
 
   /** @ngInject */
-  constructor(private $http, private alertSrv, private $q, private $timeout, private contextSrv) {}
+  constructor(private $http, private $q, private $timeout, private contextSrv) {}
 
   get(url, params?) {
     return this.request({ method: 'GET', url: url, params: params });
@@ -43,20 +43,20 @@ export class BackendSrv {
       return;
     }
 
-    var data = err.data || { message: 'Unexpected error' };
+    let data = err.data || { message: 'Unexpected error' };
     if (_.isString(data)) {
       data = { message: data };
     }
 
     if (err.status === 422) {
-      this.alertSrv.set('Validation failed', data.message, 'warning', 4000);
+      appEvents.emit('alert-warning', ['Validation failed', data.message]);
       throw data;
     }
 
-    data.severity = 'error';
+    let severity = 'error';
 
     if (err.status < 500) {
-      data.severity = 'warning';
+      severity = 'warning';
     }
 
     if (data.message) {
@@ -66,7 +66,8 @@ export class BackendSrv {
         description = message;
         message = 'Error';
       }
-      this.alertSrv.set(message, description, data.severity, 10000);
+
+      appEvents.emit('alert-' + severity, [message, description]);
     }
 
     throw data;
@@ -74,8 +75,8 @@ export class BackendSrv {
 
   request(options) {
     options.retry = options.retry || 0;
-    var requestIsLocal = !options.url.match(/^http/);
-    var firstAttempt = options.retry === 0;
+    const requestIsLocal = !options.url.match(/^http/);
+    const firstAttempt = options.retry === 0;
 
     if (requestIsLocal) {
       if (this.contextSrv.user && this.contextSrv.user.orgId) {
@@ -93,7 +94,7 @@ export class BackendSrv {
         if (options.method !== 'GET') {
           if (results && results.data.message) {
             if (options.showSuccessAlert !== false) {
-              this.alertSrv.set(results.data.message, '', 'success', 3000);
+              appEvents.emit('alert-success', [results.data.message]);
             }
           }
         }
@@ -123,30 +124,31 @@ export class BackendSrv {
   }
 
   resolveCancelerIfExists(requestId) {
-    var cancelers = this.inFlightRequests[requestId];
+    const cancelers = this.inFlightRequests[requestId];
     if (!_.isUndefined(cancelers) && cancelers.length) {
       cancelers[0].resolve();
     }
   }
 
   datasourceRequest(options) {
+    let canceler = null;
     options.retry = options.retry || 0;
 
     // A requestID is provided by the datasource as a unique identifier for a
     // particular query. If the requestID exists, the promise it is keyed to
     // is canceled, canceling the previous datasource request if it is still
     // in-flight.
-    var requestId = options.requestId;
+    const requestId = options.requestId;
     if (requestId) {
       this.resolveCancelerIfExists(requestId);
       // create new canceler
-      var canceler = this.$q.defer();
+      canceler = this.$q.defer();
       options.timeout = canceler.promise;
       this.addCanceler(requestId, canceler);
     }
 
-    var requestIsLocal = !options.url.match(/^http/);
-    var firstAttempt = options.retry === 0;
+    const requestIsLocal = !options.url.match(/^http/);
+    const firstAttempt = options.retry === 0;
 
     if (requestIsLocal) {
       if (this.contextSrv.user && this.contextSrv.user.orgId) {
@@ -251,16 +253,6 @@ export class BackendSrv {
     return this.post('/api/folders', payload);
   }
 
-  updateFolder(folder, options) {
-    options = options || {};
-
-    return this.put(`/api/folders/${folder.uid}`, {
-      title: folder.title,
-      version: folder.version,
-      overwrite: options.overwrite === true,
-    });
-  }
-
   deleteFolder(uid: string, showSuccessAlert) {
     return this.request({ method: 'DELETE', url: `/api/folders/${uid}`, showSuccessAlert: showSuccessAlert === true });
   }
@@ -276,11 +268,11 @@ export class BackendSrv {
   deleteFoldersAndDashboards(folderUids, dashboardUids) {
     const tasks = [];
 
-    for (let folderUid of folderUids) {
+    for (const folderUid of folderUids) {
       tasks.push(this.createTask(this.deleteFolder.bind(this), true, folderUid, true));
     }
 
-    for (let dashboardUid of dashboardUids) {
+    for (const dashboardUid of dashboardUids) {
       tasks.push(this.createTask(this.deleteDashboard.bind(this), true, dashboardUid, true));
     }
 
@@ -290,7 +282,7 @@ export class BackendSrv {
   moveDashboards(dashboardUids, toFolder) {
     const tasks = [];
 
-    for (let uid of dashboardUids) {
+    for (const uid of dashboardUids) {
       tasks.push(this.createTask(this.moveDashboard.bind(this), true, uid, toFolder));
     }
 
@@ -304,7 +296,7 @@ export class BackendSrv {
   }
 
   private moveDashboard(uid, toFolder) {
-    let deferred = this.$q.defer();
+    const deferred = this.$q.defer();
 
     this.getDashboardByUid(uid).then(fullDash => {
       const model = new DashboardModel(fullDash.dashboard, fullDash.meta);
@@ -315,7 +307,7 @@ export class BackendSrv {
       }
 
       const clone = model.getSaveModelClone();
-      let options = {
+      const options = {
         folderId: toFolder.id,
         overwrite: false,
       };
@@ -368,3 +360,17 @@ export class BackendSrv {
 }
 
 coreModule.service('backendSrv', BackendSrv);
+
+//
+// Code below is to expore the service to react components
+//
+
+let singletonInstance: BackendSrv;
+
+export function setBackendSrv(instance: BackendSrv) {
+  singletonInstance = instance;
+}
+
+export function getBackendSrv(): BackendSrv {
+  return singletonInstance;
+}

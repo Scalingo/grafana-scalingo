@@ -11,11 +11,11 @@ import (
 	"path"
 	"time"
 
+	"github.com/grafana/grafana/pkg/api/routing"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	gocache "github.com/patrickmn/go-cache"
 	macaron "gopkg.in/macaron.v1"
 
 	"github.com/grafana/grafana/pkg/api/live"
@@ -27,12 +27,19 @@ import (
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/registry"
+	"github.com/grafana/grafana/pkg/services/cache"
+	"github.com/grafana/grafana/pkg/services/datasources"
+	"github.com/grafana/grafana/pkg/services/hooks"
 	"github.com/grafana/grafana/pkg/services/rendering"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
 func init() {
-	registry.RegisterService(&HTTPServer{})
+	registry.Register(&registry.Descriptor{
+		Name:         "HTTPServer",
+		Instance:     &HTTPServer{},
+		InitPriority: registry.High,
+	})
 }
 
 type HTTPServer struct {
@@ -40,18 +47,23 @@ type HTTPServer struct {
 	macaron       *macaron.Macaron
 	context       context.Context
 	streamManager *live.StreamManager
-	cache         *gocache.Cache
 	httpSrv       *http.Server
 
-	RouteRegister RouteRegister     `inject:""`
-	Bus           bus.Bus           `inject:""`
-	RenderService rendering.Service `inject:""`
-	Cfg           *setting.Cfg      `inject:""`
+	RouteRegister   routing.RouteRegister    `inject:""`
+	Bus             bus.Bus                  `inject:""`
+	RenderService   rendering.Service        `inject:""`
+	Cfg             *setting.Cfg             `inject:""`
+	HooksService    *hooks.HooksService      `inject:""`
+	CacheService    *cache.CacheService      `inject:""`
+	DatasourceCache datasources.CacheService `inject:""`
 }
 
 func (hs *HTTPServer) Init() error {
 	hs.log = log.New("http.server")
-	hs.cache = gocache.New(5*time.Minute, 10*time.Minute)
+
+	hs.streamManager = live.NewStreamManager()
+	hs.macaron = hs.newMacaron()
+	hs.registerRoutes()
 
 	return nil
 }
@@ -60,10 +72,8 @@ func (hs *HTTPServer) Run(ctx context.Context) error {
 	var err error
 
 	hs.context = ctx
-	hs.streamManager = live.NewStreamManager()
-	hs.macaron = hs.newMacaron()
-	hs.registerRoutes()
 
+	hs.applyRoutes()
 	hs.streamManager.Run(ctx)
 
 	listenAddr := fmt.Sprintf("%s:%s", setting.HttpAddr, setting.HttpPort)
@@ -163,6 +173,26 @@ func (hs *HTTPServer) newMacaron() *macaron.Macaron {
 	macaron.Env = setting.Env
 	m := macaron.New()
 
+	// automatically set HEAD for every GET
+	m.SetAutoHead(true)
+
+	return m
+}
+
+func (hs *HTTPServer) applyRoutes() {
+	// start with middlewares & static routes
+	hs.addMiddlewaresAndStaticRoutes()
+	// then add view routes & api routes
+	hs.RouteRegister.Register(hs.macaron)
+	// then custom app proxy routes
+	hs.initAppPluginRoutes(hs.macaron)
+	// lastly not found route
+	hs.macaron.NotFound(hs.NotFoundHandler)
+}
+
+func (hs *HTTPServer) addMiddlewaresAndStaticRoutes() {
+	m := hs.macaron
+
 	m.Use(middleware.Logger())
 
 	if setting.EnableGzip {
@@ -174,7 +204,7 @@ func (hs *HTTPServer) newMacaron() *macaron.Macaron {
 	for _, route := range plugins.StaticRoutes {
 		pluginRoute := path.Join("/public/plugins/", route.PluginId)
 		hs.log.Debug("Plugins: Adding route", "route", pluginRoute, "dir", route.Directory)
-		hs.mapStatic(m, route.Directory, "", pluginRoute)
+		hs.mapStatic(hs.macaron, route.Directory, "", pluginRoute)
 	}
 
 	hs.mapStatic(m, setting.StaticRootPath, "build", "public/build")
@@ -202,13 +232,21 @@ func (hs *HTTPServer) newMacaron() *macaron.Macaron {
 		m.Use(middleware.ValidateHostHeader(setting.Domain))
 	}
 
+	m.Use(middleware.HandleNoCacheHeader())
 	m.Use(middleware.AddDefaultResponseHeaders())
-
-	return m
 }
 
 func (hs *HTTPServer) metricsEndpoint(ctx *macaron.Context) {
+	if !hs.Cfg.MetricsEndpointEnabled {
+		return
+	}
+
 	if ctx.Req.Method != "GET" || ctx.Req.URL.Path != "/metrics" {
+		return
+	}
+
+	if hs.metricsEndpointBasicAuthEnabled() && !BasicAuthenticatedRequest(ctx.Req, hs.Cfg.MetricsEndpointBasicAuthUsername, hs.Cfg.MetricsEndpointBasicAuthPassword) {
+		ctx.Resp.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -265,4 +303,8 @@ func (hs *HTTPServer) mapStatic(m *macaron.Macaron, rootDir string, dir string, 
 			AddHeaders:  headers,
 		},
 	))
+}
+
+func (hs *HTTPServer) metricsEndpointBasicAuthEnabled() bool {
+	return hs.Cfg.MetricsEndpointBasicAuthUsername != "" && hs.Cfg.MetricsEndpointBasicAuthPassword != ""
 }

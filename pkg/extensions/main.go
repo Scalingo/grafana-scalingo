@@ -1,3 +1,7 @@
 package extensions
 
-import _ "github.com/pkg/errors"
+import (
+	_ "gopkg.in/square/go-jose.v2"
+)
+
+var IsEnterprise bool = false

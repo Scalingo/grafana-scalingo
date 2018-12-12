@@ -8,6 +8,7 @@ awsconfig
 /dist
 /public/build
 /public/views/index.html
+/public/views/error.html
 /emails/dist
 /public_gen
 /public/vendor/npm
@@ -33,15 +34,18 @@ public/css/*.min.css
 *.tmp
 .DS_Store
 .vscode/
+.vs/
 
 /data/*
 /bin/*
 
 conf/custom.ini
 fig.yml
-docker-compose.yml
-docker-compose.yaml
+devenv/docker-compose.yml
+devenv/docker-compose.yaml
 /conf/provisioning/**/custom.yaml
+/conf/provisioning/**/dev.yaml
+/conf/ldap_dev.toml
 profile.cov
 /grafana
 /local
@@ -51,10 +55,12 @@ profile.cov
 /pkg/cmd/grafana-server/grafana-server
 /pkg/cmd/grafana-server/debug
 /pkg/extensions
+/public/app/extensions
 debug.test
 /examples/*/dist
 /packaging/**/*.rpm
 /packaging/**/*.deb
+/packaging/**/*.tar.gz
 
 # Ignore OSX indexing
 .DS_Store
@@ -64,7 +70,9 @@ debug.test
 /vendor/**/*.yml
 /vendor/**/*_test.go
 /vendor/**/.editorconfig
-/vendor/**/appengine*
 *.orig
 
-/devenv/dashboards/bulk-testing/*.json
+/devenv/bulk-dashboards/*.json
+/devenv/bulk_alerting_dashboards/*.json
+
+/scripts/build/release_publisher/release_publisher

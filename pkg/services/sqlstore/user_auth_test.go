@@ -1,6 +1,7 @@
 package sqlstore
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -15,16 +16,14 @@ func TestUserAuth(t *testing.T) {
 	Convey("Given 5 users", t, func() {
 		var err error
 		var cmd *m.CreateUserCommand
-		users := []m.User{}
 		for i := 0; i < 5; i++ {
 			cmd = &m.CreateUserCommand{
 				Email: fmt.Sprint("user", i, "@test.com"),
 				Name:  fmt.Sprint("user", i),
 				Login: fmt.Sprint("loginuser", i),
 			}
-			err = CreateUser(cmd)
+			err = CreateUser(context.Background(), cmd)
 			So(err, ShouldBeNil)
-			users = append(users, cmd.Result)
 		}
 
 		Reset(func() {

@@ -1,6 +1,7 @@
 package sqlstore
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -14,8 +15,9 @@ import (
 	"github.com/grafana/grafana/pkg/util"
 )
 
-func init() {
-	bus.AddHandler("sql", CreateUser)
+func (ss *SqlStore) addUserQueryAndCommandHandlers() {
+	ss.Bus.AddHandler(ss.GetSignedInUserWithCache)
+
 	bus.AddHandler("sql", GetUserById)
 	bus.AddHandler("sql", UpdateUser)
 	bus.AddHandler("sql", ChangeUserPassword)
@@ -24,12 +26,12 @@ func init() {
 	bus.AddHandler("sql", SetUsingOrg)
 	bus.AddHandler("sql", UpdateUserLastSeenAt)
 	bus.AddHandler("sql", GetUserProfile)
-	bus.AddHandler("sql", GetSignedInUser)
 	bus.AddHandler("sql", SearchUsers)
 	bus.AddHandler("sql", GetUserOrgList)
 	bus.AddHandler("sql", DeleteUser)
 	bus.AddHandler("sql", UpdateUserPermissions)
 	bus.AddHandler("sql", SetUserHelpFlag)
+	bus.AddHandlerCtx("sql", CreateUser)
 }
 
 func getOrgIdForNewUser(cmd *m.CreateUserCommand, sess *DBSession) (int64, error) {
@@ -40,16 +42,23 @@ func getOrgIdForNewUser(cmd *m.CreateUserCommand, sess *DBSession) (int64, error
 	var org m.Org
 
 	if setting.AutoAssignOrg {
-		// right now auto assign to org with id 1
-		has, err := sess.Where("id=?", 1).Get(&org)
+		has, err := sess.Where("id=?", setting.AutoAssignOrgId).Get(&org)
 		if err != nil {
 			return 0, err
 		}
 		if has {
 			return org.Id, nil
+		} else {
+			if setting.AutoAssignOrgId == 1 {
+				org.Name = "Main Org."
+				org.Id = int64(setting.AutoAssignOrgId)
+			} else {
+				sqlog.Info("Could not create user: organization id %v does not exist",
+					setting.AutoAssignOrgId)
+				return 0, fmt.Errorf("Could not create user: organization id %v does not exist",
+					setting.AutoAssignOrgId)
+			}
 		}
-		org.Name = "Main Org."
-		org.Id = 1
 	} else {
 		org.Name = cmd.OrgName
 		if len(org.Name) == 0 {
@@ -79,8 +88,8 @@ func getOrgIdForNewUser(cmd *m.CreateUserCommand, sess *DBSession) (int64, error
 	return org.Id, nil
 }
 
-func CreateUser(cmd *m.CreateUserCommand) error {
-	return inTransaction(func(sess *DBSession) error {
+func CreateUser(ctx context.Context, cmd *m.CreateUserCommand) error {
+	return inTransactionCtx(ctx, func(sess *DBSession) error {
 		orgId, err := getOrgIdForNewUser(cmd, sess)
 		if err != nil {
 			return err
@@ -104,9 +113,10 @@ func CreateUser(cmd *m.CreateUserCommand) error {
 			LastSeenAt:    time.Now().AddDate(-10, 0, 0),
 		}
 
+		user.Salt = util.GetRandomString(10)
+		user.Rands = util.GetRandomString(10)
+
 		if len(cmd.Password) > 0 {
-			user.Salt = util.GetRandomString(10)
-			user.Rands = util.GetRandomString(10)
 			user.Password = util.EncodePassword(cmd.Password, user.Salt)
 		}
 
@@ -230,7 +240,7 @@ func UpdateUser(cmd *m.UpdateUserCommand) error {
 			Updated: time.Now(),
 		}
 
-		if _, err := sess.Id(cmd.UserId).Update(&user); err != nil {
+		if _, err := sess.ID(cmd.UserId).Update(&user); err != nil {
 			return err
 		}
 
@@ -254,22 +264,19 @@ func ChangeUserPassword(cmd *m.ChangeUserPasswordCommand) error {
 			Updated:  time.Now(),
 		}
 
-		_, err := sess.Id(cmd.UserId).Update(&user)
+		_, err := sess.ID(cmd.UserId).Update(&user)
 		return err
 	})
 }
 
 func UpdateUserLastSeenAt(cmd *m.UpdateUserLastSeenAtCommand) error {
 	return inTransaction(func(sess *DBSession) error {
-		if cmd.UserId <= 0 {
-		}
-
 		user := m.User{
 			Id:         cmd.UserId,
 			LastSeenAt: time.Now(),
 		}
 
-		_, err := sess.Id(cmd.UserId).Update(&user)
+		_, err := sess.ID(cmd.UserId).Update(&user)
 		return err
 	})
 }
@@ -300,7 +307,7 @@ func setUsingOrgInTransaction(sess *DBSession, userID int64, orgID int64) error 
 		OrgId: orgID,
 	}
 
-	_, err := sess.Id(userID).Update(&user)
+	_, err := sess.ID(userID).Update(&user)
 	return err
 }
 
@@ -338,6 +345,22 @@ func GetUserOrgList(query *m.GetUserOrgListQuery) error {
 	return err
 }
 
+func (ss *SqlStore) GetSignedInUserWithCache(query *m.GetSignedInUserQuery) error {
+	cacheKey := fmt.Sprintf("signed-in-user-%d-%d", query.UserId, query.OrgId)
+	if cached, found := ss.CacheService.Get(cacheKey); found {
+		query.Result = cached.(*m.SignedInUser)
+		return nil
+	}
+
+	err := GetSignedInUser(query)
+	if err != nil {
+		return err
+	}
+
+	ss.CacheService.Set(cacheKey, query.Result, time.Second*5)
+	return nil
+}
+
 func GetSignedInUser(query *m.GetSignedInUserQuery) error {
 	orgId := "u.org_id"
 	if query.OrgId > 0 {
@@ -362,11 +385,11 @@ func GetSignedInUser(query *m.GetSignedInUserQuery) error {
 
 	sess := x.Table("user")
 	if query.UserId > 0 {
-		sess.Sql(rawSql+"WHERE u.id=?", query.UserId)
+		sess.SQL(rawSql+"WHERE u.id=?", query.UserId)
 	} else if query.Login != "" {
-		sess.Sql(rawSql+"WHERE u.login=?", query.Login)
+		sess.SQL(rawSql+"WHERE u.login=?", query.Login)
 	} else if query.Email != "" {
-		sess.Sql(rawSql+"WHERE u.email=?", query.Email)
+		sess.SQL(rawSql+"WHERE u.email=?", query.Email)
 	}
 
 	var user m.SignedInUser
@@ -380,6 +403,17 @@ func GetSignedInUser(query *m.GetSignedInUserQuery) error {
 	if user.OrgRole == "" {
 		user.OrgId = -1
 		user.OrgName = "Org missing"
+	}
+
+	getTeamsByUserQuery := &m.GetTeamsByUserQuery{OrgId: user.OrgId, UserId: user.UserId}
+	err = GetTeamsByUser(getTeamsByUserQuery)
+	if err != nil {
+		return err
+	}
+
+	user.Teams = make([]int64, len(getTeamsByUserQuery.Result))
+	for i, t := range getTeamsByUserQuery.Result {
+		user.Teams[i] = t.Id
 	}
 
 	query.Result = &user
@@ -438,35 +472,39 @@ func SearchUsers(query *m.SearchUsersQuery) error {
 
 func DeleteUser(cmd *m.DeleteUserCommand) error {
 	return inTransaction(func(sess *DBSession) error {
-		deletes := []string{
-			"DELETE FROM star WHERE user_id = ?",
-			"DELETE FROM " + dialect.Quote("user") + " WHERE id = ?",
-			"DELETE FROM org_user WHERE user_id = ?",
-			"DELETE FROM dashboard_acl WHERE user_id = ?",
-			"DELETE FROM preferences WHERE user_id = ?",
-			"DELETE FROM team_member WHERE user_id = ?",
-			"DELETE FROM user_auth WHERE user_id = ?",
-		}
-
-		for _, sql := range deletes {
-			_, err := sess.Exec(sql, cmd.UserId)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
+		return deleteUserInTransaction(sess, cmd)
 	})
+}
+
+func deleteUserInTransaction(sess *DBSession, cmd *m.DeleteUserCommand) error {
+	deletes := []string{
+		"DELETE FROM star WHERE user_id = ?",
+		"DELETE FROM " + dialect.Quote("user") + " WHERE id = ?",
+		"DELETE FROM org_user WHERE user_id = ?",
+		"DELETE FROM dashboard_acl WHERE user_id = ?",
+		"DELETE FROM preferences WHERE user_id = ?",
+		"DELETE FROM team_member WHERE user_id = ?",
+		"DELETE FROM user_auth WHERE user_id = ?",
+	}
+
+	for _, sql := range deletes {
+		_, err := sess.Exec(sql, cmd.UserId)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func UpdateUserPermissions(cmd *m.UpdateUserPermissionsCommand) error {
 	return inTransaction(func(sess *DBSession) error {
 		user := m.User{}
-		sess.Id(cmd.UserId).Get(&user)
+		sess.ID(cmd.UserId).Get(&user)
 
 		user.IsAdmin = cmd.IsGrafanaAdmin
 		sess.UseBool("is_admin")
-		_, err := sess.Id(user.Id).Update(&user)
+		_, err := sess.ID(user.Id).Update(&user)
 		return err
 	})
 }
@@ -480,7 +518,7 @@ func SetUserHelpFlag(cmd *m.SetUserHelpFlagCommand) error {
 			Updated:    time.Now(),
 		}
 
-		_, err := sess.Id(cmd.UserId).Cols("help_flags1").Update(&user)
+		_, err := sess.ID(cmd.UserId).Cols("help_flags1").Update(&user)
 		return err
 	})
 }

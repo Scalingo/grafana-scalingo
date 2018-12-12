@@ -21,6 +21,7 @@ type ItemQuery struct {
 	RegionId     int64    `json:"regionId"`
 	Tags         []string `json:"tags"`
 	Type         string   `json:"type"`
+	MatchAny     bool     `json:"matchAny"`
 
 	Limit int64 `json:"limit"`
 }
@@ -35,11 +36,12 @@ type PostParams struct {
 }
 
 type DeleteParams struct {
-	Id          int64 `json:"id"`
-	AlertId     int64 `json:"alertId"`
-	DashboardId int64 `json:"dashboardId"`
-	PanelId     int64 `json:"panelId"`
-	RegionId    int64 `json:"regionId"`
+	OrgId       int64
+	Id          int64
+	AlertId     int64
+	DashboardId int64
+	PanelId     int64
+	RegionId    int64
 }
 
 var repositoryInstance Repository

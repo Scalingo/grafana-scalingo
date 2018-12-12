@@ -1,6 +1,7 @@
 package sqlstore
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -15,6 +16,7 @@ import (
 	m "github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/registry"
 	"github.com/grafana/grafana/pkg/services/annotations"
+	"github.com/grafana/grafana/pkg/services/cache"
 	"github.com/grafana/grafana/pkg/services/sqlstore/migrations"
 	"github.com/grafana/grafana/pkg/services/sqlstore/migrator"
 	"github.com/grafana/grafana/pkg/services/sqlstore/sqlutil"
@@ -22,10 +24,10 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/go-xorm/xorm"
-	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
 
 	_ "github.com/grafana/grafana/pkg/tsdb/mssql"
+	_ "github.com/lib/pq"
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -34,6 +36,8 @@ var (
 
 	sqlog log.Logger = log.New("sqlstore")
 )
+
+const ContextSessionName = "db-session"
 
 func init() {
 	registry.Register(&registry.Descriptor{
@@ -44,12 +48,73 @@ func init() {
 }
 
 type SqlStore struct {
-	Cfg *setting.Cfg `inject:""`
+	Cfg          *setting.Cfg        `inject:""`
+	Bus          bus.Bus             `inject:""`
+	CacheService *cache.CacheService `inject:""`
 
 	dbCfg           DatabaseConfig
 	engine          *xorm.Engine
 	log             log.Logger
+	Dialect         migrator.Dialect
 	skipEnsureAdmin bool
+}
+
+// NewSession returns a new DBSession
+func (ss *SqlStore) NewSession() *DBSession {
+	return &DBSession{Session: ss.engine.NewSession()}
+}
+
+// WithDbSession calls the callback with an session attached to the context.
+func (ss *SqlStore) WithDbSession(ctx context.Context, callback dbTransactionFunc) error {
+	sess, err := startSession(ctx, ss.engine, false)
+	if err != nil {
+		return err
+	}
+
+	return callback(sess)
+}
+
+// WithTransactionalDbSession calls the callback with an session within a transaction
+func (ss *SqlStore) WithTransactionalDbSession(ctx context.Context, callback dbTransactionFunc) error {
+	return ss.inTransactionWithRetryCtx(ctx, callback, 0)
+}
+
+func (ss *SqlStore) inTransactionWithRetryCtx(ctx context.Context, callback dbTransactionFunc, retry int) error {
+	sess, err := startSession(ctx, ss.engine, true)
+	if err != nil {
+		return err
+	}
+
+	defer sess.Close()
+
+	err = callback(sess)
+
+	// special handling of database locked errors for sqlite, then we can retry 3 times
+	if sqlError, ok := err.(sqlite3.Error); ok && retry < 5 {
+		if sqlError.Code == sqlite3.ErrLocked {
+			sess.Rollback()
+			time.Sleep(time.Millisecond * time.Duration(10))
+			sqlog.Info("Database table locked, sleeping then retrying", "retry", retry)
+			return ss.inTransactionWithRetryCtx(ctx, callback, retry+1)
+		}
+	}
+
+	if err != nil {
+		sess.Rollback()
+		return err
+	} else if err = sess.Commit(); err != nil {
+		return err
+	}
+
+	if len(sess.events) > 0 {
+		for _, e := range sess.events {
+			if err = bus.Publish(e); err != nil {
+				log.Error(3, "Failed to publish event after commit. error: %v", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (ss *SqlStore) Init() error {
@@ -63,12 +128,21 @@ func (ss *SqlStore) Init() error {
 	}
 
 	ss.engine = engine
+	ss.Dialect = migrator.NewDialect(ss.engine)
 
 	// temporarily still set global var
 	x = engine
-	dialect = migrator.NewDialect(x)
+	dialect = ss.Dialect
+
 	migrator := migrator.NewMigrator(x)
 	migrations.AddMigrations(migrator)
+
+	for _, descriptor := range registry.GetServices() {
+		sc, ok := descriptor.Instance.(registry.DatabaseMigrator)
+		if ok {
+			sc.AddMigration(migrator)
+		}
+	}
 
 	if err := migrator.Start(); err != nil {
 		return fmt.Errorf("Migration failed err: %v", err)
@@ -76,6 +150,10 @@ func (ss *SqlStore) Init() error {
 
 	// Init repo instances
 	annotations.SetRepository(&SqlAnnotationRepo{})
+	ss.Bus.SetTransactionManager(ss)
+
+	// Register handlers
+	ss.addUserQueryAndCommandHandlers()
 
 	// ensure admin user
 	if ss.skipEnsureAdmin {
@@ -88,27 +166,33 @@ func (ss *SqlStore) Init() error {
 func (ss *SqlStore) ensureAdminUser() error {
 	systemUserCountQuery := m.GetSystemUserCountStatsQuery{}
 
-	if err := bus.Dispatch(&systemUserCountQuery); err != nil {
-		return fmt.Errorf("Could not determine if admin user exists: %v", err)
-	}
+	err := ss.InTransaction(context.Background(), func(ctx context.Context) error {
 
-	if systemUserCountQuery.Result.Count > 0 {
+		err := bus.DispatchCtx(ctx, &systemUserCountQuery)
+		if err != nil {
+			return fmt.Errorf("Could not determine if admin user exists: %v", err)
+		}
+
+		if systemUserCountQuery.Result.Count > 0 {
+			return nil
+		}
+
+		cmd := m.CreateUserCommand{}
+		cmd.Login = setting.AdminUser
+		cmd.Email = setting.AdminUser + "@localhost"
+		cmd.Password = setting.AdminPassword
+		cmd.IsAdmin = true
+
+		if err := bus.DispatchCtx(ctx, &cmd); err != nil {
+			return fmt.Errorf("Failed to create admin user: %v", err)
+		}
+
+		ss.log.Info("Created default admin", "user", setting.AdminUser)
+
 		return nil
-	}
+	})
 
-	cmd := m.CreateUserCommand{}
-	cmd.Login = setting.AdminUser
-	cmd.Email = setting.AdminUser + "@localhost"
-	cmd.Password = setting.AdminPassword
-	cmd.IsAdmin = true
-
-	if err := bus.Dispatch(&cmd); err != nil {
-		return fmt.Errorf("Failed to create admin user: %v", err)
-	}
-
-	ss.log.Info("Created default admin user: %v", setting.AdminUser)
-
-	return nil
+	return err
 }
 
 func (ss *SqlStore) buildConnectionString() (string, error) {
@@ -156,7 +240,7 @@ func (ss *SqlStore) buildConnectionString() (string, error) {
 	case migrator.SQLITE:
 		// special case for tests
 		if !filepath.IsAbs(ss.dbCfg.Path) {
-			ss.dbCfg.Path = filepath.Join(setting.DataPath, ss.dbCfg.Path)
+			ss.dbCfg.Path = filepath.Join(ss.Cfg.DataPath, ss.dbCfg.Path)
 		}
 		os.MkdirAll(path.Dir(ss.dbCfg.Path), os.ModePerm)
 		cnnstr = "file:" + ss.dbCfg.Path + "?cache=shared&mode=rwc"
@@ -238,8 +322,11 @@ func (ss *SqlStore) readConfig() {
 }
 
 func InitTestDB(t *testing.T) *SqlStore {
+	t.Helper()
 	sqlstore := &SqlStore{}
 	sqlstore.skipEnsureAdmin = true
+	sqlstore.Bus = bus.New()
+	sqlstore.CacheService = cache.New(5*time.Minute, 10*time.Minute)
 
 	dbType := migrator.SQLITE
 
@@ -268,7 +355,11 @@ func InitTestDB(t *testing.T) *SqlStore {
 		t.Fatalf("Failed to init test database: %v", err)
 	}
 
-	dialect = migrator.NewDialect(engine)
+	sqlstore.Dialect = migrator.NewDialect(engine)
+
+	// temp global var until we get rid of global vars
+	dialect = sqlstore.Dialect
+
 	if err := dialect.CleanDB(); err != nil {
 		t.Fatalf("Failed to clean test db %v", err)
 	}

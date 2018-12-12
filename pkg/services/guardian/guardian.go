@@ -30,7 +30,7 @@ type dashboardGuardianImpl struct {
 	dashId int64
 	orgId  int64
 	acl    []*m.DashboardAclInfoDTO
-	groups []*m.Team
+	teams  []*m.TeamDTO
 	log    log.Logger
 }
 
@@ -40,7 +40,7 @@ var New = func(dashId int64, orgId int64, user *m.SignedInUser) DashboardGuardia
 		user:   user,
 		dashId: dashId,
 		orgId:  orgId,
-		log:    log.New("guardians.dashboard"),
+		log:    log.New("dashboard.permissions"),
 	}
 }
 
@@ -66,15 +66,30 @@ func (g *dashboardGuardianImpl) CanAdmin() (bool, error) {
 
 func (g *dashboardGuardianImpl) HasPermission(permission m.PermissionType) (bool, error) {
 	if g.user.OrgRole == m.ROLE_ADMIN {
-		return true, nil
+		return g.logHasPermissionResult(permission, true, nil)
 	}
 
 	acl, err := g.GetAcl()
 	if err != nil {
-		return false, err
+		return g.logHasPermissionResult(permission, false, err)
 	}
 
-	return g.checkAcl(permission, acl)
+	result, err := g.checkAcl(permission, acl)
+	return g.logHasPermissionResult(permission, result, err)
+}
+
+func (g *dashboardGuardianImpl) logHasPermissionResult(permission m.PermissionType, hasPermission bool, err error) (bool, error) {
+	if err != nil {
+		return hasPermission, err
+	}
+
+	if hasPermission {
+		g.log.Debug("User granted access to execute action", "userId", g.user.UserId, "orgId", g.orgId, "uname", g.user.Login, "dashId", g.dashId, "action", permission)
+	} else {
+		g.log.Debug("User denied access to execute action", "userId", g.user.UserId, "orgId", g.orgId, "uname", g.user.Login, "dashId", g.dashId, "action", permission)
+	}
+
+	return hasPermission, err
 }
 
 func (g *dashboardGuardianImpl) checkAcl(permission m.PermissionType, acl []*m.DashboardAclInfoDTO) (bool, error) {
@@ -186,15 +201,15 @@ func (g *dashboardGuardianImpl) GetAcl() ([]*m.DashboardAclInfoDTO, error) {
 	return g.acl, nil
 }
 
-func (g *dashboardGuardianImpl) getTeams() ([]*m.Team, error) {
-	if g.groups != nil {
-		return g.groups, nil
+func (g *dashboardGuardianImpl) getTeams() ([]*m.TeamDTO, error) {
+	if g.teams != nil {
+		return g.teams, nil
 	}
 
 	query := m.GetTeamsByUserQuery{OrgId: g.orgId, UserId: g.user.UserId}
 	err := bus.Dispatch(&query)
 
-	g.groups = query.Result
+	g.teams = query.Result
 	return query.Result, err
 }
 

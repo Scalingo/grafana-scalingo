@@ -13,7 +13,7 @@ func mockTimeNow() {
 	var timeSeed int64
 	timeNow = func() time.Time {
 		fakeNow := time.Unix(timeSeed, 0)
-		timeSeed += 1
+		timeSeed++
 		return fakeNow
 	}
 }
@@ -30,7 +30,7 @@ func TestAlertingDataAccess(t *testing.T) {
 		InitTestDB(t)
 
 		testDash := insertTestDashboard("dashboard with alerts", 1, 0, false, "alert")
-
+		evalData, _ := simplejson.NewJson([]byte(`{"test": "test"}`))
 		items := []*m.Alert{
 			{
 				PanelId:     1,
@@ -40,6 +40,7 @@ func TestAlertingDataAccess(t *testing.T) {
 				Message:     "Alerting message",
 				Settings:    simplejson.New(),
 				Frequency:   1,
+				EvalData:    evalData,
 			},
 		}
 
@@ -104,8 +105,18 @@ func TestAlertingDataAccess(t *testing.T) {
 
 			alert := alertQuery.Result[0]
 			So(err2, ShouldBeNil)
+			So(alert.Id, ShouldBeGreaterThan, 0)
+			So(alert.DashboardId, ShouldEqual, testDash.Id)
+			So(alert.PanelId, ShouldEqual, 1)
 			So(alert.Name, ShouldEqual, "Alerting title")
-			So(alert.State, ShouldEqual, "pending")
+			So(alert.State, ShouldEqual, m.AlertStateUnknown)
+			So(alert.NewStateDate, ShouldNotBeNil)
+			So(alert.EvalData, ShouldNotBeNil)
+			So(alert.EvalData.Get("test").MustString(), ShouldEqual, "test")
+			So(alert.EvalDate, ShouldNotBeNil)
+			So(alert.ExecutionError, ShouldEqual, "")
+			So(alert.DashboardUid, ShouldNotBeNil)
+			So(alert.DashboardSlug, ShouldEqual, "dashboard-with-alerts")
 		})
 
 		Convey("Viewer cannot read alerts", func() {
@@ -143,7 +154,7 @@ func TestAlertingDataAccess(t *testing.T) {
 				So(query.Result[0].Name, ShouldEqual, "Name")
 
 				Convey("Alert state should not be updated", func() {
-					So(query.Result[0].State, ShouldEqual, "pending")
+					So(query.Result[0].State, ShouldEqual, m.AlertStateUnknown)
 				})
 			})
 

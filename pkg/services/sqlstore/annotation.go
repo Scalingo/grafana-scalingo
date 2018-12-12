@@ -110,7 +110,7 @@ func (r *SqlAnnotationRepo) Update(item *annotations.Item) error {
 
 		existing.Tags = item.Tags
 
-		_, err = sess.Table("annotation").Id(existing.Id).Cols("epoch", "text", "region_id", "updated", "tags").Update(existing)
+		_, err = sess.Table("annotation").ID(existing.Id).Cols("epoch", "text", "region_id", "updated", "tags").Update(existing)
 		return err
 	})
 }
@@ -211,7 +211,12 @@ func (r *SqlAnnotationRepo) Find(query *annotations.ItemQuery) ([]*annotations.I
             )
       `, strings.Join(keyValueFilters, " OR "))
 
-			sql.WriteString(fmt.Sprintf(" AND (%s) = %d ", tagsSubQuery, len(tags)))
+			if query.MatchAny {
+				sql.WriteString(fmt.Sprintf(" AND (%s) > 0 ", tagsSubQuery))
+			} else {
+				sql.WriteString(fmt.Sprintf(" AND (%s) = %d ", tagsSubQuery, len(tags)))
+			}
+
 		}
 	}
 
@@ -223,7 +228,7 @@ func (r *SqlAnnotationRepo) Find(query *annotations.ItemQuery) ([]*annotations.I
 
 	items := make([]*annotations.ItemDTO, 0)
 
-	if err := x.Sql(sql.String(), params...).Find(&items); err != nil {
+	if err := x.SQL(sql.String(), params...).Find(&items); err != nil {
 		return nil, err
 	}
 
@@ -238,18 +243,19 @@ func (r *SqlAnnotationRepo) Delete(params *annotations.DeleteParams) error {
 			queryParams []interface{}
 		)
 
+		sqlog.Info("delete", "orgId", params.OrgId)
 		if params.RegionId != 0 {
-			annoTagSql = "DELETE FROM annotation_tag WHERE annotation_id IN (SELECT id FROM annotation WHERE region_id = ?)"
-			sql = "DELETE FROM annotation WHERE region_id = ?"
-			queryParams = []interface{}{params.RegionId}
+			annoTagSql = "DELETE FROM annotation_tag WHERE annotation_id IN (SELECT id FROM annotation WHERE region_id = ? AND org_id = ?)"
+			sql = "DELETE FROM annotation WHERE region_id = ? AND org_id = ?"
+			queryParams = []interface{}{params.RegionId, params.OrgId}
 		} else if params.Id != 0 {
-			annoTagSql = "DELETE FROM annotation_tag WHERE annotation_id IN (SELECT id FROM annotation WHERE id = ?)"
-			sql = "DELETE FROM annotation WHERE id = ?"
-			queryParams = []interface{}{params.Id}
+			annoTagSql = "DELETE FROM annotation_tag WHERE annotation_id IN (SELECT id FROM annotation WHERE id = ? AND org_id = ?)"
+			sql = "DELETE FROM annotation WHERE id = ? AND org_id = ?"
+			queryParams = []interface{}{params.Id, params.OrgId}
 		} else {
-			annoTagSql = "DELETE FROM annotation_tag WHERE annotation_id IN (SELECT id FROM annotation WHERE dashboard_id = ? AND panel_id = ?)"
-			sql = "DELETE FROM annotation WHERE dashboard_id = ? AND panel_id = ?"
-			queryParams = []interface{}{params.DashboardId, params.PanelId}
+			annoTagSql = "DELETE FROM annotation_tag WHERE annotation_id IN (SELECT id FROM annotation WHERE dashboard_id = ? AND panel_id = ? AND org_id = ?)"
+			sql = "DELETE FROM annotation WHERE dashboard_id = ? AND panel_id = ? AND org_id = ?"
+			queryParams = []interface{}{params.DashboardId, params.PanelId, params.OrgId}
 		}
 
 		if _, err := sess.Exec(annoTagSql, queryParams...); err != nil {

@@ -108,7 +108,8 @@
     "lint": "tslint -c tslint.json --project tsconfig.json",
     "jest": "jest --notify --watch",
     "api-tests": "jest --notify --watch --config=tests/api/jest.js",
-    "precommit": "lint-staged && grunt precommit"
+    "precommit": "lint-staged && grunt precommit",
+    "scalingo-postbuild": "bash ./install-plugins.sh"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

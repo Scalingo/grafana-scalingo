@@ -18,24 +18,19 @@ import config from 'app/core/config';
 import TimeSeries from 'app/core/time_series2';
 import TableModel from 'app/core/table_model';
 import { coreModule, appEvents, contextSrv } from 'app/core/core';
-import { PluginExports } from 'app/types/plugins';
-import * as datemath from 'app/core/utils/datemath';
+import { DataSourcePlugin, AppPlugin, PanelPlugin, PluginMeta, DataSourcePluginMeta } from '@grafana/ui/src/types';
+import * as datemath from '@grafana/ui/src/utils/datemath';
 import * as fileExport from 'app/core/utils/file_export';
 import * as flatten from 'app/core/utils/flatten';
 import * as ticks from 'app/core/utils/ticks';
+import { BackendSrv, getBackendSrv } from 'app/core/services/backend_srv';
 import impressionSrv from 'app/core/services/impression_srv';
 import builtInPlugins from './built_in_plugins';
 import * as d3 from 'd3';
+import * as grafanaUI from '@grafana/ui';
 
 // rxjs
-import { Observable } from 'rxjs/Observable';
-import { Subject } from 'rxjs/Subject';
-
-// these imports add functions to Observable
-import 'rxjs/add/observable/empty';
-import 'rxjs/add/observable/from';
-import 'rxjs/add/operator/map';
-import 'rxjs/add/operator/combineAll';
+import { Observable, Subject } from 'rxjs';
 
 // add cache busting
 const bust = `?_cache=${Date.now()}`;
@@ -71,6 +66,7 @@ function exposeToPlugin(name: string, component: any) {
   });
 }
 
+exposeToPlugin('@grafana/ui', grafanaUI);
 exposeToPlugin('lodash', _);
 exposeToPlugin('moment', moment);
 exposeToPlugin('jquery', jquery);
@@ -96,6 +92,16 @@ exposeToPlugin('vendor/npm/rxjs/Rx', {
 exposeToPlugin('app/features/dashboard/impression_store', {
   impressions: impressionSrv,
   __esModule: true,
+});
+
+/**
+ * NOTE: this is added temporarily while we explore a long term solution
+ * If you use this export, only use the:
+ *  get/delete/post/patch/request methods
+ */
+exposeToPlugin('app/core/services/backend_srv', {
+  BackendSrv,
+  getBackendSrv,
 });
 
 exposeToPlugin('app/plugins/sdk', sdk);
@@ -146,12 +152,79 @@ for (const flotDep of flotDeps) {
   exposeToPlugin(flotDep, { fakeDep: 1 });
 }
 
-export function importPluginModule(path: string): Promise<PluginExports> {
+export function importPluginModule(path: string): Promise<any> {
   const builtIn = builtInPlugins[path];
   if (builtIn) {
     return Promise.resolve(builtIn);
   }
   return System.import(path);
+}
+
+export function importDataSourcePlugin(meta: DataSourcePluginMeta): Promise<DataSourcePlugin<any>> {
+  return importPluginModule(meta.module).then(pluginExports => {
+    if (pluginExports.plugin) {
+      const dsPlugin = pluginExports.plugin as DataSourcePlugin<any>;
+      dsPlugin.meta = meta;
+      return dsPlugin;
+    }
+
+    if (pluginExports.Datasource) {
+      const dsPlugin = new DataSourcePlugin(pluginExports.Datasource);
+      dsPlugin.setComponentsFromLegacyExports(pluginExports);
+      dsPlugin.meta = meta;
+      return dsPlugin;
+    }
+
+    throw new Error('Plugin module is missing DataSourcePlugin or Datasource constructor export');
+  });
+}
+
+export function importAppPlugin(meta: PluginMeta): Promise<AppPlugin> {
+  return importPluginModule(meta.module).then(pluginExports => {
+    const plugin = pluginExports.plugin ? (pluginExports.plugin as AppPlugin) : new AppPlugin();
+    plugin.meta = meta;
+    plugin.setComponentsFromLegacyExports(pluginExports);
+    return plugin;
+  });
+}
+
+import { getPanelPluginNotFound } from '../dashboard/dashgrid/PanelPluginNotFound';
+
+interface PanelCache {
+  [key: string]: PanelPlugin;
+}
+const panelCache: PanelCache = {};
+
+export function importPanelPlugin(id: string): Promise<PanelPlugin> {
+  const loaded = panelCache[id];
+  if (loaded) {
+    return Promise.resolve(loaded);
+  }
+  const meta = config.panels[id];
+  if (!meta) {
+    return Promise.resolve(getPanelPluginNotFound(id));
+  }
+
+  return importPluginModule(meta.module)
+    .then(pluginExports => {
+      if (pluginExports.plugin) {
+        return pluginExports.plugin as PanelPlugin;
+      } else if (pluginExports.PanelCtrl) {
+        const plugin = new PanelPlugin(null);
+        plugin.angularPanelCtrl = pluginExports.PanelCtrl;
+        return plugin;
+      }
+      throw new Error('missing export: plugin or PanelCtrl');
+    })
+    .then(plugin => {
+      plugin.meta = meta;
+      return (panelCache[meta.id] = plugin);
+    })
+    .catch(err => {
+      // TODO, maybe a different error plugin
+      console.log('Error loading panel plugin', err);
+      return getPanelPluginNotFound(id);
+    });
 }
 
 export function loadPluginCss(options) {

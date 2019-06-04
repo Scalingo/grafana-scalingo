@@ -2,21 +2,6 @@ import angular from 'angular';
 import coreModule from 'app/core/core_module';
 import _ from 'lodash';
 
-export class CloudWatchQueryParameter {
-  constructor() {
-    return {
-      templateUrl: 'public/app/plugins/datasource/cloudwatch/partials/query.parameter.html',
-      controller: 'CloudWatchQueryParameterCtrl',
-      restrict: 'E',
-      scope: {
-        target: '=',
-        datasource: '=',
-        onChange: '&',
-      },
-    };
-  }
-}
-
 export class CloudWatchQueryParameterCtrl {
   /** @ngInject */
   constructor($scope, templateSrv, uiSegmentSrv, datasourceSrv, $q) {
@@ -127,6 +112,7 @@ export class CloudWatchQueryParameterCtrl {
         query = $scope.datasource.getDimensionKeys($scope.target.namespace, $scope.target.region);
       } else if (segment.type === 'value') {
         const dimensionKey = $scope.dimSegments[$index - 2].value;
+        delete target.dimensions[dimensionKey];
         query = $scope.datasource.getDimensionValues(
           target.region,
           target.namespace,
@@ -240,5 +226,17 @@ export class CloudWatchQueryParameterCtrl {
   }
 }
 
-coreModule.directive('cloudwatchQueryParameter', CloudWatchQueryParameter);
-coreModule.controller('CloudWatchQueryParameterCtrl', CloudWatchQueryParameterCtrl);
+export function cloudWatchQueryParameter() {
+  return {
+    templateUrl: 'public/app/plugins/datasource/cloudwatch/partials/query.parameter.html',
+    controller: CloudWatchQueryParameterCtrl,
+    restrict: 'E',
+    scope: {
+      target: '=',
+      datasource: '=',
+      onChange: '&',
+    },
+  };
+}
+
+coreModule.directive('cloudwatchQueryParameter', cloudWatchQueryParameter);

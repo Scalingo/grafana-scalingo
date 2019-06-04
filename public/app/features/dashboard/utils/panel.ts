@@ -1,8 +1,23 @@
-﻿import appEvents from 'app/core/app_events';
-import { DashboardModel } from 'app/features/dashboard/dashboard_model';
-import { PanelModel } from 'app/features/dashboard/panel_model';
+// Store
 import store from 'app/core/store';
-import { LS_PANEL_COPY_KEY } from 'app/core/constants';
+
+// Models
+import { DashboardModel } from 'app/features/dashboard/state/DashboardModel';
+import { PanelModel } from 'app/features/dashboard/state/PanelModel';
+import { TimeRange } from '@grafana/ui';
+
+// Utils
+import { isString as _isString } from 'lodash';
+import * as rangeUtil from '@grafana/ui/src/utils/rangeutil';
+import * as dateMath from '@grafana/ui/src/utils/datemath';
+import appEvents from 'app/core/app_events';
+import config from 'app/core/config';
+
+// Services
+import templateSrv from 'app/features/templating/template_srv';
+
+// Constants
+import { LS_PANEL_COPY_KEY, PANEL_BORDER } from 'app/core/constants';
 
 export const removePanel = (dashboard: DashboardModel, panel: PanelModel, ask: boolean) => {
   // confirm deletion
@@ -55,6 +70,7 @@ export const editPanelJson = (dashboard: DashboardModel, panel: PanelModel) => {
     updateHandler: (newPanel: PanelModel, oldPanel: PanelModel) => {
       replacePanel(dashboard, newPanel, oldPanel);
     },
+    canUpdate: dashboard.meta.canEdit,
     enableCopy: true,
   };
 
@@ -66,7 +82,7 @@ export const editPanelJson = (dashboard: DashboardModel, panel: PanelModel) => {
 
 export const sharePanel = (dashboard: DashboardModel, panel: PanelModel) => {
   appEvents.emit('show-modal', {
-    src: 'public/app/features/dashboard/partials/shareModal.html',
+    src: 'public/app/features/dashboard/components/ShareModal/template.html',
     model: {
       dashboard: dashboard,
       panel: panel,
@@ -84,3 +100,82 @@ export const toggleLegend = (panel: PanelModel) => {
   // panel.legend.show = !panel.legend.show;
   refreshPanel(panel);
 };
+
+export interface TimeOverrideResult {
+  timeRange: TimeRange;
+  timeInfo: string;
+}
+
+export function applyPanelTimeOverrides(panel: PanelModel, timeRange: TimeRange): TimeOverrideResult {
+  const newTimeData = {
+    timeInfo: '',
+    timeRange: timeRange,
+  };
+
+  if (panel.timeFrom) {
+    const timeFromInterpolated = templateSrv.replace(panel.timeFrom, panel.scopedVars);
+    const timeFromInfo = rangeUtil.describeTextRange(timeFromInterpolated);
+    if (timeFromInfo.invalid) {
+      newTimeData.timeInfo = 'invalid time override';
+      return newTimeData;
+    }
+
+    if (_isString(timeRange.raw.from)) {
+      const timeFromDate = dateMath.parse(timeFromInfo.from);
+      newTimeData.timeInfo = timeFromInfo.display;
+      newTimeData.timeRange = {
+        from: timeFromDate,
+        to: dateMath.parse(timeFromInfo.to),
+        raw: {
+          from: timeFromInfo.from,
+          to: timeFromInfo.to,
+        },
+      };
+    }
+  }
+
+  if (panel.timeShift) {
+    const timeShiftInterpolated = templateSrv.replace(panel.timeShift, panel.scopedVars);
+    const timeShiftInfo = rangeUtil.describeTextRange(timeShiftInterpolated);
+    if (timeShiftInfo.invalid) {
+      newTimeData.timeInfo = 'invalid timeshift';
+      return newTimeData;
+    }
+
+    const timeShift = '-' + timeShiftInterpolated;
+    newTimeData.timeInfo += ' timeshift ' + timeShift;
+    const from = dateMath.parseDateMath(timeShift, newTimeData.timeRange.from, false);
+    const to = dateMath.parseDateMath(timeShift, newTimeData.timeRange.to, true);
+
+    newTimeData.timeRange = {
+      from,
+      to,
+      raw: {
+        from,
+        to,
+      },
+    };
+  }
+
+  if (panel.hideTimeOverride) {
+    newTimeData.timeInfo = '';
+  }
+
+  return newTimeData;
+}
+
+export function getResolution(panel: PanelModel): number {
+  const htmlEl = document.getElementsByTagName('html')[0];
+  const width = htmlEl.getBoundingClientRect().width; // https://stackoverflow.com/a/21454625
+
+  return panel.maxDataPoints ? panel.maxDataPoints : Math.ceil(width * (panel.gridPos.w / 24));
+}
+
+export function calculateInnerPanelHeight(panel: PanelModel, containerHeight: number): number {
+  return (
+    containerHeight -
+    (panel.hasTitle() ? config.theme.panelHeaderHeight : 0) -
+    config.theme.panelPadding * 2 -
+    PANEL_BORDER
+  );
+}

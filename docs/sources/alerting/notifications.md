@@ -27,7 +27,7 @@ can configure and setup a new Notification Channel.
 You specify a name and a type, and type specific options. You can also test the notification to make
 sure it's setup correctly.
 
-### Send on all alerts
+### Default (send on all alerts)
 
 When checked, this option will notify for all alert rules - existing and new.
 
@@ -55,6 +55,10 @@ Alert rule evaluation interval | Send reminders every | Reminder sent every (aft
 
 <div class="clearfix"></div>
 
+### Disable resolve message
+
+When checked, this option will disable resolve message [OK] that is sent when alerting state returns to false.
+
 ## Supported Notification Types
 
 Grafana ships with the following set of notification types:
@@ -79,7 +83,11 @@ or a bot integration via Slack Apps. Follow Slack's guide to set up a bot integr
 
 Setting | Description
 ---------- | -----------
-Recipient | allows you to override the Slack recipient.
+Url | Slack incoming webhook url.
+Username | Set the username for the bot's message.
+Recipient | Allows you to override the Slack recipient.
+Icon emoji | Provide an emoji to use as the icon for the bot's message. Ex :smile:
+Icon URL | Provide a url to an image to use as the icon for the bot's message.
 Mention | make it possible to include a mention in the Slack notification sent by Grafana. Ex @here or @channel
 Token | If provided, Grafana will upload the generated image via Slack's file.upload API method, not the external image destination.
 
@@ -132,7 +140,7 @@ In DingTalk PC Client:
 
 2. Click "Robot Manage" item in the pop menu, there will be a new panel call "Robot Manage".
 
-3. In the  "Robot Manage" panel, select "customised: customised robot with Webhook".
+3. In the  "Robot Manage" panel, select "customized: customized robot with Webhook".
 
 4. In the next new panel named "robot detail", click "Add" button.
 
@@ -153,27 +161,32 @@ There are a couple of configuration options which need to be set up in Grafana U
 
 Once these two properties are set, you can send the alerts to Kafka for further processing or throttling.
 
+### Google Hangouts Chat
+
+Notifications can be sent by setting up an incoming webhook in Google Hangouts chat. Configuring such a webhook is described [here](https://developers.google.com/hangouts/chat/how-tos/webhooks).
+
 ### All supported notifiers
 
-Name | Type |Support images | Support reminders
------|------------ | ------ | ------ |
-Slack | `slack` | yes | yes
-Pagerduty | `pagerduty` | yes | yes
-Email | `email` | yes | yes
-Webhook | `webhook` | link | yes
-Kafka | `kafka` | no | yes
-Hipchat | `hipchat` | yes | yes
-VictorOps | `victorops` | yes | yes
-Sensu | `sensu` | yes | yes
-OpsGenie | `opsgenie` | yes | yes
-Threema | `threema` | yes | yes
-Pushover | `pushover` | no | yes
-Telegram | `telegram` | no | yes
-Line | `line` | no | yes
-Microsoft Teams | `teams` | yes | yes
-Prometheus Alertmanager | `prometheus-alertmanager` | no | no
-
-
+Name | Type | Supports images
+-----|------------ | ------
+DingDing | `dingding` | yes, external only
+Discord | `discord` | yes
+Email | `email` | yes
+Google Hangouts Chat | `googlechat` | yes, external only
+Hipchat | `hipchat` | yes, external only
+Kafka | `kafka` | yes, external only
+Line | `line` | yes, external only
+Microsoft Teams | `teams` | yes, external only
+OpsGenie | `opsgenie` | yes, external only
+Pagerduty | `pagerduty` | yes, external only
+Prometheus Alertmanager | `prometheus-alertmanager` | yes, external only
+Pushover | `pushover` | yes
+Sensu | `sensu` | yes, external only
+Slack | `slack` | yes
+Telegram | `telegram` | yes
+Threema | `threema` | yes, external only
+VictorOps | `victorops` | yes, external only
+Webhook | `webhook` | yes, external only
 
 # Enable images in notifications {#external-image-store}
 
@@ -182,9 +195,7 @@ Amazon S3, Webdav, Google Cloud Storage and Azure Blob Storage. So to set that u
 
 Be aware that some notifiers requires public access to the image to be able to include it in the notification. So make sure to enable public access to the images. If you're using local image uploader, your Grafana instance need to be accessible by the internet.
 
-Currently only the Email Channels attaches images if no external image store is specified. To include images in alert notifications for other channels then you need to set up an external image store.
-
-This is an optional requirement. You can get Slack and email notifications without setting this up.
+Notification services which need public image access are marked as 'external only'.
 
 # Configure the link back to Grafana from alert notifications
 

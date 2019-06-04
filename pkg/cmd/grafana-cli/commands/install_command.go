@@ -14,12 +14,14 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/grafana/grafana/pkg/cmd/grafana-cli/utils"
+
 	"github.com/grafana/grafana/pkg/cmd/grafana-cli/logger"
 	m "github.com/grafana/grafana/pkg/cmd/grafana-cli/models"
 	s "github.com/grafana/grafana/pkg/cmd/grafana-cli/services"
 )
 
-func validateInput(c CommandLine, pluginFolder string) error {
+func validateInput(c utils.CommandLine, pluginFolder string) error {
 	arg := c.Args().First()
 	if arg == "" {
 		return errors.New("please specify plugin to install")
@@ -45,7 +47,7 @@ func validateInput(c CommandLine, pluginFolder string) error {
 	return nil
 }
 
-func installCommand(c CommandLine) error {
+func installCommand(c utils.CommandLine) error {
 	pluginFolder := c.PluginDirectory()
 	if err := validateInput(c, pluginFolder); err != nil {
 		return err
@@ -57,7 +59,9 @@ func installCommand(c CommandLine) error {
 	return InstallPlugin(pluginToInstall, version, c)
 }
 
-func InstallPlugin(pluginName, version string, c CommandLine) error {
+// InstallPlugin downloads the plugin code as a zip file from the Grafana.com API
+// and then extracts the zip into the plugins directory.
+func InstallPlugin(pluginName, version string, c utils.CommandLine) error {
 	pluginFolder := c.PluginDirectory()
 	downloadURL := c.PluginURL()
 	if downloadURL == "" {
@@ -133,7 +137,7 @@ func downloadFile(pluginName, filePath, url string) (err error) {
 			} else {
 				failure := fmt.Sprintf("%v", r)
 				if failure == "runtime error: makeslice: len out of range" {
-					err = fmt.Errorf("Corrupt http response from source. Please try again.\n")
+					err = fmt.Errorf("Corrupt http response from source. Please try again")
 				} else {
 					panic(r)
 				}
@@ -141,7 +145,7 @@ func downloadFile(pluginName, filePath, url string) (err error) {
 		}
 	}()
 
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) // #nosec
 	if err != nil {
 		return err
 	}
@@ -152,6 +156,10 @@ func downloadFile(pluginName, filePath, url string) (err error) {
 		return err
 	}
 
+	return extractFiles(body, pluginName, filePath)
+}
+
+func extractFiles(body []byte, pluginName string, filePath string) error {
 	r, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		return err
@@ -160,13 +168,19 @@ func downloadFile(pluginName, filePath, url string) (err error) {
 		newFile := path.Join(filePath, RemoveGitBuildFromName(pluginName, zf.Name))
 
 		if zf.FileInfo().IsDir() {
-			err := os.Mkdir(newFile, 0777)
-			if PermissionsError(err) {
+			err := os.Mkdir(newFile, 0755)
+			if permissionsError(err) {
 				return fmt.Errorf(permissionsDeniedMessage, newFile)
 			}
 		} else {
-			dst, err := os.Create(newFile)
-			if PermissionsError(err) {
+			fileMode := zf.Mode()
+
+			if strings.HasSuffix(newFile, "_linux_amd64") || strings.HasSuffix(newFile, "_darwin_amd64") {
+				fileMode = os.FileMode(0755)
+			}
+
+			dst, err := os.OpenFile(newFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, fileMode)
+			if permissionsError(err) {
 				return fmt.Errorf(permissionsDeniedMessage, newFile)
 			}
 
@@ -184,6 +198,6 @@ func downloadFile(pluginName, filePath, url string) (err error) {
 	return nil
 }
 
-func PermissionsError(err error) bool {
+func permissionsError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "permission denied")
 }

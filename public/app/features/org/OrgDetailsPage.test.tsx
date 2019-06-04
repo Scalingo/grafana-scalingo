@@ -1,12 +1,20 @@
 import React from 'react';
 import { shallow } from 'enzyme';
 import { OrgDetailsPage, Props } from './OrgDetailsPage';
-import { NavModel, Organization } from '../../types';
+import { Organization } from '../../types';
+import { NavModel } from '@grafana/ui';
 
 const setup = (propOverrides?: object) => {
   const props: Props = {
     organization: {} as Organization,
-    navModel: {} as NavModel,
+    navModel: {
+      main: {
+        text: 'Configuration',
+      },
+      node: {
+        text: 'Org details',
+      },
+    } as NavModel,
     loadOrganization: jest.fn(),
     setOrganizationName: jest.fn(),
     updateOrganization: jest.fn(),

@@ -1,14 +1,16 @@
 import { Action, ActionTypes } from './actions';
-import { Plugin, PluginsState } from 'app/types';
+import { PluginsState } from 'app/types';
 import { LayoutModes } from '../../../core/components/LayoutSelector/LayoutSelector';
 import { PluginDashboard } from '../../../types/plugins';
+import { PluginMeta } from '@grafana/ui';
 
 export const initialState: PluginsState = {
-  plugins: [] as Plugin[],
+  plugins: [] as PluginMeta[],
   searchQuery: '',
   layoutMode: LayoutModes.Grid,
   hasFetched: false,
   dashboards: [] as PluginDashboard[],
+  isLoadingPluginDashboards: false,
 };
 
 export const pluginsReducer = (state = initialState, action: Action): PluginsState => {
@@ -23,7 +25,10 @@ export const pluginsReducer = (state = initialState, action: Action): PluginsSta
       return { ...state, layoutMode: action.payload };
 
     case ActionTypes.LoadPluginDashboards:
-      return { ...state, dashboards: action.payload };
+      return { ...state, dashboards: [], isLoadingPluginDashboards: true };
+
+    case ActionTypes.LoadedPluginDashboards:
+      return { ...state, dashboards: action.payload, isLoadingPluginDashboards: false };
   }
   return state;
 };

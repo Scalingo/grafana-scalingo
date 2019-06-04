@@ -124,7 +124,7 @@ func (pm *PluginManager) Run(ctx context.Context) error {
 		}
 	}
 
-	// kil backend plugins
+	// kill backend plugins
 	for _, p := range DataSources {
 		p.Kill()
 	}
@@ -169,7 +169,7 @@ func (scanner *PluginScanner) walker(currentPath string, f os.FileInfo, err erro
 	}
 
 	if f.Name() == "node_modules" {
-		return util.WalkSkipDir
+		return util.ErrWalkSkipDir
 	}
 
 	if f.IsDir() {

@@ -41,8 +41,7 @@ func (r *SearchRequest) MarshalJSON() ([]byte, error) {
 
 // SearchResponseHits represents search response hits
 type SearchResponseHits struct {
-	Hits  []map[string]interface{}
-	Total int64
+	Hits []map[string]interface{}
 }
 
 // SearchResponse represents a search response
@@ -51,21 +50,6 @@ type SearchResponse struct {
 	Aggregations map[string]interface{} `json:"aggregations"`
 	Hits         *SearchResponseHits    `json:"hits"`
 }
-
-// func (r *Response) getErrMsg() string {
-// 	var msg bytes.Buffer
-// 	errJson := simplejson.NewFromAny(r.Err)
-// 	errType, err := errJson.Get("type").String()
-// 	if err == nil {
-// 		msg.WriteString(fmt.Sprintf("type:%s", errType))
-// 	}
-
-// 	reason, err := errJson.Get("type").String()
-// 	if err == nil {
-// 		msg.WriteString(fmt.Sprintf("reason:%s", reason))
-// 	}
-// 	return msg.String()
-// }
 
 // MultiSearchRequest represents a multi search request
 type MultiSearchRequest struct {
@@ -240,6 +224,7 @@ type DateHistogramAgg struct {
 	Missing        *string         `json:"missing,omitempty"`
 	ExtendedBounds *ExtendedBounds `json:"extended_bounds"`
 	Format         string          `json:"format"`
+	Offset         string          `json:"offset,omitempty"`
 }
 
 // FiltersAggregation represents a filters aggregation
@@ -291,7 +276,7 @@ func (a *MetricAggregation) MarshalJSON() ([]byte, error) {
 
 // PipelineAggregation represents a metric aggregation
 type PipelineAggregation struct {
-	BucketPath string
+	BucketPath interface{}
 	Settings   map[string]interface{}
 }
 

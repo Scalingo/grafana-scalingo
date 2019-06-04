@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+	"github.com/go-xorm/xorm"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/log"
 	m "github.com/grafana/grafana/pkg/models"
@@ -21,11 +23,8 @@ import (
 	"github.com/grafana/grafana/pkg/services/sqlstore/migrator"
 	"github.com/grafana/grafana/pkg/services/sqlstore/sqlutil"
 	"github.com/grafana/grafana/pkg/setting"
-
-	"github.com/go-sql-driver/mysql"
-	"github.com/go-xorm/xorm"
-
 	_ "github.com/grafana/grafana/pkg/tsdb/mssql"
+	"github.com/grafana/grafana/pkg/util"
 	_ "github.com/lib/pq"
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
@@ -89,12 +88,12 @@ func (ss *SqlStore) inTransactionWithRetryCtx(ctx context.Context, callback dbTr
 
 	err = callback(sess)
 
-	// special handling of database locked errors for sqlite, then we can retry 3 times
+	// special handling of database locked errors for sqlite, then we can retry 5 times
 	if sqlError, ok := err.(sqlite3.Error); ok && retry < 5 {
-		if sqlError.Code == sqlite3.ErrLocked {
+		if sqlError.Code == sqlite3.ErrLocked || sqlError.Code == sqlite3.ErrBusy {
 			sess.Rollback()
 			time.Sleep(time.Millisecond * time.Duration(10))
-			sqlog.Info("Database table locked, sleeping then retrying", "retry", retry)
+			sqlog.Info("Database locked, sleeping then retrying", "error", err, "retry", retry)
 			return ss.inTransactionWithRetryCtx(ctx, callback, retry+1)
 		}
 	}
@@ -195,6 +194,23 @@ func (ss *SqlStore) ensureAdminUser() error {
 	return err
 }
 
+func (ss *SqlStore) buildExtraConnectionString(sep rune) string {
+	if ss.dbCfg.UrlQueryParams == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	for key, values := range ss.dbCfg.UrlQueryParams {
+		for _, value := range values {
+			sb.WriteRune(sep)
+			sb.WriteString(key)
+			sb.WriteRune('=')
+			sb.WriteString(value)
+		}
+	}
+	return sb.String()
+}
+
 func (ss *SqlStore) buildConnectionString() (string, error) {
 	cnnstr := ss.dbCfg.ConnectionString
 
@@ -221,15 +237,10 @@ func (ss *SqlStore) buildConnectionString() (string, error) {
 			mysql.RegisterTLSConfig("custom", tlsCert)
 			cnnstr += "&tls=custom"
 		}
+
+		cnnstr += ss.buildExtraConnectionString('&')
 	case migrator.POSTGRES:
-		var host, port = "127.0.0.1", "5432"
-		fields := strings.Split(ss.dbCfg.Host, ":")
-		if len(fields) > 0 && len(strings.TrimSpace(fields[0])) > 0 {
-			host = fields[0]
-		}
-		if len(fields) > 1 && len(strings.TrimSpace(fields[1])) > 0 {
-			port = fields[1]
-		}
+		host, port := util.SplitHostPortDefault(ss.dbCfg.Host, "127.0.0.1", "5432")
 		if ss.dbCfg.Pwd == "" {
 			ss.dbCfg.Pwd = "''"
 		}
@@ -237,13 +248,16 @@ func (ss *SqlStore) buildConnectionString() (string, error) {
 			ss.dbCfg.User = "''"
 		}
 		cnnstr = fmt.Sprintf("user=%s password=%s host=%s port=%s dbname=%s sslmode=%s sslcert=%s sslkey=%s sslrootcert=%s", ss.dbCfg.User, ss.dbCfg.Pwd, host, port, ss.dbCfg.Name, ss.dbCfg.SslMode, ss.dbCfg.ClientCertPath, ss.dbCfg.ClientKeyPath, ss.dbCfg.CaCertPath)
+
+		cnnstr += ss.buildExtraConnectionString(' ')
 	case migrator.SQLITE:
 		// special case for tests
 		if !filepath.IsAbs(ss.dbCfg.Path) {
 			ss.dbCfg.Path = filepath.Join(ss.Cfg.DataPath, ss.dbCfg.Path)
 		}
 		os.MkdirAll(path.Dir(ss.dbCfg.Path), os.ModePerm)
-		cnnstr = "file:" + ss.dbCfg.Path + "?cache=shared&mode=rwc"
+		cnnstr = fmt.Sprintf("file:%s?cache=%s&mode=rwc", ss.dbCfg.Path, ss.dbCfg.CacheMode)
+		cnnstr += ss.buildExtraConnectionString('&')
 	default:
 		return "", fmt.Errorf("Unknown database type: %s", ss.dbCfg.Type)
 	}
@@ -300,6 +314,8 @@ func (ss *SqlStore) readConfig() {
 			ss.dbCfg.User = userInfo.Username()
 			ss.dbCfg.Pwd, _ = userInfo.Password()
 		}
+
+		ss.dbCfg.UrlQueryParams = dbURL.Query()
 	} else {
 		ss.dbCfg.Type = sec.Key("type").String()
 		ss.dbCfg.Host = sec.Key("host").String()
@@ -319,6 +335,8 @@ func (ss *SqlStore) readConfig() {
 	ss.dbCfg.ClientCertPath = sec.Key("client_cert_path").String()
 	ss.dbCfg.ServerCertName = sec.Key("server_cert_name").String()
 	ss.dbCfg.Path = sec.Key("path").MustString("data/grafana.db")
+
+	ss.dbCfg.CacheMode = sec.Key("cache_mode").MustString("private")
 }
 
 func InitTestDB(t *testing.T) *SqlStore {
@@ -391,13 +409,21 @@ func IsTestDbPostgres() bool {
 }
 
 type DatabaseConfig struct {
-	Type, Host, Name, User, Pwd, Path, SslMode string
-	CaCertPath                                 string
-	ClientKeyPath                              string
-	ClientCertPath                             string
-	ServerCertName                             string
-	ConnectionString                           string
-	MaxOpenConn                                int
-	MaxIdleConn                                int
-	ConnMaxLifetime                            int
+	Type             string
+	Host             string
+	Name             string
+	User             string
+	Pwd              string
+	Path             string
+	SslMode          string
+	CaCertPath       string
+	ClientKeyPath    string
+	ClientCertPath   string
+	ServerCertName   string
+	ConnectionString string
+	MaxOpenConn      int
+	MaxIdleConn      int
+	ConnMaxLifetime  int
+	CacheMode        string
+	UrlQueryParams   map[string][]string
 }

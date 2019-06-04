@@ -10,13 +10,13 @@
 
   .navbar-page-btn {
     transform: translate3d(-36px, 0, 0);
+
     i {
       opacity: 0;
     }
   }
 
-  .navbar-button--zoom,
-  .navbar-button--refresh {
+  .navbar-button--zoom {
     display: none;
   }
 }
@@ -27,6 +27,21 @@
 
 .view-mode--tv {
   @extend .view-mode--inactive;
+
+  .sidemenu {
+    position: fixed;
+    background-color: transparent;
+    box-shadow: none;
+
+    .sidemenu__top,
+    .sidemenu__bottom {
+      display: none;
+    }
+  }
+
+  .navbar {
+    padding-left: $side-menu-width;
+  }
 
   .submenu-controls {
     display: none;
@@ -40,9 +55,11 @@
   .navbar {
     display: none;
   }
+
   .scroll-canvas--dashboard {
     height: 100%;
   }
+
   .submenu-controls {
     display: none;
   }

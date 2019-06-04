@@ -42,6 +42,25 @@ describe('PrometheusMetricFindQuery', () => {
   });
 
   describe('When performing metricFindQuery', () => {
+    it('label_names() should generate label name search query', async () => {
+      const query = ctx.setupMetricFindQuery({
+        query: 'label_names()',
+        response: {
+          data: ['name1', 'name2', 'name3'],
+        },
+      });
+      const results = await query.process();
+
+      expect(results).toHaveLength(3);
+      expect(ctx.backendSrvMock.datasourceRequest).toHaveBeenCalledTimes(1);
+      expect(ctx.backendSrvMock.datasourceRequest).toHaveBeenCalledWith({
+        method: 'GET',
+        url: 'proxied/api/v1/labels',
+        silent: true,
+        headers: {},
+      });
+    });
+
     it('label_values(resource) should generate label search query', async () => {
       const query = ctx.setupMetricFindQuery({
         query: 'label_values(resource)',
@@ -57,6 +76,7 @@ describe('PrometheusMetricFindQuery', () => {
         method: 'GET',
         url: 'proxied/api/v1/label/resource/values',
         silent: true,
+        headers: {},
       });
     });
 
@@ -79,6 +99,7 @@ describe('PrometheusMetricFindQuery', () => {
         method: 'GET',
         url: `proxied/api/v1/series?match[]=metric&start=${raw.from.unix()}&end=${raw.to.unix()}`,
         silent: true,
+        headers: {},
       });
     });
 
@@ -103,6 +124,7 @@ describe('PrometheusMetricFindQuery', () => {
           'metric{label1="foo", label2="bar", label3="baz"}'
         )}&start=${raw.from.unix()}&end=${raw.to.unix()}`,
         silent: true,
+        headers: {},
       });
     });
 
@@ -127,6 +149,7 @@ describe('PrometheusMetricFindQuery', () => {
         method: 'GET',
         url: `proxied/api/v1/series?match[]=metric&start=${raw.from.unix()}&end=${raw.to.unix()}`,
         silent: true,
+        headers: {},
       });
     });
 
@@ -145,6 +168,7 @@ describe('PrometheusMetricFindQuery', () => {
         method: 'GET',
         url: 'proxied/api/v1/label/__name__/values',
         silent: true,
+        headers: {},
       });
     });
 
@@ -172,6 +196,7 @@ describe('PrometheusMetricFindQuery', () => {
         method: 'GET',
         url: `proxied/api/v1/query?query=metric&time=${raw.to.unix()}`,
         requestId: undefined,
+        headers: {},
       });
     });
 
@@ -199,6 +224,7 @@ describe('PrometheusMetricFindQuery', () => {
           'up{job="job1"}'
         )}&start=${raw.from.unix()}&end=${raw.to.unix()}`,
         silent: true,
+        headers: {},
       });
     });
   });

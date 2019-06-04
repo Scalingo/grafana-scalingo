@@ -5,18 +5,21 @@ import './time_regions_form';
 
 import template from './template';
 import _ from 'lodash';
-import config from 'app/core/config';
-import { MetricsPanelCtrl, alertTab } from 'app/plugins/sdk';
+
+import { MetricsPanelCtrl } from 'app/plugins/sdk';
 import { DataProcessor } from './data_processor';
 import { axesEditorComponent } from './axes_editor';
+import config from 'app/core/config';
+import TimeSeries from 'app/core/time_series2';
+import { getColorFromHexRgbOrName, LegacyResponseData } from '@grafana/ui';
 
 class GraphCtrl extends MetricsPanelCtrl {
   static template = template;
 
   renderError: boolean;
   hiddenSeries: any = {};
-  seriesList: any = [];
-  dataList: any = [];
+  seriesList: TimeSeries[] = [];
+  dataList: LegacyResponseData[] = [];
   annotations: any = [];
   alertState: any;
 
@@ -75,7 +78,7 @@ class GraphCtrl extends MetricsPanelCtrl {
     // show hide points
     points: false,
     // point radius in pixels
-    pointradius: 5,
+    pointradius: 2,
     // show hide bars
     bars: false,
     // enable/disable stacking
@@ -135,14 +138,10 @@ class GraphCtrl extends MetricsPanelCtrl {
   }
 
   onInitEditMode() {
-    this.addEditorTab('Axes', axesEditorComponent, 2);
-    this.addEditorTab('Legend', 'public/app/plugins/panel/graph/tab_legend.html', 3);
-    this.addEditorTab('Display', 'public/app/plugins/panel/graph/tab_display.html', 4);
-
-    if (config.alertingEnabled) {
-      this.addEditorTab('Alert', alertTab, 5);
-    }
-
+    this.addEditorTab('Display options', 'public/app/plugins/panel/graph/tab_display.html');
+    this.addEditorTab('Axes', axesEditorComponent);
+    this.addEditorTab('Legend', 'public/app/plugins/panel/graph/tab_legend.html');
+    this.addEditorTab('Thresholds & Time Regions', 'public/app/plugins/panel/graph/tab_thresholds_time_regions.html');
     this.subTabIndex = 0;
   }
 
@@ -188,7 +187,7 @@ class GraphCtrl extends MetricsPanelCtrl {
     this.render([]);
   }
 
-  onDataReceived(dataList) {
+  onDataReceived(dataList: LegacyResponseData[]) {
     this.dataList = dataList;
     this.seriesList = this.processor.getSeriesList({
       dataList: dataList,
@@ -246,8 +245,8 @@ class GraphCtrl extends MetricsPanelCtrl {
   }
 
   onColorChange = (series, color) => {
-    series.setColor(color);
-    this.panel.aliasColors[series.alias] = series.color;
+    series.setColor(getColorFromHexRgbOrName(color, config.theme.type));
+    this.panel.aliasColors[series.alias] = color;
     this.render();
   };
 
@@ -263,7 +262,7 @@ class GraphCtrl extends MetricsPanelCtrl {
   };
 
   onToggleAxis = info => {
-    let override = _.find(this.panel.seriesOverrides, { alias: info.alias });
+    let override: any = _.find(this.panel.seriesOverrides, { alias: info.alias });
     if (!override) {
       override = { alias: info.alias };
       this.panel.seriesOverrides.push(override);
@@ -283,7 +282,7 @@ class GraphCtrl extends MetricsPanelCtrl {
 
   toggleLegend() {
     this.panel.legend.show = !this.panel.legend.show;
-    this.refresh();
+    this.render();
   }
 
   legendValuesOptionChanged() {

@@ -1,13 +1,13 @@
-import React, { SFC } from 'react';
+import React, { FC } from 'react';
 import { PluginDashboard } from '../../types';
 
 export interface Props {
   dashboards: PluginDashboard[];
-  onImport: (dashboard, overwrite) => void;
-  onRemove: (dashboard) => void;
+  onImport: (dashboard: PluginDashboard, overwrite: boolean) => void;
+  onRemove: (dashboard: PluginDashboard) => void;
 }
 
-const DashboardsTable: SFC<Props> = ({ dashboards, onImport, onRemove }) => {
+const DashboardsTable: FC<Props> = ({ dashboards, onImport, onRemove }) => {
   function buttonText(dashboard: PluginDashboard) {
     return dashboard.revision !== dashboard.importedRevision ? 'Update' : 'Re-import';
   }
@@ -19,7 +19,7 @@ const DashboardsTable: SFC<Props> = ({ dashboards, onImport, onRemove }) => {
           return (
             <tr key={`${dashboard.dashboardId}-${index}`}>
               <td className="width-1">
-                <i className="icon-gf icon-gf-dashboard" />
+                <i className="gicon gicon-dashboard" />
               </td>
               <td>
                 {dashboard.imported ? (

@@ -64,6 +64,14 @@ export const metricAggTypes = [
     isPipelineAgg: true,
     minVersion: 2,
   },
+  {
+    text: 'Bucket Script',
+    value: 'bucket_script',
+    requiresField: false,
+    isPipelineAgg: true,
+    supportsMultipleBucketPaths: true,
+    minVersion: 2,
+  },
   { text: 'Raw Document', value: 'raw_document', requiresField: false },
 ];
 
@@ -128,6 +136,7 @@ export const pipelineOptions = {
     { text: 'minimize', default: false },
   ],
   derivative: [{ text: 'unit', default: undefined }],
+  bucket_script: [],
 };
 
 export const movingAvgModelSettings = {
@@ -171,6 +180,14 @@ export function isPipelineAgg(metricType) {
   return false;
 }
 
+export function isPipelineAggWithMultipleBucketPaths(metricType) {
+  if (metricType) {
+    return metricAggTypes.find(t => t.value === metricType && t.supportsMultipleBucketPaths) !== undefined;
+  }
+
+  return false;
+}
+
 export function getPipelineAggOptions(targets) {
   const result = [];
   _.each(targets.metrics, metric => {
@@ -207,21 +224,24 @@ export function getOrderByOptions(target) {
 }
 
 export function describeOrder(order) {
-  const def = _.find(orderOptions, { value: order });
+  const def: any = _.find(orderOptions, { value: order });
   return def.text;
 }
 
 export function describeMetric(metric) {
-  const def = _.find(metricAggTypes, { value: metric.type });
+  const def: any = _.find(metricAggTypes, { value: metric.type });
+  if (!def.requiresField && !isPipelineAgg(metric.type)) {
+    return def.text;
+  }
   return def.text + ' ' + metric.field;
 }
 
 export function describeOrderBy(orderBy, target) {
-  const def = _.find(orderByOptions, { value: orderBy });
+  const def: any = _.find(orderByOptions, { value: orderBy });
   if (def) {
     return def.text;
   }
-  const metric = _.find(target.metrics, { id: orderBy });
+  const metric: any = _.find(target.metrics, { id: orderBy });
   if (metric) {
     return describeMetric(metric);
   } else {
@@ -236,3 +256,7 @@ export function defaultMetricAgg() {
 export function defaultBucketAgg() {
   return { type: 'date_histogram', id: '2', settings: { interval: 'auto' } };
 }
+
+export const findMetricById = (metrics: any[], id: any) => {
+  return _.find(metrics, { id: id });
+};

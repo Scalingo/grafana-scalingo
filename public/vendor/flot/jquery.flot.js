@@ -931,13 +931,13 @@ Licensed under the MIT license.
             var res = {}, i, axis;
             for (i = 0; i < xaxes.length; ++i) {
                 axis = xaxes[i];
-                if (axis && axis.used)
+                if (axis)
                     res["x" + axis.n] = axis.c2p(pos.left);
             }
 
             for (i = 0; i < yaxes.length; ++i) {
                 axis = yaxes[i];
-                if (axis && axis.used)
+                if (axis)
                     res["y" + axis.n] = axis.c2p(pos.top);
             }
 
@@ -1764,7 +1764,9 @@ Licensed under the MIT license.
             axis.tickDecimals = Math.max(0, maxDec != null ? maxDec : dec);
             axis.tickSize = opts.tickSize || size;
             // grafana addition
-            axis.scaledDecimals = axis.tickDecimals - Math.floor(Math.log(axis.tickSize) / Math.LN10);
+            if (opts.tickDecimals === null || opts.tickDecimals === undefined) {
+              axis.scaledDecimals = axis.tickDecimals - Math.floor(Math.log(axis.tickSize) / Math.LN10);
+            }
 
             // Time mode was moved to a plug-in in 0.8, and since so many people use it
             // we'll add an especially friendly reminder to make sure they included it.

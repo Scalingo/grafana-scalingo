@@ -1,5 +1,4 @@
 <div class="gf-form-group">
-  <h5>Thresholds</h5>
   <p class="muted" ng-show="ctrl.disabled">
     Visual thresholds options <strong>disabled.</strong>
     Visit the Alert tab update your thresholds. <br>
@@ -24,7 +23,7 @@
         <label class="gf-form-label">Color</label>
         <div class="gf-form-select-wrapper">
           <select class="gf-form-input" ng-model="threshold.colorMode"
-                  ng-options="f for f in ['custom', 'critical', 'warning', 'ok']" ng-change="ctrl.render()" ng-disabled="ctrl.disabled">
+                  ng-options="f for f in ['custom', 'critical', 'warning', 'ok']" ng-change="ctrl.onThresholdTypeChange($index)" ng-disabled="ctrl.disabled">
           </select>
         </div>
       </div>

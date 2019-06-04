@@ -13,8 +13,6 @@ export class HelpCtrl {
         { keys: ['g', 'h'], description: 'Go to Home Dashboard' },
         { keys: ['g', 'p'], description: 'Go to Profile' },
         { keys: ['s', 'o'], description: 'Open search' },
-        { keys: ['s', 's'], description: 'Open search with starred filter' },
-        { keys: ['s', 't'], description: 'Open search in tags view' },
         { keys: ['esc'], description: 'Exit edit/setting views' },
       ],
       Dashboard: [
@@ -27,6 +25,7 @@ export class HelpCtrl {
         { keys: ['d', 'C'], description: 'Collapse all rows' },
         { keys: ['d', 'a'], description: 'Toggle auto fit panels (experimental feature)' },
         { keys: ['mod+o'], description: 'Toggle shared graph crosshair' },
+        { keys: ['d', 'l'], description: 'Toggle all panel legends' },
       ],
       'Focused Panel': [
         { keys: ['e'], description: 'Toggle panel edit view' },

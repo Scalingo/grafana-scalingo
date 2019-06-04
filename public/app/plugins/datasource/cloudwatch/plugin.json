@@ -3,6 +3,7 @@
   "name": "CloudWatch",
   "id": "cloudwatch",
 
+  "hiddenQueries": true,
   "metrics": true,
   "alerting": true,
   "annotations": true,
@@ -16,7 +17,6 @@
     "logos": {
       "small": "img/amazon-web-services.png",
       "large": "img/amazon-web-services.png"
-    },
-    "version": "5.0.0"
+    }
   }
 }

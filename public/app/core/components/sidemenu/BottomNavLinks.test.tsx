@@ -12,6 +12,7 @@ const setup = (propOverrides?: object) => {
     {
       link: {},
       user: {
+        id: 1,
         isGrafanaAdmin: false,
         isSignedIn: false,
         orgCount: 2,
@@ -36,7 +37,7 @@ describe('Render', () => {
     expect(wrapper).toMatchSnapshot();
   });
 
-  it('should render organisation switcher', () => {
+  it('should render organization switcher', () => {
     const wrapper = setup({
       link: {
         showOrgSwitcher: true,

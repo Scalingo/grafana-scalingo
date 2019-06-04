@@ -1,7 +1,7 @@
-import { DataSource, NavModel, NavModelItem, PluginMeta } from 'app/types';
+import { PluginMeta, DataSourceSettings, PluginType, NavModel, NavModelItem, PluginInclude } from '@grafana/ui';
 import config from 'app/core/config';
 
-export function buildNavModel(dataSource: DataSource, pluginMeta: PluginMeta): NavModelItem {
+export function buildNavModel(dataSource: DataSourceSettings, pluginMeta: PluginMeta): NavModelItem {
   const navModel = {
     img: pluginMeta.info.logos.large,
     id: 'datasource-' + dataSource.id,
@@ -15,7 +15,7 @@ export function buildNavModel(dataSource: DataSource, pluginMeta: PluginMeta): N
         icon: 'fa fa-fw fa-sliders',
         id: `datasource-settings-${dataSource.id}`,
         text: 'Settings',
-        url: `datasources/edit/${dataSource.id}`,
+        url: `datasources/edit/${dataSource.id}/`,
       },
     ],
   };
@@ -48,6 +48,9 @@ export function getDataSourceLoadingNav(pageName: string): NavModel {
     {
       access: '',
       basicAuth: false,
+      basicAuthUser: '',
+      basicAuthPassword: '',
+      withCredentials: false,
       database: '',
       id: 1,
       isDefault: false,
@@ -63,6 +66,7 @@ export function getDataSourceLoadingNav(pageName: string): NavModel {
     },
     {
       id: '1',
+      type: PluginType.datasource,
       name: '',
       info: {
         author: {
@@ -70,16 +74,18 @@ export function getDataSourceLoadingNav(pageName: string): NavModel {
           url: '',
         },
         description: '',
-        links: [''],
+        links: [{ name: '', url: '' }],
         logos: {
           large: '',
           small: '',
         },
-        screenshots: '',
+        screenshots: [],
         updated: '',
         version: '',
       },
-      includes: [{ type: '', name: '', path: '' }],
+      includes: [],
+      module: '',
+      baseUrl: '',
     }
   );
 
@@ -100,10 +106,10 @@ export function getDataSourceLoadingNav(pageName: string): NavModel {
   };
 }
 
-function hasDashboards(includes) {
+function hasDashboards(includes: PluginInclude[]): boolean {
   return (
-    includes.filter(include => {
+    includes.find(include => {
       return include.type === 'dashboard';
-    }).length > 0
+    }) !== undefined
   );
 }

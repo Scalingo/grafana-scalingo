@@ -588,11 +588,14 @@
             if (!exists) {
                 span = $("<span></span>")
                 span.attr("id", id);
+                span.attr("class", "flot-temp-elem");
                 placeholder.append(span);
             }
 
             span.css("position", "absolute");
             span.css("top", y + "px");
+            span.css("white-space", "nowrap");
+
             if (textOptions.font.size) {
               span.css("font-size", textOptions.font.size + "px");
             }
@@ -934,16 +937,7 @@
                         }
                     },
                     values: [
-                        {
-                            value: 50,
-                            color: "lightgreen"
-                        }, {
-                            value: 80,
-                            color: "yellow"
-                        }, {
-                            value: 100,
-                            color: "red"
-                        }
+
                     ]
                 }
             }
@@ -959,3 +953,4 @@
     });
 
 })(jQuery);
+

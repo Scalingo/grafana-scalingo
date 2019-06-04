@@ -20,6 +20,25 @@ git remote add <app name> git@scalingo.com:<app name>.git
 git push <app name> master
 ```
 
+## How to update to the latest Grafana version
+
+Get the latest version from upstream:
+
+```
+git remote add upstream https://github.com/grafana/grafana.git
+git fetch upstream --tags
+git checkout -b deps/grafana_vX.Y.Z
+git merge vX.Y.Z
+git commit --message "Get vX.Y.Z from upstream"
+```
+
+Open a pull request and get it merged. Then tag a new version:
+
+```
+git tag vX.Y.Z-scalingo1
+git push origin --tags
+```
+
 [Grafana](https://grafana.com) [![Circle CI](https://circleci.com/gh/grafana/grafana.svg?style=svg)](https://circleci.com/gh/grafana/grafana) [![Go Report Card](https://goreportcard.com/badge/github.com/grafana/grafana)](https://goreportcard.com/report/github.com/grafana/grafana) [![codecov](https://codecov.io/gh/grafana/grafana/branch/master/graph/badge.svg)](https://codecov.io/gh/grafana/grafana)
 ================
 [Website](https://grafana.com) |

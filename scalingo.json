@@ -36,7 +36,7 @@
       "required": true
     },
     "NPM_CONFIG_PRODUCTION": {
-      "description": "Install all dependencies for building project",
+      "description": "Install all dependencies for building project, required to install grunt and build assets",
       "value": "false",
       "required": true
     }

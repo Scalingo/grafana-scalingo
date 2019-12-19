@@ -32,6 +32,9 @@ git merge vX.Y.Z
 git commit --message "Get vX.Y.Z from upstream"
 ```
 
+In case of conflict during the merge, fix those in the README.md and use `git
+checkout --theirs .` for the others.
+
 Open a pull request and get it merged. Then tag a new version:
 
 ```

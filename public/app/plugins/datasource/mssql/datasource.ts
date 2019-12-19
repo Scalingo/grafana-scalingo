@@ -1,5 +1,11 @@
 import _ from 'lodash';
 import ResponseParser from './response_parser';
+import { BackendSrv } from 'app/core/services/backend_srv';
+import { IQService } from 'angular';
+import { TemplateSrv } from 'app/features/templating/template_srv';
+import { TimeSrv } from 'app/features/dashboard/services/TimeSrv';
+//Types
+import { MssqlQueryForInterpolation } from './types';
 
 export class MssqlDatasource {
   id: any;
@@ -8,14 +14,20 @@ export class MssqlDatasource {
   interval: string;
 
   /** @ngInject */
-  constructor(instanceSettings, private backendSrv, private $q, private templateSrv, private timeSrv) {
+  constructor(
+    instanceSettings: any,
+    private backendSrv: BackendSrv,
+    private $q: IQService,
+    private templateSrv: TemplateSrv,
+    private timeSrv: TimeSrv
+  ) {
     this.name = instanceSettings.name;
     this.id = instanceSettings.id;
     this.responseParser = new ResponseParser(this.$q);
     this.interval = (instanceSettings.jsonData || {}).timeInterval || '1m';
   }
 
-  interpolateVariable(value, variable) {
+  interpolateVariable(value: any, variable: any) {
     if (typeof value === 'string') {
       if (variable.multi || variable.includeAll) {
         return "'" + value.replace(/'/g, `''`) + "'";
@@ -38,7 +50,22 @@ export class MssqlDatasource {
     return quotedValues.join(',');
   }
 
-  query(options) {
+  interpolateVariablesInQueries(queries: MssqlQueryForInterpolation[]): MssqlQueryForInterpolation[] {
+    let expandedQueries = queries;
+    if (queries && queries.length > 0) {
+      expandedQueries = queries.map(query => {
+        const expandedQuery = {
+          ...query,
+          datasource: this.name,
+          rawSql: this.templateSrv.replace(query.rawSql, {}, this.interpolateVariable),
+        };
+        return expandedQuery;
+      });
+    }
+    return expandedQueries;
+  }
+
+  query(options: any) {
     const queries = _.filter(options.targets, item => {
       return item.hide !== true;
     }).map(item => {
@@ -69,7 +96,7 @@ export class MssqlDatasource {
       .then(this.responseParser.processQueryResult);
   }
 
-  annotationQuery(options) {
+  annotationQuery(options: any) {
     if (!options.annotation.rawQuery) {
       return this.$q.reject({ message: 'Query missing in annotation definition' });
     }
@@ -91,10 +118,10 @@ export class MssqlDatasource {
           queries: [query],
         },
       })
-      .then(data => this.responseParser.transformAnnotationResponse(options, data));
+      .then((data: any) => this.responseParser.transformAnnotationResponse(options, data));
   }
 
-  metricFindQuery(query, optionalOptions) {
+  metricFindQuery(query: string, optionalOptions: { variable: { name: string } }) {
     let refId = 'tempvar';
     if (optionalOptions && optionalOptions.variable && optionalOptions.variable.name) {
       refId = optionalOptions.variable.name;
@@ -120,7 +147,7 @@ export class MssqlDatasource {
         method: 'POST',
         data: data,
       })
-      .then(data => this.responseParser.parseMetricFindQueryResult(refId, data));
+      .then((data: any) => this.responseParser.parseMetricFindQueryResult(refId, data));
   }
 
   testDatasource() {
@@ -143,10 +170,10 @@ export class MssqlDatasource {
           ],
         },
       })
-      .then(res => {
+      .then((res: any) => {
         return { status: 'success', message: 'Database Connection OK' };
       })
-      .catch(err => {
+      .catch((err: any) => {
         console.log(err);
         if (err.data && err.data.message) {
           return { status: 'error', message: err.data.message };
@@ -154,5 +181,10 @@ export class MssqlDatasource {
           return { status: 'error', message: err.status };
         }
       });
+  }
+
+  targetContainsTemplate(target: any) {
+    const rawSql = target.rawSql.replace('$__', '');
+    return this.templateSrv.variableExists(rawSql);
   }
 }

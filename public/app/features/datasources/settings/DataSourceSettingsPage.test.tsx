@@ -1,12 +1,18 @@
 import React from 'react';
 import { shallow } from 'enzyme';
 import { DataSourceSettingsPage, Props } from './DataSourceSettingsPage';
-import { NavModel, DataSourceSettings, DataSourcePlugin, DataSourceConstructor } from '@grafana/ui';
+import { DataSourceSettings, DataSourcePlugin, DataSourceConstructor, NavModel } from '@grafana/data';
 import { getMockDataSource } from '../__mocks__/dataSourcesMocks';
 import { getMockPlugin } from '../../plugins/__mocks__/pluginMocks';
-import { setDataSourceName, setIsDefault } from '../state/actions';
+import { setDataSourceName, setIsDefault, dataSourceLoaded } from '../state/actions';
 
 const pluginMock = new DataSourcePlugin({} as DataSourceConstructor<any>);
+
+jest.mock('app/features/plugins/plugin_loader', () => {
+  return {
+    importDataSourcePlugin: () => Promise.resolve(pluginMock),
+  };
+});
 
 const setup = (propOverrides?: object) => {
   const props: Props = {
@@ -19,7 +25,8 @@ const setup = (propOverrides?: object) => {
     setDataSourceName,
     updateDataSource: jest.fn(),
     setIsDefault,
-    plugin: pluginMock,
+    dataSourceLoaded,
+    query: {},
     ...propOverrides,
   };
 
@@ -45,7 +52,6 @@ describe('Render', () => {
   it('should render beta info text', () => {
     const wrapper = setup({
       dataSourceMeta: { ...getMockPlugin(), state: 'beta' },
-      plugin: pluginMock,
     });
 
     expect(wrapper).toMatchSnapshot();

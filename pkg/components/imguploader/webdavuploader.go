@@ -25,8 +25,7 @@ type WebdavUploader struct {
 var netTransport = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	Dial: (&net.Dialer{
-		Timeout:   60 * time.Second,
-		DualStack: true,
+		Timeout: 60 * time.Second,
 	}).Dial,
 	TLSHandshakeTimeout: 5 * time.Second,
 }
@@ -48,7 +47,12 @@ func (u *WebdavUploader) PublicURL(filename string) string {
 
 func (u *WebdavUploader) Upload(ctx context.Context, pa string) (string, error) {
 	url, _ := url.Parse(u.url)
-	filename := util.GetRandomString(20) + ".png"
+	filename, err := util.GetRandomString(20)
+	if err != nil {
+		return "", err
+	}
+
+	filename += pngExt
 	url.Path = path.Join(url.Path, filename)
 
 	imgData, err := ioutil.ReadFile(pa)

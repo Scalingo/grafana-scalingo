@@ -17,11 +17,13 @@ import (
 
 func TestEngineTimeouts(t *testing.T) {
 	Convey("Alerting engine timeout tests", t, func() {
-		engine := NewEngine()
+		engine := &AlertEngine{}
+		err := engine.Init()
+		So(err, ShouldBeNil)
 		setting.AlertingNotificationTimeout = 30 * time.Second
 		setting.AlertingMaxAttempts = 3
 		engine.resultHandler = &FakeResultHandler{}
-		job := &Job{Running: true, Rule: &Rule{}}
+		job := &Job{running: true, Rule: &Rule{}}
 
 		Convey("Should trigger as many retries as needed", func() {
 			Convey("pended alert for datasource -> result handler should be worked", func() {
@@ -35,7 +37,8 @@ func TestEngineTimeouts(t *testing.T) {
 				engine.evalHandler = evalHandler
 				engine.resultHandler = resultHandler
 
-				engine.processJobWithRetry(context.TODO(), job)
+				err := engine.processJobWithRetry(context.TODO(), job)
+				So(err, ShouldBeNil)
 
 				So(evalHandler.EvalSucceed, ShouldEqual, true)
 				So(resultHandler.ResultHandleSucceed, ShouldEqual, true)
@@ -89,7 +92,7 @@ func (handler *FakeCommonTimeoutHandler) Eval(evalContext *EvalContext) {
 	evalContext.Error = errors.New("Fake evaluation timeout test failure; wrong response")
 }
 
-func (handler *FakeCommonTimeoutHandler) Handle(evalContext *EvalContext) error {
+func (handler *FakeCommonTimeoutHandler) handle(evalContext *EvalContext) error {
 	// 1. prepare mock server
 	path := "/resulthandle"
 	srv := runBusyServer(path, handler.ServerBusySleepDuration)

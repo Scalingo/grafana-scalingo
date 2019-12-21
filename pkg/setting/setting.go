@@ -20,7 +20,7 @@ import (
 	"github.com/go-macaron/session"
 	ini "gopkg.in/ini.v1"
 
-	"github.com/grafana/grafana/pkg/log"
+	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/util"
 )
 
@@ -29,6 +29,7 @@ type Scheme string
 const (
 	HTTP              Scheme = "http"
 	HTTPS             Scheme = "https"
+	HTTP2             Scheme = "h2"
 	SOCKET            Scheme = "socket"
 	DEFAULT_HTTP_ADDR string = "0.0.0.0"
 )
@@ -45,12 +46,19 @@ var (
 	ERR_TEMPLATE_NAME = "error"
 )
 
+// This constant corresponds to the default value for ldap_sync_ttl in .ini files
+// it is used for comparision and has to be kept in sync
+const (
+	AUTH_PROXY_SYNC_TTL = 60
+)
+
 var (
 	// App settings.
-	Env          = DEV
-	AppUrl       string
-	AppSubUrl    string
-	InstanceName string
+	Env              = DEV
+	AppUrl           string
+	AppSubUrl        string
+	ServeFromSubPath bool
+	InstanceName     string
 
 	// build
 	BuildVersion    string
@@ -86,20 +94,27 @@ var (
 	EnforceDomain      bool
 
 	// Security settings.
-	SecretKey                        string
-	DisableGravatar                  bool
-	EmailCodeValidMinutes            int
-	DataProxyWhiteList               map[string]bool
-	DisableBruteForceLoginProtection bool
-	CookieSecure                     bool
-	CookieSameSite                   http.SameSite
-	AllowEmbedding                   bool
+	SecretKey                         string
+	DisableGravatar                   bool
+	EmailCodeValidMinutes             int
+	DataProxyWhiteList                map[string]bool
+	DisableBruteForceLoginProtection  bool
+	CookieSecure                      bool
+	CookieSameSite                    http.SameSite
+	AllowEmbedding                    bool
+	XSSProtectionHeader               bool
+	ContentTypeProtectionHeader       bool
+	StrictTransportSecurity           bool
+	StrictTransportSecurityMaxAge     int
+	StrictTransportSecurityPreload    bool
+	StrictTransportSecuritySubDomains bool
 
 	// Snapshots
 	ExternalSnapshotUrl   string
 	ExternalSnapshotName  string
 	ExternalEnabled       bool
 	SnapShotRemoveExpired bool
+	SnapshotPublicMode    bool
 
 	// Dashboard history
 	DashboardVersionsToKeep int
@@ -134,13 +149,14 @@ var (
 	AnonymousOrgRole string
 
 	// Auth proxy settings
-	AuthProxyEnabled        bool
-	AuthProxyHeaderName     string
-	AuthProxyHeaderProperty string
-	AuthProxyAutoSignUp     bool
-	AuthProxyLdapSyncTtl    int
-	AuthProxyWhitelist      string
-	AuthProxyHeaders        map[string]string
+	AuthProxyEnabled          bool
+	AuthProxyHeaderName       string
+	AuthProxyHeaderProperty   string
+	AuthProxyAutoSignUp       bool
+	AuthProxyEnableLoginToken bool
+	AuthProxySyncTtl          int
+	AuthProxyWhitelist        string
+	AuthProxyHeaders          map[string]string
 
 	// Basic Auth
 	BasicAuthEnabled bool
@@ -165,11 +181,11 @@ var (
 	GoogleTagManagerId string
 
 	// LDAP
-	LdapEnabled           bool
-	LdapConfigFile        string
-	LdapSyncCron          string
-	LdapAllowSignup       bool
-	LdapActiveSyncEnabled bool
+	LDAPEnabled           bool
+	LDAPConfigFile        string
+	LDAPSyncCron          string
+	LDAPAllowSignup       bool
+	LDAPActiveSyncEnabled bool
 
 	// QUOTA
 	Quota QuotaSettings
@@ -197,6 +213,7 @@ var (
 	S3TempImageStoreSecretKey string
 
 	ImageUploadProvider string
+	FeatureToggles      map[string]bool
 )
 
 // TODO move all global vars to this struct
@@ -205,8 +222,9 @@ type Cfg struct {
 	Logger log.Logger
 
 	// HTTP Server Settings
-	AppUrl    string
-	AppSubUrl string
+	AppUrl           string
+	AppSubUrl        string
+	ServeFromSubPath bool
 
 	// Paths
 	ProvisioningPath string
@@ -225,6 +243,7 @@ type Cfg struct {
 	RendererLimitAlerting int
 
 	// Security
+	DisableInitAdminCreation         bool
 	DisableBruteForceLoginProtection bool
 	CookieSecure                     bool
 	CookieSameSite                   http.SameSite
@@ -233,6 +252,7 @@ type Cfg struct {
 	MetricsEndpointEnabled           bool
 	MetricsEndpointBasicAuthUsername string
 	MetricsEndpointBasicAuthPassword string
+	MetricsEndpointDisableTotalStats bool
 	PluginsEnableAlpha               bool
 	PluginsAppsSkipVerifyTLS         bool
 	DisableSanitizeHtml              bool
@@ -244,6 +264,9 @@ type Cfg struct {
 	LoginMaxLifetimeDays         int
 	TokenRotationIntervalMinutes int
 
+	// SAML Auth
+	SAMLEnabled bool
+
 	// Dataproxy
 	SendUserHeader bool
 
@@ -251,6 +274,10 @@ type Cfg struct {
 	RemoteCacheOptions *RemoteCacheOptions
 
 	EditorsCanAdmin bool
+
+	ApiKeyMaxSecondsToLive int64
+
+	FeatureToggles map[string]bool
 }
 
 type CommandLineArgs struct {
@@ -352,7 +379,7 @@ func applyCommandLineDefaultProperties(props map[string]string, file *ini.File) 
 func applyCommandLineProperties(props map[string]string, file *ini.File) {
 	for _, section := range file.Sections() {
 		sectionName := section.Name() + "."
-		if section.Name() == ini.DEFAULT_SECTION {
+		if section.Name() == ini.DefaultSection {
 			sectionName = ""
 		}
 		for _, key := range section.Keys() {
@@ -393,7 +420,7 @@ func makeAbsolute(path string, root string) string {
 	return filepath.Join(root, path)
 }
 
-func evalEnvVarExpression(value string) string {
+func EvalEnvVarExpression(value string) string {
 	regex := regexp.MustCompile(`\${(\w+)}`)
 	return regex.ReplaceAllStringFunc(value, func(envVar string) string {
 		envVar = strings.TrimPrefix(envVar, "${")
@@ -412,12 +439,12 @@ func evalEnvVarExpression(value string) string {
 func evalConfigValues(file *ini.File) {
 	for _, section := range file.Sections() {
 		for _, key := range section.Keys() {
-			key.SetValue(evalEnvVarExpression(key.Value()))
+			key.SetValue(EvalEnvVarExpression(key.Value()))
 		}
 	}
 }
 
-func loadSpecifedConfigFile(configFile string, masterFile *ini.File) error {
+func loadSpecifiedConfigFile(configFile string, masterFile *ini.File) error {
 	if configFile == "" {
 		configFile = filepath.Join(HomePath, CustomInitPath)
 		// return without error if custom file does not exist
@@ -484,11 +511,11 @@ func (cfg *Cfg) loadConfiguration(args *CommandLineArgs) (*ini.File, error) {
 	applyCommandLineDefaultProperties(commandLineProps, parsedFile)
 
 	// load specified config file
-	err = loadSpecifedConfigFile(args.Config, parsedFile)
+	err = loadSpecifiedConfigFile(args.Config, parsedFile)
 	if err != nil {
-		err = cfg.initLogging(parsedFile)
-		if err != nil {
-			return nil, err
+		err2 := cfg.initLogging(parsedFile)
+		if err2 != nil {
+			return nil, err2
 		}
 		log.Fatal(3, err.Error())
 	}
@@ -610,8 +637,11 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	if err != nil {
 		return err
 	}
+	ServeFromSubPath = server.Key("serve_from_sub_path").MustBool(false)
+
 	cfg.AppUrl = AppUrl
 	cfg.AppSubUrl = AppSubUrl
+	cfg.ServeFromSubPath = ServeFromSubPath
 
 	Protocol = HTTP
 	protocolStr, err := valueAsString(server, "protocol", "http")
@@ -620,6 +650,11 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	}
 	if protocolStr == "https" {
 		Protocol = HTTPS
+		CertFile = server.Key("cert_file").String()
+		KeyFile = server.Key("cert_key").String()
+	}
+	if protocolStr == "h2" {
+		Protocol = HTTP2
 		CertFile = server.Key("cert_file").String()
 		KeyFile = server.Key("cert_key").String()
 	}
@@ -693,6 +728,13 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 
 	AllowEmbedding = security.Key("allow_embedding").MustBool(false)
 
+	ContentTypeProtectionHeader = security.Key("x_content_type_options").MustBool(false)
+	XSSProtectionHeader = security.Key("x_xss_protection").MustBool(false)
+	StrictTransportSecurity = security.Key("strict_transport_security").MustBool(false)
+	StrictTransportSecurityMaxAge = security.Key("strict_transport_security_max_age_seconds").MustInt(86400)
+	StrictTransportSecurityPreload = security.Key("strict_transport_security_preload").MustBool(false)
+	StrictTransportSecuritySubDomains = security.Key("strict_transport_security_subdomains").MustBool(false)
+
 	// read snapshots settings
 	snapshots := iniFile.Section("snapshots")
 	ExternalSnapshotUrl, err = valueAsString(snapshots, "external_snapshot_url", "")
@@ -705,6 +747,7 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	}
 	ExternalEnabled = snapshots.Key("external_enabled").MustBool(true)
 	SnapShotRemoveExpired = snapshots.Key("snapshot_remove_expired").MustBool(true)
+	SnapshotPublicMode = snapshots.Key("public_mode").MustBool(false)
 
 	// read dashboard settings
 	dashboards := iniFile.Section("dashboards")
@@ -721,6 +764,7 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	}
 
 	// admin
+	cfg.DisableInitAdminCreation = security.Key("disable_initial_admin_creation").MustBool(false)
 	AdminUser, err = valueAsString(security, "admin_user", "")
 	if err != nil {
 		return err
@@ -777,6 +821,7 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 
 	LoginMaxLifetimeDays = auth.Key("login_maximum_lifetime_days").MustInt(30)
 	cfg.LoginMaxLifetimeDays = LoginMaxLifetimeDays
+	cfg.ApiKeyMaxSecondsToLive = auth.Key("api_key_max_seconds_to_live").MustInt64(-1)
 
 	cfg.TokenRotationIntervalMinutes = auth.Key("token_rotation_interval_minutes").MustInt(10)
 	if cfg.TokenRotationIntervalMinutes < 2 {
@@ -790,6 +835,9 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	if err != nil {
 		return err
 	}
+
+	// SAML auth
+	cfg.SAMLEnabled = iniFile.Section("auth.saml").Key("enabled").MustBool(false)
 
 	// anonymous access
 	AnonymousEnabled = iniFile.Section("auth.anonymous").Key("enabled").MustBool(false)
@@ -805,6 +853,7 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	// auth proxy
 	authProxy := iniFile.Section("auth.proxy")
 	AuthProxyEnabled = authProxy.Key("enabled").MustBool(false)
+
 	AuthProxyHeaderName, err = valueAsString(authProxy, "header_name", "")
 	if err != nil {
 		return err
@@ -814,7 +863,18 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 		return err
 	}
 	AuthProxyAutoSignUp = authProxy.Key("auto_sign_up").MustBool(true)
-	AuthProxyLdapSyncTtl = authProxy.Key("ldap_sync_ttl").MustInt()
+	AuthProxyEnableLoginToken = authProxy.Key("enable_login_token").MustBool(false)
+
+	ldapSyncVal := authProxy.Key("ldap_sync_ttl").MustInt()
+	syncVal := authProxy.Key("sync_ttl").MustInt()
+
+	if ldapSyncVal != AUTH_PROXY_SYNC_TTL {
+		AuthProxySyncTtl = ldapSyncVal
+		cfg.Logger.Warn("[Deprecated] the configuration setting 'ldap_sync_ttl' is deprecated, please use 'sync_ttl' instead")
+	} else {
+		AuthProxySyncTtl = syncVal
+	}
+
 	AuthProxyWhitelist, err = valueAsString(authProxy, "whitelist", "")
 	if err != nil {
 		return err
@@ -869,6 +929,7 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	if err != nil {
 		return err
 	}
+	cfg.MetricsEndpointDisableTotalStats = iniFile.Section("metrics").Key("disable_total_stats").MustBool(false)
 
 	analytics := iniFile.Section("analytics")
 	ReportingEnabled = analytics.Key("reporting_enabled").MustBool(true)
@@ -904,6 +965,18 @@ func (cfg *Cfg) Load(args *CommandLineArgs) error {
 	pluginsSection := iniFile.Section("plugins")
 	cfg.PluginsEnableAlpha = pluginsSection.Key("enable_alpha").MustBool(false)
 	cfg.PluginsAppsSkipVerifyTLS = pluginsSection.Key("app_tls_skip_verify_insecure").MustBool(false)
+
+	// Read and populate feature toggles list
+	featureTogglesSection := iniFile.Section("feature_toggles")
+	cfg.FeatureToggles = make(map[string]bool)
+	featuresTogglesStr, err := valueAsString(featureTogglesSection, "enable", "")
+	if err != nil {
+		return err
+	}
+	for _, feature := range util.SplitString(featuresTogglesStr) {
+		cfg.FeatureToggles[feature] = true
+	}
+	FeatureToggles = cfg.FeatureToggles
 
 	// check old location for this option
 	if panelsSection.Key("enable_alpha").MustBool(false) {
@@ -977,11 +1050,11 @@ type RemoteCacheOptions struct {
 
 func (cfg *Cfg) readLDAPConfig() {
 	ldapSec := cfg.Raw.Section("auth.ldap")
-	LdapConfigFile = ldapSec.Key("config_file").String()
-	LdapSyncCron = ldapSec.Key("sync_cron").String()
-	LdapEnabled = ldapSec.Key("enabled").MustBool(false)
-	LdapActiveSyncEnabled = ldapSec.Key("active_sync_enabled").MustBool(false)
-	LdapAllowSignup = ldapSec.Key("allow_sign_up").MustBool(true)
+	LDAPConfigFile = ldapSec.Key("config_file").String()
+	LDAPSyncCron = ldapSec.Key("sync_cron").String()
+	LDAPEnabled = ldapSec.Key("enabled").MustBool(false)
+	LDAPActiveSyncEnabled = ldapSec.Key("active_sync_enabled").MustBool(false)
+	LDAPAllowSignup = ldapSec.Key("allow_sign_up").MustBool(true)
 }
 
 func (cfg *Cfg) readSessionConfig() {
@@ -1010,8 +1083,7 @@ func (cfg *Cfg) initLogging(file *ini.File) error {
 		return err
 	}
 	cfg.LogsPath = makeAbsolute(logsPath, HomePath)
-	log.ReadLoggingConfig(logModes, cfg.LogsPath, file)
-	return nil
+	return log.ReadLoggingConfig(logModes, cfg.LogsPath, file)
 }
 
 func (cfg *Cfg) LogConfigSources() {
@@ -1040,4 +1112,12 @@ func (cfg *Cfg) LogConfigSources() {
 	cfg.Logger.Info("Path Plugins", "path", PluginsPath)
 	cfg.Logger.Info("Path Provisioning", "path", cfg.ProvisioningPath)
 	cfg.Logger.Info("App mode " + Env)
+}
+
+func IsExpressionsEnabled() bool {
+	v, ok := FeatureToggles["expressions"]
+	if !ok {
+		return false
+	}
+	return v
 }

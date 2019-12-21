@@ -6,9 +6,11 @@ import config from 'app/core/config';
 import { DashboardModel } from 'app/features/dashboard/state/DashboardModel';
 import { DashboardSearchHit } from 'app/types/search';
 import { ContextSrv } from './context_srv';
-import { FolderInfo, DashboardDTO } from 'app/types';
+import { FolderInfo, DashboardDTO, CoreEvents } from 'app/types';
+import { BackendSrv as BackendService, getBackendSrv as getBackendService, BackendSrvRequest } from '@grafana/runtime';
+import { AppEvents } from '@grafana/data';
 
-export class BackendSrv {
+export class BackendSrv implements BackendService {
   private inFlightRequests: { [key: string]: Array<angular.IDeferred<any>> } = {};
   private HTTP_REQUEST_CANCELED = -1;
   private noBackendCache: boolean;
@@ -29,7 +31,7 @@ export class BackendSrv {
     return this.request({ method: 'DELETE', url });
   }
 
-  post(url: string, data: any) {
+  post(url: string, data?: any) {
     return this.request({ method: 'POST', url, data });
   }
 
@@ -59,14 +61,8 @@ export class BackendSrv {
     }
 
     if (err.status === 422) {
-      appEvents.emit('alert-warning', ['Validation failed', data.message]);
+      appEvents.emit(AppEvents.alertWarning, ['Validation failed', data.message]);
       throw data;
-    }
-
-    let severity = 'error';
-
-    if (err.status < 500) {
-      severity = 'warning';
     }
 
     if (data.message) {
@@ -77,13 +73,13 @@ export class BackendSrv {
         message = 'Error';
       }
 
-      appEvents.emit('alert-' + severity, [message, description]);
+      appEvents.emit(err.status < 500 ? AppEvents.alertWarning : AppEvents.alertError, [message, description]);
     }
 
     throw data;
   }
 
-  request(options: any) {
+  request(options: BackendSrvRequest) {
     options.retry = options.retry || 0;
     const requestIsLocal = !options.url.match(/^http/);
     const firstAttempt = options.retry === 0;
@@ -104,7 +100,7 @@ export class BackendSrv {
         if (options.method !== 'GET') {
           if (results && results.data.message) {
             if (options.showSuccessAlert !== false) {
-              appEvents.emit('alert-success', [results.data.message]);
+              appEvents.emit(AppEvents.alertSuccess, [results.data.message]);
             }
           }
         }
@@ -147,7 +143,7 @@ export class BackendSrv {
     }
   }
 
-  datasourceRequest(options: any) {
+  datasourceRequest(options: BackendSrvRequest) {
     let canceler: angular.IDeferred<any> = null;
     options.retry = options.retry || 0;
 
@@ -156,6 +152,7 @@ export class BackendSrv {
     // is canceled, canceling the previous datasource request if it is still
     // in-flight.
     const requestId = options.requestId;
+
     if (requestId) {
       this.resolveCancelerIfExists(requestId);
       // create new canceler
@@ -190,7 +187,7 @@ export class BackendSrv {
     return this.$http(options)
       .then((response: any) => {
         if (!options.silent) {
-          appEvents.emit('ds-request-response', response);
+          appEvents.emit(CoreEvents.dsRequestResponse, response);
         }
         return response;
       })
@@ -230,7 +227,7 @@ export class BackendSrv {
           err.data.message = err.data.error;
         }
         if (!options.silent) {
-          appEvents.emit('ds-request-error', err);
+          appEvents.emit(CoreEvents.dsRequestError, err);
         }
         throw err;
       })
@@ -262,14 +259,15 @@ export class BackendSrv {
     return this.get(`/api/folders/${uid}`);
   }
 
-  saveDashboard(dash: DashboardModel, options: any) {
-    options = options || {};
-
+  saveDashboard(
+    dash: DashboardModel,
+    { message = '', folderId, overwrite = false }: { message?: string; folderId?: number; overwrite?: boolean } = {}
+  ) {
     return this.post('/api/dashboards/db/', {
       dashboard: dash,
-      folderId: options.folderId,
-      overwrite: options.overwrite === true,
-      message: options.message || '',
+      folderId,
+      overwrite,
+      message,
     });
   }
 
@@ -385,16 +383,7 @@ export class BackendSrv {
 
 coreModule.service('backendSrv', BackendSrv);
 
-//
-// Code below is to expore the service to react components
-//
-
-let singletonInstance: BackendSrv;
-
-export function setBackendSrv(instance: BackendSrv) {
-  singletonInstance = instance;
-}
-
+// Used for testing and things that really need BackendSrv
 export function getBackendSrv(): BackendSrv {
-  return singletonInstance;
+  return getBackendService() as BackendSrv;
 }

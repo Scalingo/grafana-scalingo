@@ -35,6 +35,14 @@ git commit --message "Get vX.Y.Z from upstream"
 In case of conflict during the merge, fix those in the README.md and use `git
 checkout --theirs .` for the others.
 
+You should also make sure that your conflict resolution didn't removed the
+Scalino specific lines from the `go.mod` file:
+
+```
+// +scalingo goVersion go1.13
+// +scalingo install github.com/grafana/grafana/pkg/cmd/...
+```
+
 Open a pull request and get it merged. Then tag a new version:
 
 ```

@@ -11,7 +11,6 @@ import 'react';
 import 'react-dom';
 
 import 'vendor/bootstrap/bootstrap';
-import 'vendor/angular-ui/ui-bootstrap-tpls';
 import 'vendor/angular-other/angular-strap';
 
 import $ from 'jquery';
@@ -19,8 +18,10 @@ import angular from 'angular';
 import config from 'app/core/config';
 // @ts-ignore ignoring this for now, otherwise we would have to extend _ interface with move
 import _ from 'lodash';
-import moment from 'moment';
+import { AppEvents, setMarkdownOptions, setLocale } from '@grafana/data';
+import appEvents from 'app/core/app_events';
 import { addClassIfNoOverlayScrollbar } from 'app/core/utils/scrollbar';
+import { checkBrowserCompatibility } from 'app/core/utils/browser';
 import { importPluginModule } from 'app/features/plugins/plugin_loader';
 
 // add move to lodash for backward compatabiltiy
@@ -46,7 +47,7 @@ extensionsIndex.keys().forEach((key: any) => {
 export class GrafanaApp {
   registerFunctions: any;
   ngModuleDependencies: any[];
-  preBootModules: any[];
+  preBootModules: any[] | null;
 
   constructor() {
     addClassIfNoOverlayScrollbar('no-overlay-scrollbar');
@@ -68,7 +69,9 @@ export class GrafanaApp {
   init() {
     const app = angular.module('grafana', []);
 
-    moment.locale(config.bootData.user.locale);
+    setLocale(config.bootData.user.locale);
+
+    setMarkdownOptions({ sanitize: !config.disableSanitizeHtml });
 
     app.config(
       (
@@ -122,8 +125,6 @@ export class GrafanaApp {
       'ang-drag-drop',
       'grafana',
       'pasvaz.bindonce',
-      'ui.bootstrap',
-      'ui.bootstrap.tpls',
       'react',
     ];
 
@@ -146,6 +147,15 @@ export class GrafanaApp {
       });
 
       this.preBootModules = null;
+
+      if (!checkBrowserCompatibility()) {
+        setTimeout(() => {
+          appEvents.emit(AppEvents.alertWarning, [
+            'Your browser is not fully supported',
+            'A newer browser version is recommended',
+          ]);
+        }, 1000);
+      }
     });
 
     // Preload selected app plugins

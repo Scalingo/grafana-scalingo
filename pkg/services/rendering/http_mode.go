@@ -15,8 +15,7 @@ import (
 var netTransport = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	Dial: (&net.Dialer{
-		Timeout:   30 * time.Second,
-		DualStack: true,
+		Timeout: 30 * time.Second,
 	}).Dial,
 	TLSHandshakeTimeout: 5 * time.Second,
 }
@@ -26,16 +25,24 @@ var netClient = &http.Client{
 }
 
 func (rs *RenderingService) renderViaHttp(ctx context.Context, opts Opts) (*RenderResult, error) {
-	filePath := rs.getFilePathForNewImage()
+	filePath, err := rs.getFilePathForNewImage()
+	if err != nil {
+		return nil, err
+	}
 
 	rendererUrl, err := url.Parse(rs.Cfg.RendererUrl)
 	if err != nil {
 		return nil, err
 	}
 
+	renderKey, err := rs.getRenderKey(opts.OrgId, opts.UserId, opts.OrgRole)
+	if err != nil {
+		return nil, err
+	}
+
 	queryParams := rendererUrl.Query()
 	queryParams.Add("url", rs.getURL(opts.Path))
-	queryParams.Add("renderKey", rs.getRenderKey(opts.OrgId, opts.UserId, opts.OrgRole))
+	queryParams.Add("renderKey", renderKey)
 	queryParams.Add("width", strconv.Itoa(opts.Width))
 	queryParams.Add("height", strconv.Itoa(opts.Height))
 	queryParams.Add("domain", rs.domain)

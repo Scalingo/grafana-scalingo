@@ -5,8 +5,8 @@ import (
 	"path"
 	"sync"
 
-	"github.com/grafana/grafana/pkg/log"
-	"github.com/pkg/errors"
+	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/util/errutil"
 
 	"github.com/grafana/grafana/pkg/registry"
 	"github.com/grafana/grafana/pkg/services/provisioning/dashboards"
@@ -19,6 +19,7 @@ type DashboardProvisioner interface {
 	Provision() error
 	PollChanges(ctx context.Context)
 	GetProvisionerResolvedPath(name string) string
+	GetAllowUiUpdatesFromConfig(name string) bool
 }
 
 type DashboardProvisionerFactory func(string) (DashboardProvisioner, error)
@@ -103,20 +104,20 @@ func (ps *provisioningServiceImpl) Run(ctx context.Context) error {
 func (ps *provisioningServiceImpl) ProvisionDatasources() error {
 	datasourcePath := path.Join(ps.Cfg.ProvisioningPath, "datasources")
 	err := ps.provisionDatasources(datasourcePath)
-	return errors.Wrap(err, "Datasource provisioning error")
+	return errutil.Wrap("Datasource provisioning error", err)
 }
 
 func (ps *provisioningServiceImpl) ProvisionNotifications() error {
 	alertNotificationsPath := path.Join(ps.Cfg.ProvisioningPath, "notifiers")
 	err := ps.provisionNotifiers(alertNotificationsPath)
-	return errors.Wrap(err, "Alert notification provisioning error")
+	return errutil.Wrap("Alert notification provisioning error", err)
 }
 
 func (ps *provisioningServiceImpl) ProvisionDashboards() error {
 	dashboardPath := path.Join(ps.Cfg.ProvisioningPath, "dashboards")
 	dashProvisioner, err := ps.newDashboardProvisioner(dashboardPath)
 	if err != nil {
-		return errors.Wrap(err, "Failed to create provisioner")
+		return errutil.Wrap("Failed to create provisioner", err)
 	}
 
 	ps.mutex.Lock()
@@ -127,7 +128,7 @@ func (ps *provisioningServiceImpl) ProvisionDashboards() error {
 	if err := dashProvisioner.Provision(); err != nil {
 		// If we fail to provision with the new provisioner, mutex will unlock and the polling we restart with the
 		// old provisioner as we did not switch them yet.
-		return errors.Wrap(err, "Failed to provision dashboards")
+		return errutil.Wrap("Failed to provision dashboards", err)
 	}
 	ps.dashboardProvisioner = dashProvisioner
 	return nil
@@ -135,6 +136,10 @@ func (ps *provisioningServiceImpl) ProvisionDashboards() error {
 
 func (ps *provisioningServiceImpl) GetDashboardProvisionerResolvedPath(name string) string {
 	return ps.dashboardProvisioner.GetProvisionerResolvedPath(name)
+}
+
+func (ps *provisioningServiceImpl) GetAllowUiUpdatesFromConfig(name string) bool {
+	return ps.dashboardProvisioner.GetAllowUiUpdatesFromConfig(name)
 }
 
 func (ps *provisioningServiceImpl) cancelPolling() {

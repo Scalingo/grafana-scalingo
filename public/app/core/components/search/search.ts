@@ -6,6 +6,8 @@ import { contextSrv } from 'app/core/services/context_srv';
 import appEvents from 'app/core/app_events';
 import { parse, SearchParserOptions, SearchParserResult } from 'search-query-parser';
 import { getDashboardSrv } from 'app/features/dashboard/services/DashboardSrv';
+import { CoreEvents } from 'app/types';
+
 export interface SearchQuery {
   query: string;
   parsedQuery: SearchParserResult;
@@ -32,6 +34,11 @@ class SearchQueryParser {
   }
 }
 
+interface SelectedIndicies {
+  dashboardIndex?: number;
+  folderIndex?: number;
+}
+
 interface OpenSearchParams {
   query?: string;
 }
@@ -53,10 +60,10 @@ export class SearchCtrl {
   queryParser: SearchQueryParser;
 
   /** @ngInject */
-  constructor($scope, private $location, private $timeout, private searchSrv: SearchSrv) {
-    appEvents.on('show-dash-search', this.openSearch.bind(this), $scope);
-    appEvents.on('hide-dash-search', this.closeSearch.bind(this), $scope);
-    appEvents.on('search-query', debounce(this.search.bind(this), 500), $scope);
+  constructor($scope: any, private $location: any, private $timeout: any, private searchSrv: SearchSrv) {
+    appEvents.on(CoreEvents.showDashSearch, this.openSearch.bind(this), $scope);
+    appEvents.on(CoreEvents.hideDashSearch, this.closeSearch.bind(this), $scope);
+    appEvents.on(CoreEvents.searchQuery, debounce(this.search.bind(this), 500), $scope);
 
     this.initialFolderFilterTitle = 'All';
     this.isEditor = contextSrv.isEditor;
@@ -89,7 +96,7 @@ export class SearchCtrl {
     } else {
       this.query = query;
     }
-    appEvents.emit('search-query');
+    appEvents.emit(CoreEvents.searchQuery);
   }
 
   openSearch(payload: OpenSearchParams = {}) {
@@ -167,7 +174,7 @@ export class SearchCtrl {
     }, 100);
   }
 
-  moveSelection(direction) {
+  moveSelection(direction: number) {
     if (this.results.length === 0) {
       return;
     }
@@ -253,14 +260,14 @@ export class SearchCtrl {
     return query.query === '' && query.starred === false && query.tags.length === 0;
   }
 
-  filterByTag(tag) {
+  filterByTag(tag: string) {
     if (_.indexOf(this.query.tags, tag) === -1) {
       this.query.tags.push(tag);
       this.search();
     }
   }
 
-  removeTag(tag, evt) {
+  removeTag(tag: string, evt: any) {
     this.query.tags = _.without(this.query.tags, tag);
     this.search();
     this.giveSearchFocus = true;
@@ -299,14 +306,11 @@ export class SearchCtrl {
     this.moveSelection(0);
   }
 
-  private getFlattenedResultForNavigation(): Array<{
-    folderIndex: number;
-    dashboardIndex: number;
-  }> {
+  private getFlattenedResultForNavigation(): SelectedIndicies[] {
     let folderIndex = 0;
 
-    return _.flatMap(this.results, s => {
-      let result = [];
+    return _.flatMap(this.results, (s: any) => {
+      let result: SelectedIndicies[] = [];
 
       result.push({
         folderIndex: folderIndex,

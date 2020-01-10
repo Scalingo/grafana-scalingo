@@ -1,5 +1,8 @@
 module github.com/grafana/grafana
 
+// +scalingo goVersion go1.13
+// +scalingo install ./pkg/cmd/grafana-server
+
 go 1.13
 
 require (

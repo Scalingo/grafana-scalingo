@@ -3,7 +3,6 @@ import React, { PureComponent } from 'react';
 import { connect } from 'react-redux';
 
 // Utils & Services
-import { AngularComponent, getAngularLoader } from 'app/core/services/AngularLoader';
 import { appEvents } from 'app/core/app_events';
 import { PlaylistSrv } from 'app/features/playlist/playlist_srv';
 
@@ -17,7 +16,7 @@ import { updateLocation } from 'app/core/actions';
 
 // Types
 import { DashboardModel } from '../../state';
-import { StoreState } from 'app/types';
+import { StoreState, CoreEvents } from 'app/types';
 
 export interface OwnProps {
   dashboard: DashboardModel;
@@ -36,8 +35,6 @@ export interface StateProps {
 type Props = StateProps & OwnProps;
 
 export class DashNav extends PureComponent<Props> {
-  timePickerEl: HTMLElement;
-  timepickerCmp: AngularComponent;
   playlistSrv: PlaylistSrv;
 
   constructor(props: Props) {
@@ -45,27 +42,12 @@ export class DashNav extends PureComponent<Props> {
     this.playlistSrv = this.props.$injector.get('playlistSrv');
   }
 
-  componentDidMount() {
-    const loader = getAngularLoader();
-    const template =
-      '<gf-time-picker class="gf-timepicker-nav" dashboard="dashboard" ng-if="!dashboard.timepicker.hidden" />';
-    const scopeProps = { dashboard: this.props.dashboard };
-
-    this.timepickerCmp = loader.load(this.timePickerEl, scopeProps, template);
-  }
-
-  componentWillUnmount() {
-    if (this.timepickerCmp) {
-      this.timepickerCmp.destroy();
-    }
-  }
-
   onDahboardNameClick = () => {
-    appEvents.emit('show-dash-search');
+    appEvents.emit(CoreEvents.showDashSearch);
   };
 
   onFolderNameClick = () => {
-    appEvents.emit('show-dash-search', {
+    appEvents.emit(CoreEvents.showDashSearch, {
       query: 'folder:current',
     });
   };
@@ -85,7 +67,7 @@ export class DashNav extends PureComponent<Props> {
   };
 
   onToggleTVMode = () => {
-    appEvents.emit('toggle-kiosk-mode');
+    appEvents.emit(CoreEvents.toggleKioskMode);
   };
 
   onSave = () => {
@@ -105,7 +87,7 @@ export class DashNav extends PureComponent<Props> {
     const { dashboard, $injector } = this.props;
     const dashboardSrv = $injector.get('dashboardSrv');
 
-    dashboardSrv.starDashboard(dashboard.id, dashboard.meta.isStarred).then(newState => {
+    dashboardSrv.starDashboard(dashboard.id, dashboard.meta.isStarred).then((newState: any) => {
       dashboard.meta.isStarred = newState;
       this.forceUpdate();
     });
@@ -130,7 +112,7 @@ export class DashNav extends PureComponent<Props> {
     modalScope.tabIndex = 0;
     modalScope.dashboard = this.props.dashboard;
 
-    appEvents.emit('show-modal', {
+    appEvents.emit(CoreEvents.showModal, {
       src: 'public/app/features/dashboard/components/ShareModal/template.html',
       scope: modalScope,
     });
@@ -187,7 +169,7 @@ export class DashNav extends PureComponent<Props> {
   }
 
   render() {
-    const { dashboard, onAddPanel, location } = this.props;
+    const { dashboard, onAddPanel, location, $injector } = this.props;
     const { canStar, canSave, canShare, showSettings, isStarred } = dashboard.meta;
     const { snapshot } = dashboard;
     const snapshotUrl = snapshot && snapshot.originalUrl;
@@ -281,8 +263,12 @@ export class DashNav extends PureComponent<Props> {
 
         {!dashboard.timepicker.hidden && (
           <div className="navbar-buttons">
-            <div className="gf-timepicker-nav" ref={element => (this.timePickerEl = element)} />
-            <DashNavTimeControls dashboard={dashboard} location={location} updateLocation={updateLocation} />
+            <DashNavTimeControls
+              $injector={$injector}
+              dashboard={dashboard}
+              location={location}
+              updateLocation={updateLocation}
+            />
           </div>
         )}
       </div>

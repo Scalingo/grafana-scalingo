@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/grafana/grafana/pkg/log"
+	"github.com/grafana/grafana/pkg/infra/log"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -31,10 +31,11 @@ func TestSessionSettings(t *testing.T) {
 			stub := &testLogger{}
 			cfg.Logger = stub
 
-			cfg.Load(&CommandLineArgs{
+			err := cfg.Load(&CommandLineArgs{
 				HomePath: homePath,
 				Config:   filepath.Join(homePath, "pkg/setting/testdata/session.ini"),
 			})
+			So(err, ShouldBeNil)
 
 			So(stub.warnCalled, ShouldEqual, true)
 			So(len(stub.warnMessage), ShouldBeGreaterThan, 0)

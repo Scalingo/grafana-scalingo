@@ -1,24 +1,26 @@
 import React, { PureComponent } from 'react';
 import appEvents from '../../app_events';
 import { User } from '../../services/context_srv';
+import { NavModelItem } from '@grafana/data';
+import { CoreEvents } from 'app/types';
 
 export interface Props {
-  link: any;
+  link: NavModelItem;
   user: User;
 }
 
 class BottomNavLinks extends PureComponent<Props> {
-  itemClicked = (event, child) => {
+  itemClicked = (event: React.SyntheticEvent, child: NavModelItem) => {
     if (child.url === '/shortcuts') {
       event.preventDefault();
-      appEvents.emit('show-modal', {
+      appEvents.emit(CoreEvents.showModal, {
         templateHtml: '<help-modal></help-modal>',
       });
     }
   };
 
   switchOrg = () => {
-    appEvents.emit('show-modal', {
+    appEvents.emit(CoreEvents.showModal, {
       templateHtml: '<org-switcher dismiss="dismiss()"></org-switcher>',
     });
   };
@@ -57,7 +59,7 @@ class BottomNavLinks extends PureComponent<Props> {
             link.children.map((child, index) => {
               if (!child.hideFromMenu) {
                 return (
-                  <li className={child.divider} key={`${child.text}-${index}`}>
+                  <li key={`${child.text}-${index}`}>
                     <a href={child.url} target={child.target} onClick={event => this.itemClicked(event, child)}>
                       {child.icon && <i className={child.icon} />}
                       {child.text}

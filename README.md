@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ![Grafana](grafana.png)
 
 Run your own Grafana instance with one click.
@@ -45,9 +44,6 @@ git push origin --tags
 [Website](https://grafana.com) |
 [Twitter](https://twitter.com/grafana) |
 [Community & Forum](https://community.grafana.com)
-=======
-![Grafana](docs/logo-horizontal.png)
->>>>>>> v6.5.2
 
 The open-source platform for monitoring and observability.
 

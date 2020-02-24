@@ -1,4 +1,5 @@
 ![Grafana](docs/logo-horizontal.png)
+
 The open-source platform for monitoring and observability.
 
 Run your own Grafana instance with one click.
@@ -39,6 +40,10 @@ Open a pull request and get it merged. Then tag a new version:
 git tag vX.Y.Z-scalingo1
 git push origin --tags
 ```
+
+[![License](https://img.shields.io/github/license/grafana/grafana)](LICENSE)
+[![Circle CI](https://img.shields.io/circleci/build/gh/grafana/grafana)](https://circleci.com/gh/grafana/grafana)
+[![Go Report Card](https://goreportcard.com/badge/github.com/grafana/grafana)](https://goreportcard.com/report/github.com/grafana/grafana)
 
 Grafana allows you to query, visualize, alert on and understand your metrics no matter where they are stored. Create, explore, and share dashboards with your team and foster a data driven culture:
 

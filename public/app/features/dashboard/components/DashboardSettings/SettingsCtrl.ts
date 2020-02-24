@@ -1,4 +1,4 @@
-import { coreModule, appEvents, contextSrv } from 'app/core/core';
+import { appEvents, contextSrv, coreModule } from 'app/core/core';
 import { DashboardModel } from '../../state/DashboardModel';
 import $ from 'jquery';
 import _ from 'lodash';
@@ -9,6 +9,8 @@ import { DashboardSrv } from '../../services/DashboardSrv';
 import { CoreEvents } from 'app/types';
 import { GrafanaRootScope } from 'app/routes/GrafanaCtrl';
 import { AppEvents } from '@grafana/data';
+import { e2e } from '@grafana/e2e';
+import locationUtil from 'app/core/utils/location_util';
 
 export class SettingsCtrl {
   dashboard: DashboardModel;
@@ -21,6 +23,7 @@ export class SettingsCtrl {
   canDelete: boolean;
   sections: any[];
   hasUnsavedFolderChange: boolean;
+  selectors: typeof e2e.pages.Dashboard.Settings.General.selectors;
 
   /** @ngInject */
   constructor(
@@ -53,6 +56,7 @@ export class SettingsCtrl {
     this.$rootScope.onAppEvent(CoreEvents.routeUpdated, this.onRouteUpdated.bind(this), $scope);
     this.$rootScope.appEvent(CoreEvents.dashScroll, { animate: false, pos: 0 });
     this.$rootScope.onAppEvent(CoreEvents.dashboardSaved, this.onPostSave.bind(this), $scope);
+    this.selectors = e2e.pages.Dashboard.Settings.General.selectors;
   }
 
   buildSectionList() {
@@ -180,7 +184,7 @@ export class SettingsCtrl {
     this.buildSectionList();
 
     const currentSection: any = _.find(this.sections, { id: this.viewId } as any);
-    this.$location.url(currentSection.url);
+    this.$location.url(locationUtil.stripBaseFromUrl(currentSection.url));
   }
 
   deleteDashboard() {

@@ -2,7 +2,7 @@ import _ from 'lodash';
 import ResponseParser from './response_parser';
 import MysqlQuery from 'app/plugins/datasource/mysql/mysql_query';
 import { BackendSrv } from 'app/core/services/backend_srv';
-import { IQService } from 'angular';
+import { ScopedVars } from '@grafana/data';
 import { TemplateSrv } from 'app/features/templating/template_srv';
 import { TimeSrv } from 'app/features/dashboard/services/TimeSrv';
 //Types
@@ -20,13 +20,12 @@ export class MysqlDatasource {
   constructor(
     instanceSettings: any,
     private backendSrv: BackendSrv,
-    private $q: IQService,
     private templateSrv: TemplateSrv,
     private timeSrv: TimeSrv
   ) {
     this.name = instanceSettings.name;
     this.id = instanceSettings.id;
-    this.responseParser = new ResponseParser(this.$q);
+    this.responseParser = new ResponseParser();
     this.queryModel = new MysqlQuery({});
     this.interval = (instanceSettings.jsonData || {}).timeInterval || '1m';
   }
@@ -34,7 +33,8 @@ export class MysqlDatasource {
   interpolateVariable = (value: string, variable: any) => {
     if (typeof value === 'string') {
       if (variable.multi || variable.includeAll) {
-        return this.queryModel.quoteLiteral(value);
+        const result = this.queryModel.quoteLiteral(value);
+        return result;
       } else {
         return value;
       }
@@ -50,14 +50,17 @@ export class MysqlDatasource {
     return quotedValues.join(',');
   };
 
-  interpolateVariablesInQueries(queries: MysqlQueryForInterpolation[]): MysqlQueryForInterpolation[] {
+  interpolateVariablesInQueries(
+    queries: MysqlQueryForInterpolation[],
+    scopedVars: ScopedVars
+  ): MysqlQueryForInterpolation[] {
     let expandedQueries = queries;
     if (queries && queries.length > 0) {
       expandedQueries = queries.map(query => {
         const expandedQuery = {
           ...query,
           datasource: this.name,
-          rawSql: this.templateSrv.replace(query.rawSql, {}, this.interpolateVariable),
+          rawSql: this.templateSrv.replace(query.rawSql, scopedVars, this.interpolateVariable),
         };
         return expandedQuery;
       });
@@ -82,7 +85,7 @@ export class MysqlDatasource {
     });
 
     if (queries.length === 0) {
-      return this.$q.when({ data: [] });
+      return Promise.resolve({ data: [] });
     }
 
     return this.backendSrv
@@ -100,7 +103,7 @@ export class MysqlDatasource {
 
   annotationQuery(options: any) {
     if (!options.annotation.rawQuery) {
-      return this.$q.reject({
+      return Promise.reject({
         message: 'Query missing in annotation definition',
       });
     }

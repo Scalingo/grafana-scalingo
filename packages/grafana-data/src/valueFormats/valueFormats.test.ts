@@ -139,12 +139,4 @@ describe('valueFormats', () => {
       expect(fmt0).toEqual(fmt1);
     });
   });
-
-  describe('Resolve old units', () => {
-    it('resolve farenheit', () => {
-      const fmt0 = getValueFormat('farenheit');
-      const fmt1 = getValueFormat('fahrenheit');
-      expect(fmt0).toEqual(fmt1);
-    });
-  });
 });

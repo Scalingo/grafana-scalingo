@@ -9,7 +9,6 @@
     { "type": "dashboard", "name": "Metrictank (Graphite alternative)", "path": "dashboards/metrictank.json" }
   ],
 
-  "hiddenQueries": true,
   "metrics": true,
   "alerting": true,
   "annotations": true,

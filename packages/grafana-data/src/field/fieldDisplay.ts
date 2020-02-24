@@ -272,36 +272,3 @@ function getDisplayText(display: DisplayValue, fallback: string): string {
   }
   return display.text;
 }
-function createNoValuesFieldDisplay(options: GetFieldDisplayValuesOptions): FieldDisplay {
-  const displayName = 'No data';
-  const { fieldOptions } = options;
-  const { defaults, override } = fieldOptions;
-
-  const config = getFieldProperties(defaults, {}, override);
-  const displayProcessor = getDisplayProcessor({
-    config,
-    theme: options.theme,
-    type: FieldType.other,
-  });
-
-  const display = displayProcessor(null);
-  const text = getDisplayText(display, displayName);
-
-  return {
-    name: displayName,
-    field: {
-      ...defaults,
-    },
-    display: {
-      text,
-      numeric: 0,
-    },
-  };
-}
-
-function getDisplayText(display: DisplayValue, fallback: string): string {
-  if (!display || isEmpty(display.text)) {
-    return fallback;
-  }
-  return display.text;
-}

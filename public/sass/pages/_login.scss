@@ -290,10 +290,6 @@ select:-webkit-autofill:focus {
 }
 
 @include media-breakpoint-up(md) {
-  .login {
-    min-height: 100vh;
-  }
-
   .login-content {
     flex-direction: row;
     flex: 1 0 100%;

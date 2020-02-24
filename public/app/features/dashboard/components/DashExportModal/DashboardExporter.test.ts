@@ -129,11 +129,6 @@ describe('given dashboard with repeated panels', () => {
     expect(panel.datasource).toBe('${DS_GFDB}');
   });
 
-  it('should replace datasource refs in collapsed row', () => {
-    var panel = exported.panels[5].panels[0];
-    expect(panel.datasource).toBe('${DS_GFDB}');
-  });
-
   it('should replace datasource in variable query', () => {
     expect(exported.templating.list[0].datasource).toBe('${DS_GFDB}');
     expect(exported.templating.list[0].options.length).toBe(0);

@@ -7,12 +7,12 @@ type = "docs"
 name = "Installing using Docker"
 identifier = "docker"
 parent = "installation"
-weight = 4
+weight = 600
 +++
 
 # Installing using Docker
 
-Grafana is very easy to install and run using the official docker container.
+Grafana is very easy to install and run using the official Docker container.
 
 ```bash
 $ docker run -d -p 3000:3000 grafana/grafana
@@ -39,7 +39,7 @@ those options.
 
 > For any changes to `conf/grafana.ini` (or corresponding environment variables) to take effect you need to restart Grafana by restarting the Docker container.
 
-### Default Paths
+### Default paths
 
 The following settings are hard-coded when launching the Grafana Docker container and can only be overridden using environment variables, not in `conf/grafana.ini`.
 
@@ -89,7 +89,7 @@ When running Grafana master in production we **strongly** recommend that you use
 
 For a list of available tags, check out [grafana/grafana](https://hub.docker.com/r/grafana/grafana/tags/) and [grafana/grafana-dev](https://hub.docker.com/r/grafana/grafana-dev/tags/).
 
-## Installing Plugins for Grafana
+## Installing Grafana plugins
 
 Pass the plugins you want installed to docker with the `GF_INSTALL_PLUGINS` environment variable as a comma separated list. This will pass each plugin name to `grafana-cli plugins install ${plugin}` and install them when Grafana starts.
 
@@ -129,7 +129,7 @@ Replace `Dockerfile` in above example with `ubuntu.Dockerfile` to build a custom
 
 > Only available in Grafana v6.5+ and experimental.
 
-The [Grafana Image Renderer plugin](/administration/image_rendering/#grafana-image-renderer-plugin) does not
+The [Grafana Image Renderer plugin]({{< relref "../administration/image_rendering/#grafana-image-renderer-plugin" >}}) does not
 currently work if it is installed in Grafana docker image.
 You can build a custom docker image by using the `GF_INSTALL_IMAGE_RENDERER_PLUGIN` build argument.
 This will install additional dependencies needed for the Grafana Image Renderer plugin to run.
@@ -147,7 +147,7 @@ docker run -d -p 3000:3000 --name=grafana grafana-custom
 
 Replace `Dockerfile` in above example with `ubuntu.Dockerfile` to build a custom Ubuntu based image.
 
-## Installing Plugins from other sources
+## Installing plugins from other sources
 
 > Only available in Grafana v5.3.1+
 
@@ -161,7 +161,7 @@ docker run -d \
   grafana/grafana
 ```
 
-## Configuring AWS Credentials for CloudWatch Support
+## Configuring AWS credentials for CloudWatch Support
 
 ```bash
 $ docker run -d \
@@ -213,15 +213,14 @@ It's possible to supply Grafana with configuration through files. This works wel
 
 You can do this with any of the configuration options in conf/grafana.ini by setting `GF_<SectionName>_<KeyName>__FILE` to the path of the file holding the secret.
 
-Let's say you want to set the admin password this way.
+Let's say you want to set the admin password this way:
 
 - Admin password secret: `/run/secrets/admin_password`
 - Environment variable: `GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/admin_password`
 
-
 ## Migration from a previous version of the docker container to 5.1 or later
 
-The docker container for Grafana has seen a major rewrite for 5.1.
+The Docker container for Grafana has seen a major rewrite for 5.1.
 
 **Important changes**
 
@@ -293,5 +292,5 @@ Grafana Docker image now comes in two variants, one [Alpine](http://alpinelinux.
 
 ## Logging in for the first time
 
-To run Grafana open your browser and go to http://localhost:3000/. 3000 is the default HTTP port that Grafana listens to if you haven't [configured a different port](/installation/configuration/#http-port).
-Then follow the instructions [here](/guides/getting_started/).
+To run Grafana open your browser and go to http://localhost:3000/. 3000 is the default HTTP port that Grafana listens to if you haven't [configured a different port]({{< relref "configuration/#http-port" >}}).
+Then follow the instructions [here]({{< relref "../guides/getting_started/" >}}).

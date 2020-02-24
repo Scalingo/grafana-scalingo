@@ -1,6 +1,6 @@
 import _ from 'lodash';
 
-import { dateMath, DataSourceApi, DataSourceInstanceSettings } from '@grafana/data';
+import { dateMath, DataSourceApi, DataSourceInstanceSettings, ScopedVars } from '@grafana/data';
 import InfluxSeries from './influx_series';
 import InfluxQueryModel from './influx_query_model';
 import ResponseParser from './response_parser';
@@ -8,7 +8,6 @@ import { InfluxQueryBuilder } from './query_builder';
 import { InfluxQuery, InfluxOptions } from './types';
 import { BackendSrv } from 'app/core/services/backend_srv';
 import { TemplateSrv } from 'app/features/templating/template_srv';
-import { IQService } from 'angular';
 
 export default class InfluxDatasource extends DataSourceApi<InfluxQuery, InfluxOptions> {
   type: string;
@@ -26,7 +25,6 @@ export default class InfluxDatasource extends DataSourceApi<InfluxQuery, InfluxO
   /** @ngInject */
   constructor(
     instanceSettings: DataSourceInstanceSettings<InfluxOptions>,
-    private $q: IQService,
     private backendSrv: BackendSrv,
     private templateSrv: TemplateSrv
   ) {
@@ -76,7 +74,7 @@ export default class InfluxDatasource extends DataSourceApi<InfluxQuery, InfluxO
     });
 
     if (allQueries === '') {
-      return this.$q.when({ data: [] });
+      return Promise.resolve({ data: [] });
     }
 
     // add global adhoc filters to timeFilter
@@ -91,53 +89,51 @@ export default class InfluxDatasource extends DataSourceApi<InfluxQuery, InfluxO
     // replace templated variables
     allQueries = this.templateSrv.replace(allQueries, scopedVars);
 
-    return this._seriesQuery(allQueries, options).then(
-      (data: any): any => {
-        if (!data || !data.results) {
-          return [];
-        }
-
-        const seriesList = [];
-        for (i = 0; i < data.results.length; i++) {
-          const result = data.results[i];
-          if (!result || !result.series) {
-            continue;
-          }
-
-          const target = queryTargets[i];
-          let alias = target.alias;
-          if (alias) {
-            alias = this.templateSrv.replace(target.alias, options.scopedVars);
-          }
-
-          const influxSeries = new InfluxSeries({
-            series: data.results[i].series,
-            alias: alias,
-          });
-
-          switch (target.resultFormat) {
-            case 'table': {
-              seriesList.push(influxSeries.getTable());
-              break;
-            }
-            default: {
-              const timeSeries = influxSeries.getTimeSeries();
-              for (y = 0; y < timeSeries.length; y++) {
-                seriesList.push(timeSeries[y]);
-              }
-              break;
-            }
-          }
-        }
-
-        return { data: seriesList };
+    return this._seriesQuery(allQueries, options).then((data: any): any => {
+      if (!data || !data.results) {
+        return [];
       }
-    );
+
+      const seriesList = [];
+      for (i = 0; i < data.results.length; i++) {
+        const result = data.results[i];
+        if (!result || !result.series) {
+          continue;
+        }
+
+        const target = queryTargets[i];
+        let alias = target.alias;
+        if (alias) {
+          alias = this.templateSrv.replace(target.alias, options.scopedVars);
+        }
+
+        const influxSeries = new InfluxSeries({
+          series: data.results[i].series,
+          alias: alias,
+        });
+
+        switch (target.resultFormat) {
+          case 'table': {
+            seriesList.push(influxSeries.getTable());
+            break;
+          }
+          default: {
+            const timeSeries = influxSeries.getTimeSeries();
+            for (y = 0; y < timeSeries.length; y++) {
+              seriesList.push(timeSeries[y]);
+            }
+            break;
+          }
+        }
+      }
+
+      return { data: seriesList };
+    });
   }
 
   annotationQuery(options: any) {
     if (!options.annotation.query) {
-      return this.$q.reject({
+      return Promise.reject({
         message: 'Query missing in annotation definition',
       });
     }
@@ -175,7 +171,7 @@ export default class InfluxDatasource extends DataSourceApi<InfluxQuery, InfluxO
     return false;
   }
 
-  interpolateVariablesInQueries(queries: InfluxQuery[]): InfluxQuery[] {
+  interpolateVariablesInQueries(queries: InfluxQuery[], scopedVars: ScopedVars): InfluxQuery[] {
     if (!queries || queries.length === 0) {
       return [];
     }
@@ -186,11 +182,11 @@ export default class InfluxDatasource extends DataSourceApi<InfluxQuery, InfluxO
         const expandedQuery = {
           ...query,
           datasource: this.name,
-          measurement: this.templateSrv.replace(query.measurement, null, 'regex'),
+          measurement: this.templateSrv.replace(query.measurement, scopedVars, 'regex'),
         };
 
         if (query.rawQuery) {
-          expandedQuery.query = this.templateSrv.replace(query.query, null, 'regex');
+          expandedQuery.query = this.templateSrv.replace(query.query, scopedVars, 'regex');
         }
 
         if (query.tags) {
@@ -229,7 +225,7 @@ export default class InfluxDatasource extends DataSourceApi<InfluxQuery, InfluxO
 
   _seriesQuery(query: string, options?: any) {
     if (!query) {
-      return this.$q.when({ results: [] });
+      return Promise.resolve({ results: [] });
     }
 
     if (options && options.range) {

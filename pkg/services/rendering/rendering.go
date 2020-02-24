@@ -3,12 +3,10 @@ package rendering
 import (
 	"context"
 	"fmt"
-	plugin "github.com/hashicorp/go-plugin"
 	"net/url"
 	"os"
 	"path/filepath"
 
-	pluginModel "github.com/grafana/grafana-plugin-model/go/renderer"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/middleware"
 	"github.com/grafana/grafana/pkg/models"
@@ -22,10 +20,10 @@ func init() {
 	registry.RegisterService(&RenderingService{})
 }
 
+var IsPhantomJSEnabled = false
+
 type RenderingService struct {
 	log             log.Logger
-	pluginClient    *plugin.Client
-	grpcPlugin      pluginModel.RendererPlugin
 	pluginInfo      *plugins.RendererPlugin
 	renderAction    renderFunc
 	domain          string
@@ -59,6 +57,7 @@ func (rs *RenderingService) Init() error {
 
 func (rs *RenderingService) Run(ctx context.Context) error {
 	if rs.Cfg.RendererUrl != "" {
+		rs.log = rs.log.New("renderer", "http")
 		rs.log.Info("Backend rendering via external http server")
 		rs.renderAction = rs.renderViaHttp
 		<-ctx.Done()
@@ -66,14 +65,17 @@ func (rs *RenderingService) Run(ctx context.Context) error {
 	}
 
 	if plugins.Renderer == nil {
+		rs.log = rs.log.New("renderer", "phantomJS")
 		rs.log.Info("Backend rendering via phantomJS")
 		rs.log.Warn("phantomJS is deprecated and will be removed in a future release. " +
 			"You should consider migrating from phantomJS to grafana-image-renderer plugin.")
 		rs.renderAction = rs.renderViaPhantomJS
+		IsPhantomJSEnabled = true
 		<-ctx.Done()
 		return nil
 	}
 
+	rs.log = rs.log.New("renderer", "plugin")
 	rs.pluginInfo = plugins.Renderer
 
 	if err := rs.startPlugin(ctx); err != nil {
@@ -81,15 +83,8 @@ func (rs *RenderingService) Run(ctx context.Context) error {
 	}
 
 	rs.renderAction = rs.renderViaPlugin
-
-	err := rs.watchAndRestartPlugin(ctx)
-
-	if rs.pluginClient != nil {
-		rs.log.Debug("Killing renderer plugin process")
-		rs.pluginClient.Kill()
-	}
-
-	return err
+	<-ctx.Done()
+	return nil
 }
 
 func (rs *RenderingService) RenderErrorImage(err error) (*RenderResult, error) {
@@ -114,6 +109,7 @@ func (rs *RenderingService) Render(ctx context.Context, opts Opts) (*RenderResul
 	rs.inProgressCount += 1
 
 	if rs.renderAction != nil {
+		rs.log.Info("Rendering", "path", opts.Path)
 		return rs.renderAction(ctx, opts)
 	}
 	return nil, fmt.Errorf("No renderer found")
@@ -142,8 +138,17 @@ func (rs *RenderingService) getURL(path string) string {
 		return fmt.Sprintf("%s%s&render=1", rs.Cfg.RendererCallbackUrl, path)
 
 	}
+
+	protocol := setting.Protocol
+	switch setting.Protocol {
+	case setting.HTTP:
+		protocol = "http"
+	case setting.HTTP2, setting.HTTPS:
+		protocol = "https"
+	}
+
 	// &render=1 signals to the legacy redirect layer to
-	return fmt.Sprintf("%s://%s:%s/%s&render=1", setting.Protocol, rs.domain, setting.HttpPort, path)
+	return fmt.Sprintf("%s://%s:%s/%s&render=1", protocol, rs.domain, setting.HttpPort, path)
 }
 
 func (rs *RenderingService) getRenderKey(orgId, userId int64, orgRole models.RoleType) (string, error) {

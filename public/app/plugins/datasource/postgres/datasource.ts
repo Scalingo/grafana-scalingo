@@ -1,8 +1,8 @@
 import _ from 'lodash';
 import ResponseParser from './response_parser';
 import PostgresQuery from 'app/plugins/datasource/postgres/postgres_query';
-import { IQService } from 'angular';
 import { BackendSrv } from 'app/core/services/backend_srv';
+import { ScopedVars } from '@grafana/data';
 import { TemplateSrv } from 'app/features/templating/template_srv';
 import { TimeSrv } from 'app/features/dashboard/services/TimeSrv';
 //Types
@@ -21,14 +21,13 @@ export class PostgresDatasource {
   constructor(
     instanceSettings: { name: any; id?: any; jsonData?: any },
     private backendSrv: BackendSrv,
-    private $q: IQService,
     private templateSrv: TemplateSrv,
     private timeSrv: TimeSrv
   ) {
     this.name = instanceSettings.name;
     this.id = instanceSettings.id;
     this.jsonData = instanceSettings.jsonData;
-    this.responseParser = new ResponseParser(this.$q);
+    this.responseParser = new ResponseParser();
     this.queryModel = new PostgresQuery({});
     this.interval = (instanceSettings.jsonData || {}).timeInterval || '1m';
   }
@@ -52,14 +51,17 @@ export class PostgresDatasource {
     return quotedValues.join(',');
   };
 
-  interpolateVariablesInQueries(queries: PostgresQueryForInterpolation[]): PostgresQueryForInterpolation[] {
+  interpolateVariablesInQueries(
+    queries: PostgresQueryForInterpolation[],
+    scopedVars: ScopedVars
+  ): PostgresQueryForInterpolation[] {
     let expandedQueries = queries;
     if (queries && queries.length > 0) {
       expandedQueries = queries.map(query => {
         const expandedQuery = {
           ...query,
           datasource: this.name,
-          rawSql: this.templateSrv.replace(query.rawSql, {}, this.interpolateVariable),
+          rawSql: this.templateSrv.replace(query.rawSql, scopedVars, this.interpolateVariable),
         };
         return expandedQuery;
       });
@@ -84,7 +86,7 @@ export class PostgresDatasource {
     });
 
     if (queries.length === 0) {
-      return this.$q.when({ data: [] });
+      return Promise.resolve({ data: [] });
     }
 
     return this.backendSrv
@@ -102,7 +104,7 @@ export class PostgresDatasource {
 
   annotationQuery(options: any) {
     if (!options.annotation.rawQuery) {
-      return this.$q.reject({
+      return Promise.reject({
         message: 'Query missing in annotation definition',
       });
     }

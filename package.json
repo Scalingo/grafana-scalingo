@@ -279,12 +279,8 @@
     "tether-drop": "https://github.com/torkelo/drop/tarball/master",
     "tinycolor2": "1.4.1",
     "tti-polyfill": "0.2.2",
-<<<<<<< HEAD
-    "url-search-params-polyfill": "7.0.1",
-=======
     "uuid": "3.4.0",
     "whatwg-fetch": "3.0.0",
->>>>>>> v6.7.1
     "xss": "1.0.3"
   },
   "resolutions": {

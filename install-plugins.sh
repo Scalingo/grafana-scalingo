@@ -8,8 +8,8 @@ fi
 OLD_IFS=$IFS
 IFS=','
 
-pluginDir="$(pwd)/plugins"
-mkdir $pluginDir
+pluginDir="$(pwd)/data/plugins"
+mkdir -p $pluginDir
 
 for plugin in $GRAFANA_PLUGINS ; do
   echo "Installing $plugin"

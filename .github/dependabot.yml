@@ -1,0 +1,5 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    # Disable Dependabot PRs. We rely on upstream for dependencie updates.
+    open-pull-requests-limit: 0

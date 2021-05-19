@@ -9,7 +9,7 @@ To login, use the environment variables value defined in:
 * `GF_SECURITY_ADMIN_USER`
 * `GF_SECURITY_ADMIN_PASSWORD`
 
-Version used: v6.6.2
+Version used: v7.5.6
 
 [![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://my.scalingo.com/deploy)
 

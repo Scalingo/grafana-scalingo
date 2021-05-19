@@ -1,6 +1,5 @@
 import React from 'react';
 import { Themeable } from '../../types';
-import { selectThemeVariant } from '../../themes/selectThemeVariant';
 
 export interface SpectrumPalettePointerProps extends Themeable {
   direction?: string;
@@ -15,13 +14,7 @@ const SpectrumPalettePointer: React.FunctionComponent<SpectrumPalettePointerProp
     },
   };
 
-  const pointerColor = selectThemeVariant(
-    {
-      light: theme.colors.dark3,
-      dark: theme.colors.gray2,
-    },
-    theme.type
-  );
+  const pointerColor = theme.colors.text;
 
   let pointerStyles: React.CSSProperties = {
     position: 'absolute',

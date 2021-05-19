@@ -2,6 +2,7 @@
 
 exports[`Render should render component 1`] = `
 <li
+  aria-label="Plugins list item"
   className="card-item-wrapper"
 >
   <a
@@ -15,6 +16,11 @@ exports[`Render should render component 1`] = `
         className="card-item-type"
       >
         panel
+      </div>
+      <div
+        className="card-item-badge"
+      >
+        <PluginSignatureBadge />
       </div>
     </div>
     <div
@@ -48,6 +54,7 @@ exports[`Render should render component 1`] = `
 
 exports[`Render should render has plugin section 1`] = `
 <li
+  aria-label="Plugins list item"
   className="card-item-wrapper"
 >
   <a
@@ -61,6 +68,11 @@ exports[`Render should render has plugin section 1`] = `
         className="card-item-type"
       >
         panel
+      </div>
+      <div
+        className="card-item-badge"
+      >
+        <PluginSignatureBadge />
       </div>
       <div
         className="card-item-notice"

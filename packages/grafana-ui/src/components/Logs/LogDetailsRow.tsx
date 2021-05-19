@@ -1,6 +1,6 @@
 import React, { PureComponent } from 'react';
 import { css, cx } from 'emotion';
-import { LogLabelStatsModel, GrafanaTheme } from '@grafana/data';
+import { Field, LinkModel, LogLabelStatsModel, GrafanaTheme } from '@grafana/data';
 
 import { Themeable } from '../../types/theme';
 import { withTheme } from '../../themes/index';
@@ -9,15 +9,21 @@ import { stylesFactory } from '../../themes/stylesFactory';
 
 //Components
 import { LogLabelStats } from './LogLabelStats';
+import { IconButton } from '../IconButton/IconButton';
+import { DataLinkButton } from '../DataLinks/DataLinkButton';
 
 export interface Props extends Themeable {
   parsedValue: string;
   parsedKey: string;
+  wrapLogMessage?: boolean;
   isLabel?: boolean;
   onClickFilterLabel?: (key: string, value: string) => void;
   onClickFilterOutLabel?: (key: string, value: string) => void;
-  links?: string[];
+  links?: Array<LinkModel<Field>>;
   getStats: () => LogLabelStatsModel[] | null;
+  showDetectedFields?: string[];
+  onClickShowDetectedField?: (key: string) => void;
+  onClickHideDetectedField?: (key: string) => void;
 }
 
 interface State {
@@ -42,6 +48,13 @@ const getStyles = stylesFactory((theme: GrafanaTheme) => {
       label: wordBreakAll;
       word-break: break-all;
     `,
+    showingField: css`
+      color: ${theme.palette.blue95};
+    `,
+    wrapLine: css`
+      label: wrapLine;
+      white-space: pre-wrap;
+    `,
   };
 });
 
@@ -50,6 +63,20 @@ class UnThemedLogDetailsRow extends PureComponent<Props, State> {
     showFieldsStats: false,
     fieldCount: 0,
     fieldStats: null,
+  };
+
+  showField = () => {
+    const { onClickShowDetectedField, parsedKey } = this.props;
+    if (onClickShowDetectedField) {
+      onClickShowDetectedField(parsedKey);
+    }
+  };
+
+  hideField = () => {
+    const { onClickHideDetectedField, parsedKey } = this.props;
+    if (onClickHideDetectedField) {
+      onClickHideDetectedField(parsedKey);
+    }
   };
 
   filterLabel = () => {
@@ -77,7 +104,7 @@ class UnThemedLogDetailsRow extends PureComponent<Props, State> {
   };
 
   toggleFieldsStats() {
-    this.setState(state => {
+    this.setState((state) => {
       return {
         showFieldsStats: !state.showFieldsStats,
       };
@@ -85,49 +112,54 @@ class UnThemedLogDetailsRow extends PureComponent<Props, State> {
   }
 
   render() {
-    const { theme, parsedKey, parsedValue, isLabel, links } = this.props;
+    const { theme, parsedKey, parsedValue, isLabel, links, showDetectedFields, wrapLogMessage } = this.props;
     const { showFieldsStats, fieldStats, fieldCount } = this.state;
     const styles = getStyles(theme);
     const style = getLogRowStyles(theme);
+    const toggleFieldButton =
+      !isLabel && showDetectedFields && showDetectedFields.includes(parsedKey) ? (
+        <IconButton name="eye" className={styles.showingField} title="Hide this field" onClick={this.hideField} />
+      ) : (
+        <IconButton name="eye" title="Show this field instead of the message" onClick={this.showField} />
+      );
+
     return (
       <tr className={cx(style.logDetailsValue, { [styles.noHoverBackground]: showFieldsStats })}>
         {/* Action buttons - show stats/filter results */}
-        <td className={style.logsDetailsIcon} colSpan={isLabel ? undefined : 3}>
-          <i title="Ad-hoc statistics" className={`fa fa-signal ${styles.hoverCursor}`} onClick={this.showStats} />
+        <td className={style.logsDetailsIcon}>
+          <IconButton name="signal" title={'Ad-hoc statistics'} onClick={this.showStats} />
         </td>
 
         {isLabel && (
           <>
             <td className={style.logsDetailsIcon}>
-              <i
-                title="Filter for value"
-                className={`fa fa-search-plus ${styles.hoverCursor}`}
-                onClick={this.filterLabel}
-              />
+              <IconButton name="search-plus" title="Filter for value" onClick={this.filterLabel} />
             </td>
             <td className={style.logsDetailsIcon}>
-              <i
-                title="Filter out value"
-                className={`fa fa-search-minus ${styles.hoverCursor}`}
-                onClick={this.filterOutLabel}
-              />
+              <IconButton name="search-minus" title="Filter out value" onClick={this.filterOutLabel} />
+            </td>
+          </>
+        )}
+
+        {!isLabel && (
+          <>
+            <td className={style.logsDetailsIcon} colSpan={2}>
+              {toggleFieldButton}
             </td>
           </>
         )}
 
         {/* Key - value columns */}
         <td className={style.logDetailsLabel}>{parsedKey}</td>
-        <td className={styles.wordBreakAll}>
+        <td className={cx(styles.wordBreakAll, wrapLogMessage && styles.wrapLine)}>
           {parsedValue}
           {links &&
-            links.map(link => {
+            links.map((link) => {
               return (
-                <span key={link}>
+                <>
                   &nbsp;
-                  <a href={link} target={'_blank'}>
-                    <i className={'fa fa-external-link'} />
-                  </a>
-                </span>
+                  <DataLinkButton link={link} />
+                </>
               );
             })}
           {showFieldsStats && (

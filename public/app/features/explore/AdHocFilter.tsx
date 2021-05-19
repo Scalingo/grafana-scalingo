@@ -1,5 +1,6 @@
 import React, { useContext } from 'react';
-import { Select, ThemeContext } from '@grafana/ui';
+import { LegacyForms, ThemeContext } from '@grafana/ui';
+const { Select } = LegacyForms;
 import { css, cx } from 'emotion';
 import { GrafanaTheme, SelectableValue } from '@grafana/data';
 
@@ -30,7 +31,7 @@ export interface Props {
   onOperatorChanged: (operator: string) => void;
 }
 
-export const AdHocFilter: React.FunctionComponent<Props> = props => {
+export const AdHocFilter: React.FunctionComponent<Props> = (props) => {
   const theme = useContext(ThemeContext);
   const styles = getStyles(theme);
 
@@ -59,12 +60,12 @@ export const AdHocFilter: React.FunctionComponent<Props> = props => {
   const { keys, initialKey, keysPlaceHolder, initialOperator, values, initialValue, valuesPlaceHolder } = props;
   const operators = ['=', '!='];
   const keysAsOptions = keys ? keys.map(stringToOption) : [];
-  const selectedKey = initialKey ? keysAsOptions.filter(option => option.value === initialKey) : undefined;
+  const selectedKey = initialKey ? keysAsOptions.filter((option) => option.value === initialKey) : undefined;
   const valuesAsOptions = values ? values.map(stringToOption) : [];
-  const selectedValue = initialValue ? valuesAsOptions.filter(option => option.value === initialValue) : undefined;
+  const selectedValue = initialValue ? valuesAsOptions.filter((option) => option.value === initialValue) : undefined;
   const operatorsAsOptions = operators.map(stringToOption);
   const selectedOperator = initialOperator
-    ? operatorsAsOptions.filter(option => option.value === initialOperator)
+    ? operatorsAsOptions.filter((option) => option.value === initialOperator)
     : undefined;
 
   return (

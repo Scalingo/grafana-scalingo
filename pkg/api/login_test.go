@@ -10,21 +10,28 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/grafana/grafana/pkg/services/licensing"
-
 	"github.com/grafana/grafana/pkg/api/dtos"
+	"github.com/grafana/grafana/pkg/api/response"
+	"github.com/grafana/grafana/pkg/api/routing"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/login"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/auth"
+	"github.com/grafana/grafana/pkg/services/hooks"
+	"github.com/grafana/grafana/pkg/services/licensing"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func mockSetIndexViewData() {
+func fakeSetIndexViewData(t *testing.T) {
+	origSetIndexViewData := setIndexViewData
+	t.Cleanup(func() {
+		setIndexViewData = origSetIndexViewData
+	})
 	setIndexViewData = func(*HTTPServer, *models.ReqContext) (*dtos.IndexViewData, error) {
 		data := &dtos.IndexViewData{
 			User:     &dtos.CurrentUser{},
@@ -35,19 +42,13 @@ func mockSetIndexViewData() {
 	}
 }
 
-func resetSetIndexViewData() {
-	setIndexViewData = (*HTTPServer).setIndexViewData
-}
-
-func mockViewIndex() {
+func fakeViewIndex(t *testing.T) {
+	origGetViewIndex := getViewIndex
+	t.Cleanup(func() {
+		getViewIndex = origGetViewIndex
+	})
 	getViewIndex = func() string {
 		return "index-template"
-	}
-}
-
-func resetViewIndex() {
-	getViewIndex = func() string {
-		return ViewIndex
 	}
 }
 
@@ -63,7 +64,16 @@ type FakeLogger struct {
 	log.Logger
 }
 
-func (stub *FakeLogger) Info(testMessage string, ctx ...interface{}) {
+func (fl *FakeLogger) Debug(testMessage string, ctx ...interface{}) {
+}
+
+func (fl *FakeLogger) Info(testMessage string, ctx ...interface{}) {
+}
+
+func (fl *FakeLogger) Warn(testMessage string, ctx ...interface{}) {
+}
+
+func (fl *FakeLogger) Error(testMessage string, ctx ...interface{}) {
 }
 
 type redirectCase struct {
@@ -76,71 +86,81 @@ type redirectCase struct {
 	redirectURL string
 }
 
-func TestLoginErrorCookieApiEndpoint(t *testing.T) {
-	mockSetIndexViewData()
-	defer resetSetIndexViewData()
+func TestLoginErrorCookieAPIEndpoint(t *testing.T) {
+	fakeSetIndexViewData(t)
 
-	mockViewIndex()
-	defer resetViewIndex()
+	fakeViewIndex(t)
 
-	sc := setupScenarioContext("/login")
+	sc := setupScenarioContext(t, "/login")
+	cfg := setting.NewCfg()
 	hs := &HTTPServer{
-		Cfg:     setting.NewCfg(),
+		Cfg:     cfg,
 		License: &licensing.OSSLicensingService{},
 	}
 
-	sc.defaultHandler = Wrap(func(w http.ResponseWriter, c *models.ReqContext) {
+	sc.defaultHandler = routing.Wrap(func(w http.ResponseWriter, c *models.ReqContext) {
 		hs.LoginView(c)
 	})
 
-	setting.LoginCookieName = "grafana_session"
+	cfg.LoginCookieName = "grafana_session"
 	setting.SecretKey = "login_testing"
 
-	setting.OAuthService = &setting.OAuther{}
-	setting.OAuthService.OAuthInfos = make(map[string]*setting.OAuthInfo)
-	setting.OAuthService.OAuthInfos["github"] = &setting.OAuthInfo{
-		ClientId:     "fake",
-		ClientSecret: "fakefake",
-		Enabled:      true,
-		AllowSignup:  true,
-		Name:         "github",
+	origOAuthService := setting.OAuthService
+	origOAuthAutoLogin := setting.OAuthAutoLogin
+	t.Cleanup(func() {
+		setting.OAuthService = origOAuthService
+		setting.OAuthAutoLogin = origOAuthAutoLogin
+	})
+	setting.OAuthService = &setting.OAuther{
+		OAuthInfos: map[string]*setting.OAuthInfo{
+			"github": {
+				ClientId:     "fake",
+				ClientSecret: "fakefake",
+				Enabled:      true,
+				AllowSignup:  true,
+				Name:         "github",
+			},
+		},
 	}
 	setting.OAuthAutoLogin = true
 
 	oauthError := errors.New("User not a member of one of the required organizations")
-	encryptedError, _ := util.Encrypt([]byte(oauthError.Error()), setting.SecretKey)
+	encryptedError, err := util.Encrypt([]byte(oauthError.Error()), setting.SecretKey)
+	require.NoError(t, err)
+	expCookiePath := "/"
+	if len(setting.AppSubUrl) > 0 {
+		expCookiePath = setting.AppSubUrl
+	}
 	cookie := http.Cookie{
-		Name:     LoginErrorCookieName,
+		Name:     loginErrorCookieName,
 		MaxAge:   60,
 		Value:    hex.EncodeToString(encryptedError),
 		HttpOnly: true,
-		Path:     setting.AppSubUrl + "/",
+		Path:     expCookiePath,
 		Secure:   hs.Cfg.CookieSecure,
 		SameSite: hs.Cfg.CookieSameSiteMode,
 	}
 	sc.m.Get(sc.url, sc.defaultHandler)
 	sc.fakeReqNoAssertionsWithCookie("GET", sc.url, cookie).exec()
-	assert.Equal(t, sc.resp.Code, 200)
+	require.Equal(t, 200, sc.resp.Code)
 
 	responseString, err := getBody(sc.resp)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, strings.Contains(responseString, oauthError.Error()))
 }
 
 func TestLoginViewRedirect(t *testing.T) {
-	mockSetIndexViewData()
-	defer resetSetIndexViewData()
+	fakeSetIndexViewData(t)
 
-	mockViewIndex()
-	defer resetViewIndex()
-	sc := setupScenarioContext("/login")
+	fakeViewIndex(t)
+	sc := setupScenarioContext(t, "/login")
 	hs := &HTTPServer{
 		Cfg:     setting.NewCfg(),
 		License: &licensing.OSSLicensingService{},
 	}
 	hs.Cfg.CookieSecure = true
 
-	sc.defaultHandler = Wrap(func(w http.ResponseWriter, c *models.ReqContext) {
+	sc.defaultHandler = routing.Wrap(func(w http.ResponseWriter, c *models.ReqContext) {
 		c.IsSignedIn = true
 		c.SignedInUser = &models.SignedInUser{
 			UserId: 10,
@@ -204,28 +224,74 @@ func TestLoginViewRedirect(t *testing.T) {
 			appURL:      "http://localhost:3000/",
 			status:      302,
 		},
+		{
+			desc:        "non-Grafana URL without scheme",
+			url:         "example.com",
+			redirectURL: "/",
+			appURL:      "http://localhost:3000/",
+			status:      302,
+		},
+		{
+			desc:        "non-Grafana URL without scheme",
+			url:         "www.example.com",
+			redirectURL: "/",
+			appURL:      "http://localhost:3000/",
+			status:      302,
+		},
+		{
+			desc:        "URL path is a host with two leading slashes",
+			url:         "//example.com",
+			redirectURL: "/",
+			appURL:      "http://localhost:3000/",
+			status:      302,
+		},
+		{
+			desc:        "URL path is a host with three leading slashes",
+			url:         "///example.com",
+			redirectURL: "/",
+			appURL:      "http://localhost:3000/",
+			status:      302,
+		},
+		{
+			desc:        "URL path is an IP address with two leading slashes",
+			url:         "//0.0.0.0",
+			redirectURL: "/",
+			appURL:      "http://localhost:3000/",
+			status:      302,
+		},
+		{
+			desc:        "URL path is an IP address with three leading slashes",
+			url:         "///0.0.0.0",
+			redirectURL: "/",
+			appURL:      "http://localhost:3000/",
+			status:      302,
+		},
 	}
 
 	for _, c := range redirectCases {
-		hs.Cfg.AppUrl = c.appURL
-		hs.Cfg.AppSubUrl = c.appSubURL
+		hs.Cfg.AppURL = c.appURL
+		hs.Cfg.AppSubURL = c.appSubURL
 		t.Run(c.desc, func(t *testing.T) {
+			expCookiePath := "/"
+			if len(hs.Cfg.AppSubURL) > 0 {
+				expCookiePath = hs.Cfg.AppSubURL
+			}
 			cookie := http.Cookie{
 				Name:     "redirect_to",
 				MaxAge:   60,
 				Value:    c.url,
 				HttpOnly: true,
-				Path:     hs.Cfg.AppSubUrl + "/",
+				Path:     expCookiePath,
 				Secure:   hs.Cfg.CookieSecure,
 				SameSite: hs.Cfg.CookieSameSiteMode,
 			}
 			sc.m.Get(sc.url, sc.defaultHandler)
 			sc.fakeReqNoAssertionsWithCookie("GET", sc.url, cookie).exec()
-			assert.Equal(t, c.status, sc.resp.Code)
+			require.Equal(t, c.status, sc.resp.Code)
 			if c.status == 302 {
 				location, ok := sc.resp.Header()["Location"]
 				assert.True(t, ok)
-				assert.Equal(t, location[0], c.redirectURL)
+				assert.Equal(t, c.redirectURL, location[0])
 
 				setCookie, ok := sc.resp.Header()["Set-Cookie"]
 				assert.True(t, ok, "Set-Cookie exists")
@@ -238,7 +304,7 @@ func TestLoginViewRedirect(t *testing.T) {
 					expCookieValue = ""
 					expCookieMaxAge = 0
 				}
-				expCookie := fmt.Sprintf("redirect_to=%v; Path=%v; Max-Age=%v; HttpOnly; Secure", expCookieValue, hs.Cfg.AppSubUrl+"/", expCookieMaxAge)
+				expCookie := fmt.Sprintf("redirect_to=%v; Path=%v; Max-Age=%v; HttpOnly; Secure", expCookieValue, expCookiePath, expCookieMaxAge)
 				for _, cookieValue := range setCookie {
 					if cookieValue == expCookie {
 						redirectToCookieFound = true
@@ -249,7 +315,7 @@ func TestLoginViewRedirect(t *testing.T) {
 			}
 
 			responseString, err := getBody(sc.resp)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			if c.err != nil {
 				assert.True(t, strings.Contains(responseString, c.err.Error()))
 			}
@@ -258,21 +324,20 @@ func TestLoginViewRedirect(t *testing.T) {
 }
 
 func TestLoginPostRedirect(t *testing.T) {
-	mockSetIndexViewData()
-	defer resetSetIndexViewData()
+	fakeSetIndexViewData(t)
 
-	mockViewIndex()
-	defer resetViewIndex()
-	sc := setupScenarioContext("/login")
+	fakeViewIndex(t)
+	sc := setupScenarioContext(t, "/login")
 	hs := &HTTPServer{
 		log:              &FakeLogger{},
 		Cfg:              setting.NewCfg(),
+		HooksService:     &hooks.HooksService{},
 		License:          &licensing.OSSLicensingService{},
 		AuthTokenService: auth.NewFakeUserAuthTokenService(),
 	}
 	hs.Cfg.CookieSecure = true
 
-	sc.defaultHandler = Wrap(func(w http.ResponseWriter, c *models.ReqContext) Response {
+	sc.defaultHandler = routing.Wrap(func(w http.ResponseWriter, c *models.ReqContext) response.Response {
 		cmd := dtos.LoginCommand{
 			User:     "admin",
 			Password: "admin",
@@ -326,27 +391,73 @@ func TestLoginPostRedirect(t *testing.T) {
 			appURL: "https://localhost:3000/",
 			err:    login.ErrAbsoluteRedirectTo,
 		},
+		{
+			desc:   "invalid URL",
+			url:    ":foo",
+			appURL: "http://localhost:3000/",
+			err:    login.ErrInvalidRedirectTo,
+		},
+		{
+			desc:   "non-Grafana URL without scheme",
+			url:    "example.com",
+			appURL: "http://localhost:3000/",
+			err:    login.ErrForbiddenRedirectTo,
+		},
+		{
+			desc:   "non-Grafana URL without scheme",
+			url:    "www.example.com",
+			appURL: "http://localhost:3000/",
+			err:    login.ErrForbiddenRedirectTo,
+		},
+		{
+			desc:   "URL path is a host with two leading slashes",
+			url:    "//example.com",
+			appURL: "http://localhost:3000/",
+			err:    login.ErrForbiddenRedirectTo,
+		},
+		{
+			desc:   "URL path is a host with three leading slashes",
+			url:    "///example.com",
+			appURL: "http://localhost:3000/",
+			err:    login.ErrForbiddenRedirectTo,
+		},
+		{
+			desc:   "URL path is an IP address with two leading slashes",
+			url:    "//0.0.0.0",
+			appURL: "http://localhost:3000/",
+			err:    login.ErrForbiddenRedirectTo,
+		},
+		{
+			desc:   "URL path is an IP address with three leading slashes",
+			url:    "///0.0.0.0",
+			appURL: "http://localhost:3000/",
+			err:    login.ErrForbiddenRedirectTo,
+		},
 	}
 
 	for _, c := range redirectCases {
-		hs.Cfg.AppUrl = c.appURL
-		hs.Cfg.AppSubUrl = c.appSubURL
+		hs.Cfg.AppURL = c.appURL
+		hs.Cfg.AppSubURL = c.appSubURL
 		t.Run(c.desc, func(t *testing.T) {
+			expCookiePath := "/"
+			if len(hs.Cfg.AppSubURL) > 0 {
+				expCookiePath = hs.Cfg.AppSubURL
+			}
 			cookie := http.Cookie{
 				Name:     "redirect_to",
 				MaxAge:   60,
 				Value:    c.url,
 				HttpOnly: true,
-				Path:     hs.Cfg.AppSubUrl + "/",
+				Path:     expCookiePath,
 				Secure:   hs.Cfg.CookieSecure,
 				SameSite: hs.Cfg.CookieSameSiteMode,
 			}
 			sc.m.Post(sc.url, sc.defaultHandler)
 			sc.fakeReqNoAssertionsWithCookie("POST", sc.url, cookie).exec()
-			assert.Equal(t, sc.resp.Code, 200)
+			require.Equal(t, 200, sc.resp.Code)
 
 			respJSON, err := simplejson.NewJson(sc.resp.Body.Bytes())
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			redirectURL := respJSON.Get("redirectUrl").MustString()
 			if c.err != nil {
 				assert.Equal(t, "", redirectURL)
@@ -358,7 +469,7 @@ func TestLoginPostRedirect(t *testing.T) {
 			assert.True(t, ok, "Set-Cookie exists")
 			assert.Greater(t, len(setCookie), 0)
 			var redirectToCookieFound bool
-			expCookieValue := fmt.Sprintf("redirect_to=; Path=%v; Max-Age=0; HttpOnly; Secure", hs.Cfg.AppSubUrl+"/")
+			expCookieValue := fmt.Sprintf("redirect_to=; Path=%v; Max-Age=0; HttpOnly; Secure", expCookiePath)
 			for _, cookieValue := range setCookie {
 				if cookieValue == expCookieValue {
 					redirectToCookieFound = true
@@ -371,16 +482,15 @@ func TestLoginPostRedirect(t *testing.T) {
 }
 
 func TestLoginOAuthRedirect(t *testing.T) {
-	mockSetIndexViewData()
-	defer resetSetIndexViewData()
+	fakeSetIndexViewData(t)
 
-	sc := setupScenarioContext("/login")
+	sc := setupScenarioContext(t, "/login")
 	hs := &HTTPServer{
 		Cfg:     setting.NewCfg(),
 		License: &licensing.OSSLicensingService{},
 	}
 
-	sc.defaultHandler = Wrap(func(c *models.ReqContext) {
+	sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) {
 		hs.LoginView(c)
 	})
 
@@ -397,50 +507,82 @@ func TestLoginOAuthRedirect(t *testing.T) {
 	sc.m.Get(sc.url, sc.defaultHandler)
 	sc.fakeReqNoAssertions("GET", sc.url).exec()
 
-	assert.Equal(t, sc.resp.Code, 307)
+	require.Equal(t, 307, sc.resp.Code)
 	location, ok := sc.resp.Header()["Location"]
 	assert.True(t, ok)
-	assert.Equal(t, location[0], "/login/github")
+	assert.Equal(t, "/login/github", location[0])
+}
+
+func TestLoginInternal(t *testing.T) {
+	fakeSetIndexViewData(t)
+
+	fakeViewIndex(t)
+	sc := setupScenarioContext(t, "/login")
+	hs := &HTTPServer{
+		Cfg:     setting.NewCfg(),
+		License: &licensing.OSSLicensingService{},
+		log:     log.New("test"),
+	}
+
+	sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) {
+		c.Req.URL.RawQuery = "disableAutoLogin=true"
+		hs.LoginView(c)
+	})
+
+	setting.OAuthService = &setting.OAuther{}
+	setting.OAuthService.OAuthInfos = make(map[string]*setting.OAuthInfo)
+	setting.OAuthService.OAuthInfos["github"] = &setting.OAuthInfo{
+		ClientId:     "fake",
+		ClientSecret: "fakefake",
+		Enabled:      true,
+		AllowSignup:  true,
+		Name:         "github",
+	}
+	setting.OAuthAutoLogin = true
+	sc.m.Get(sc.url, sc.defaultHandler)
+	sc.fakeReqNoAssertions("GET", sc.url).exec()
+
+	// Shouldn't redirect to the OAuth login URL
+	assert.Equal(t, 200, sc.resp.Code)
 }
 
 func TestAuthProxyLoginEnableLoginTokenDisabled(t *testing.T) {
-	sc := setupAuthProxyLoginTest(false)
+	sc := setupAuthProxyLoginTest(t, false)
 
-	assert.Equal(t, sc.resp.Code, 302)
+	require.Equal(t, 302, sc.resp.Code)
 	location, ok := sc.resp.Header()["Location"]
 	assert.True(t, ok)
-	assert.Equal(t, location[0], "/")
+	assert.Equal(t, "/", location[0])
 
 	_, ok = sc.resp.Header()["Set-Cookie"]
 	assert.False(t, ok, "Set-Cookie does not exist")
 }
 
 func TestAuthProxyLoginWithEnableLoginToken(t *testing.T) {
-	sc := setupAuthProxyLoginTest(true)
+	sc := setupAuthProxyLoginTest(t, true)
+	require.Equal(t, 302, sc.resp.Code)
 
-	assert.Equal(t, sc.resp.Code, 302)
 	location, ok := sc.resp.Header()["Location"]
 	assert.True(t, ok)
-	assert.Equal(t, location[0], "/")
-
-	setCookie, ok := sc.resp.Header()["Set-Cookie"]
-	assert.True(t, ok, "Set-Cookie exists")
+	assert.Equal(t, "/", location[0])
+	setCookie := sc.resp.Header()["Set-Cookie"]
+	require.NotNil(t, setCookie, "Set-Cookie should exist")
 	assert.Equal(t, "grafana_session=; Path=/; Max-Age=0; HttpOnly", setCookie[0])
 }
 
-func setupAuthProxyLoginTest(enableLoginToken bool) *scenarioContext {
-	mockSetIndexViewData()
-	defer resetSetIndexViewData()
+func setupAuthProxyLoginTest(t *testing.T, enableLoginToken bool) *scenarioContext {
+	fakeSetIndexViewData(t)
 
-	sc := setupScenarioContext("/login")
+	sc := setupScenarioContext(t, "/login")
+	sc.cfg.LoginCookieName = "grafana_session"
 	hs := &HTTPServer{
-		Cfg:              setting.NewCfg(),
+		Cfg:              sc.cfg,
 		License:          &licensing.OSSLicensingService{},
 		AuthTokenService: auth.NewFakeUserAuthTokenService(),
 		log:              log.New("hello"),
 	}
 
-	sc.defaultHandler = Wrap(func(c *models.ReqContext) {
+	sc.defaultHandler = routing.Wrap(func(c *models.ReqContext) {
 		c.IsSignedIn = true
 		c.SignedInUser = &models.SignedInUser{
 			UserId: 10,
@@ -450,11 +592,118 @@ func setupAuthProxyLoginTest(enableLoginToken bool) *scenarioContext {
 
 	setting.OAuthService = &setting.OAuther{}
 	setting.OAuthService.OAuthInfos = make(map[string]*setting.OAuthInfo)
-	setting.AuthProxyEnabled = true
-	setting.AuthProxyEnableLoginToken = enableLoginToken
+	sc.cfg.AuthProxyEnabled = true
+	sc.cfg.AuthProxyEnableLoginToken = enableLoginToken
 
 	sc.m.Get(sc.url, sc.defaultHandler)
 	sc.fakeReqNoAssertions("GET", sc.url).exec()
 
 	return sc
+}
+
+type loginHookTest struct {
+	info *models.LoginInfo
+}
+
+func (r *loginHookTest) LoginHook(loginInfo *models.LoginInfo, req *models.ReqContext) {
+	r.info = loginInfo
+}
+
+func TestLoginPostRunLokingHook(t *testing.T) {
+	sc := setupScenarioContext(t, "/login")
+	hookService := &hooks.HooksService{}
+	hs := &HTTPServer{
+		log:              log.New("test"),
+		Cfg:              setting.NewCfg(),
+		License:          &licensing.OSSLicensingService{},
+		AuthTokenService: auth.NewFakeUserAuthTokenService(),
+		HooksService:     hookService,
+	}
+
+	sc.defaultHandler = routing.Wrap(func(w http.ResponseWriter, c *models.ReqContext) response.Response {
+		cmd := dtos.LoginCommand{
+			User:     "admin",
+			Password: "admin",
+		}
+		return hs.LoginPost(c, cmd)
+	})
+
+	testHook := loginHookTest{}
+	hookService.AddLoginHook(testHook.LoginHook)
+
+	testUser := &models.User{
+		Id:    42,
+		Email: "",
+	}
+
+	testCases := []struct {
+		desc       string
+		authUser   *models.User
+		authModule string
+		authErr    error
+		info       models.LoginInfo
+	}{
+		{
+			desc:    "invalid credentials",
+			authErr: login.ErrInvalidCredentials,
+			info: models.LoginInfo{
+				AuthModule: "",
+				HTTPStatus: 401,
+				Error:      login.ErrInvalidCredentials,
+			},
+		},
+		{
+			desc:    "user disabled",
+			authErr: login.ErrUserDisabled,
+			info: models.LoginInfo{
+				AuthModule: "",
+				HTTPStatus: 401,
+				Error:      login.ErrUserDisabled,
+			},
+		},
+		{
+			desc:       "valid Grafana user",
+			authUser:   testUser,
+			authModule: "grafana",
+			info: models.LoginInfo{
+				AuthModule: "grafana",
+				User:       testUser,
+				HTTPStatus: 200,
+			},
+		},
+		{
+			desc:       "valid LDAP user",
+			authUser:   testUser,
+			authModule: "ldap",
+			info: models.LoginInfo{
+				AuthModule: "ldap",
+				User:       testUser,
+				HTTPStatus: 200,
+			},
+		},
+	}
+
+	for _, c := range testCases {
+		t.Run(c.desc, func(t *testing.T) {
+			bus.AddHandler("grafana-auth", func(query *models.LoginUserQuery) error {
+				query.User = c.authUser
+				query.AuthModule = c.authModule
+				return c.authErr
+			})
+
+			sc.m.Post(sc.url, sc.defaultHandler)
+			sc.fakeReqNoAssertions("POST", sc.url).exec()
+
+			info := testHook.info
+			assert.Equal(t, c.info.AuthModule, info.AuthModule)
+			assert.Equal(t, "admin", info.LoginUsername)
+			assert.Equal(t, c.info.HTTPStatus, info.HTTPStatus)
+			assert.Equal(t, c.info.Error, info.Error)
+
+			if c.info.User != nil {
+				require.NotEmpty(t, info.User)
+				assert.Equal(t, c.info.User.Id, info.User.Id)
+			}
+		})
+	}
 }

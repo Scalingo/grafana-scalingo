@@ -2,38 +2,51 @@ package plugins
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
 	"github.com/gosimple/slug"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins/backendplugin"
+	"github.com/grafana/grafana/pkg/plugins/backendplugin/grpcplugin"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/util/errutil"
 )
-
-type AppPluginCss struct {
-	Light string `json:"light"`
-	Dark  string `json:"dark"`
-}
 
 type AppPlugin struct {
 	FrontendPluginBase
-	Routes []*AppPluginRoute `json:"routes"`
+	Routes      []*AppPluginRoute `json:"routes"`
+	AutoEnabled bool              `json:"autoEnabled"`
 
 	FoundChildPlugins []*PluginInclude `json:"-"`
 	Pinned            bool             `json:"-"`
+
+	Executable string `json:"executable,omitempty"`
 }
 
+// AppPluginRoute describes a plugin route that is defined in
+// the plugin.json file for a plugin.
 type AppPluginRoute struct {
-	Path         string                 `json:"path"`
-	Method       string                 `json:"method"`
-	ReqRole      models.RoleType        `json:"reqRole"`
-	Url          string                 `json:"url"`
-	Headers      []AppPluginRouteHeader `json:"headers"`
-	TokenAuth    *JwtTokenAuth          `json:"tokenAuth"`
-	JwtTokenAuth *JwtTokenAuth          `json:"jwtTokenAuth"`
+	Path         string                   `json:"path"`
+	Method       string                   `json:"method"`
+	ReqRole      models.RoleType          `json:"reqRole"`
+	URL          string                   `json:"url"`
+	URLParams    []AppPluginRouteURLParam `json:"urlParams"`
+	Headers      []AppPluginRouteHeader   `json:"headers"`
+	TokenAuth    *JwtTokenAuth            `json:"tokenAuth"`
+	JwtTokenAuth *JwtTokenAuth            `json:"jwtTokenAuth"`
 }
 
+// AppPluginRouteHeader describes an HTTP header that is forwarded with
+// the proxied request for a plugin route
 type AppPluginRouteHeader struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
+// AppPluginRouteURLParam describes query string parameters for
+// a url in a plugin route
+type AppPluginRouteURLParam struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
 }
@@ -46,13 +59,22 @@ type JwtTokenAuth struct {
 	Params map[string]string `json:"params"`
 }
 
-func (app *AppPlugin) Load(decoder *json.Decoder, pluginDir string, backendPluginManager backendplugin.Manager) error {
+func (app *AppPlugin) Load(decoder *json.Decoder, base *PluginBase, backendPluginManager backendplugin.Manager) error {
 	if err := decoder.Decode(app); err != nil {
 		return err
 	}
 
-	if err := app.registerPlugin(pluginDir); err != nil {
+	if err := app.registerPlugin(base); err != nil {
 		return err
+	}
+
+	if app.Backend {
+		cmd := ComposePluginStartCommand(app.Executable)
+		fullpath := filepath.Join(app.PluginDir, cmd)
+		factory := grpcplugin.NewBackendPlugin(app.Id, fullpath, grpcplugin.PluginStartFuncs{})
+		if err := backendPluginManager.Register(app.Id, factory); err != nil {
+			return errutil.Wrapf(err, "failed to register backend plugin")
+		}
 	}
 
 	Apps[app.Id] = app

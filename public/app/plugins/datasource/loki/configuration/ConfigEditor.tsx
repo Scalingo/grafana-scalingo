@@ -39,8 +39,8 @@ export const ConfigEditor = (props: Props) => {
         <div className="gf-form-inline">
           <div className="gf-form">
             <MaxLinesField
-              value={options.jsonData.maxLines}
-              onChange={value => onOptionsChange(setMaxLines(options, value))}
+              value={options.jsonData.maxLines || ''}
+              onChange={(value) => onOptionsChange(setMaxLines(options, value))}
             />
           </div>
         </div>
@@ -48,7 +48,7 @@ export const ConfigEditor = (props: Props) => {
 
       <DerivedFields
         value={options.jsonData.derivedFields}
-        onChange={value => onOptionsChange(setDerivedFields(options, value))}
+        onChange={(value) => onOptionsChange(setDerivedFields(options, value))}
       />
     </>
   );

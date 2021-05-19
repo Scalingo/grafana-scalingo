@@ -1,5 +1,6 @@
 import React, { FC } from 'react';
 import config from 'app/core/config';
+import { Icon, IconName } from '@grafana/ui';
 
 export interface FooterLink {
   text: string;
@@ -12,19 +13,19 @@ export let getFooterLinks = (): FooterLink[] => {
   return [
     {
       text: 'Documentation',
-      icon: 'fa fa-file-code-o',
+      icon: 'document-info',
       url: 'https://grafana.com/docs/grafana/latest/?utm_source=grafana_footer',
       target: '_blank',
     },
     {
       text: 'Support',
-      icon: 'fa fa-support',
+      icon: 'question-circle',
       url: 'https://grafana.com/products/enterprise/?utm_source=grafana_footer',
       target: '_blank',
     },
     {
       text: 'Community',
-      icon: 'fa fa-comments-o',
+      icon: 'comments-alt',
       url: 'https://community.grafana.com/?utm_source=grafana_footer',
       target: '_blank',
     },
@@ -37,12 +38,17 @@ export let getVersionLinks = (): FooterLink[] => {
   const stateInfo = licenseInfo.stateInfo ? ` (${licenseInfo.stateInfo})` : '';
 
   links.push({ text: `${buildInfo.edition}${stateInfo}`, url: licenseInfo.licenseUrl });
+
+  if (buildInfo.hideVersion) {
+    return links;
+  }
+
   links.push({ text: `v${buildInfo.version} (${buildInfo.commit})` });
 
   if (buildInfo.hasUpdate) {
     links.push({
       text: `New version available!`,
-      icon: 'fa fa-download',
+      icon: 'download-alt',
       url: 'https://grafana.com/grafana/download?utm_source=grafana_footer',
       target: '_blank',
     });
@@ -66,10 +72,10 @@ export const Footer: FC = React.memo(() => {
     <footer className="footer">
       <div className="text-center">
         <ul>
-          {links.map(link => (
+          {links.map((link) => (
             <li key={link.text}>
               <a href={link.url} target={link.target} rel="noopener">
-                <i className={link.icon} /> {link.text}
+                {link.icon && <Icon name={link.icon as IconName} />} {link.text}
               </a>
             </li>
           ))}
@@ -78,3 +84,5 @@ export const Footer: FC = React.memo(() => {
     </footer>
   );
 });
+
+Footer.displayName = 'Footer';

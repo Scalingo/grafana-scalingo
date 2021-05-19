@@ -1,4 +1,4 @@
-import { addLabelToQuery, addLabelToSelector, keepSelectorFilters } from './add_label_to_query';
+import { addLabelToQuery, addLabelToSelector } from './add_label_to_query';
 
 describe('addLabelToQuery()', () => {
   it('should add label to simple query', () => {
@@ -22,6 +22,12 @@ describe('addLabelToQuery()', () => {
 
   it('should detect in-order function use', () => {
     expect(addLabelToQuery('sum by (xx) (foo)', 'bar', 'baz')).toBe('sum by (xx) (foo{bar="baz"})');
+  });
+
+  it('should convert number Infinity to +Inf', () => {
+    expect(
+      addLabelToQuery('sum(rate(prometheus_tsdb_compaction_chunk_size_bytes_bucket[5m])) by (le)', 'le', Infinity)
+    ).toBe('sum(rate(prometheus_tsdb_compaction_chunk_size_bytes_bucket{le="+Inf"}[5m])) by (le)');
   });
 
   it('should handle selectors with punctuation', () => {
@@ -58,6 +64,55 @@ describe('addLabelToQuery()', () => {
       'avg(foo{bar="baz"}) + sum(xx_yy{bar="baz"})'
     );
   });
+
+  it('should not remove filters', () => {
+    expect(addLabelToQuery('{x="y"} |="yy"', 'bar', 'baz')).toBe('{bar="baz",x="y"} |="yy"');
+    expect(addLabelToQuery('{x="y"} |="yy" !~"xx"', 'bar', 'baz')).toBe('{bar="baz",x="y"} |="yy" !~"xx"');
+  });
+
+  it('should add label to query properly with Loki datasource', () => {
+    expect(addLabelToQuery('{job="grafana"} |= "foo-bar"', 'filename', 'test.txt', undefined, true)).toBe(
+      '{filename="test.txt",job="grafana"} |= "foo-bar"'
+    );
+  });
+
+  it('should add labels to metrics with logical operators', () => {
+    expect(addLabelToQuery('foo_info or bar_info', 'bar', 'baz')).toBe('foo_info{bar="baz"} or bar_info{bar="baz"}');
+    expect(addLabelToQuery('foo_info and bar_info', 'bar', 'baz')).toBe('foo_info{bar="baz"} and bar_info{bar="baz"}');
+  });
+
+  it('should not add ad-hoc filter to template variables', () => {
+    expect(addLabelToQuery('sum(rate({job="foo"}[2m])) by (value $variable)', 'bar', 'baz')).toBe(
+      'sum(rate({bar="baz",job="foo"}[2m])) by (value $variable)'
+    );
+  });
+
+  it('should not add ad-hoc filter to range', () => {
+    expect(addLabelToQuery('avg(rate((my_metric{job="foo"} > 0)[3h:])) by (label)', 'bar', 'baz')).toBe(
+      'avg(rate((my_metric{bar="baz",job="foo"} > 0)[3h:])) by (label)'
+    );
+  });
+  it('should not add ad-hoc filter to labels in label list provided with the group modifier', () => {
+    expect(
+      addLabelToQuery(
+        'max by (id, name, type) (my_metric{type=~"foo|bar|baz-test"}) * on(id) group_right(id, type, name) sum by (id) (my_metric) * 1000',
+        'bar',
+        'baz'
+      )
+    ).toBe(
+      'max by (id, name, type) (my_metric{bar="baz",type=~"foo|bar|baz-test"}) * on(id) group_right(id, type, name) sum by (id) (my_metric{bar="baz"}) * 1000'
+    );
+  });
+  it('should not add ad-hoc filter to labels in label list provided with the group modifier', () => {
+    expect(addLabelToQuery('rate(my_metric[${__range_s}s])', 'bar', 'baz')).toBe(
+      'rate(my_metric{bar="baz"}[${__range_s}s])'
+    );
+  });
+  it('should not add ad-hoc filter to labels to math operations', () => {
+    expect(addLabelToQuery('count(my_metric{job!="foo"} < (5*1024*1024*1024) or vector(0)) - 1', 'bar', 'baz')).toBe(
+      'count(my_metric{bar="baz",job!="foo"} < (5*1024*1024*1024) or vector(0)) - 1'
+    );
+  });
 });
 
 describe('addLabelToSelector()', () => {
@@ -70,17 +125,5 @@ describe('addLabelToSelector()', () => {
   });
   test('should add a label to a selector with custom operator', () => {
     expect(addLabelToSelector('{}', 'baz', '42', '!=')).toBe('{baz!="42"}');
-  });
-});
-
-describe('keepSelectorFilters()', () => {
-  test('should return empty string if no filter is in selector', () => {
-    expect(keepSelectorFilters('{foo="bar"}')).toBe('');
-  });
-  test('should return a filter if filter is in selector', () => {
-    expect(keepSelectorFilters('{foo="bar"} |="baz"')).toBe('|="baz"');
-  });
-  test('should return multiple filters if multiple filters are in selector', () => {
-    expect(keepSelectorFilters('{foo!="bar"} |="baz" |~"yy" !~"xx"')).toBe('|="baz" |~"yy" !~"xx"');
   });
 });

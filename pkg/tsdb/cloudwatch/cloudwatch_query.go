@@ -37,7 +37,6 @@ func (q *cloudWatchQuery) isInferredSearchExpression() bool {
 	if len(q.Dimensions) == 0 {
 		return !q.MatchExact
 	}
-
 	if !q.MatchExact {
 		return true
 	}
@@ -69,8 +68,4 @@ func (q *cloudWatchQuery) isMultiValuedDimensionExpression() bool {
 	}
 
 	return false
-}
-
-func (q *cloudWatchQuery) isMetricStat() bool {
-	return !q.isSearchExpression() && !q.isMathExpression()
 }

@@ -1,24 +1,50 @@
-import React, { useEffect } from 'react';
-import { useForm, Mode, OnSubmit, DeepPartial, FormContextValues } from 'react-hook-form';
+import React, { HTMLProps, useEffect } from 'react';
+import { useForm, Mode, OnSubmit, DeepPartial } from 'react-hook-form';
+import { FormAPI } from '../../types';
+import { css } from 'emotion';
 
-type FormAPI<T> = Pick<FormContextValues<T>, 'register' | 'errors' | 'control'>;
-
-interface FormProps<T> {
+interface FormProps<T> extends Omit<HTMLProps<HTMLFormElement>, 'onSubmit'> {
   validateOn?: Mode;
+  validateOnMount?: boolean;
+  validateFieldsOnMount?: string[];
   defaultValues?: DeepPartial<T>;
   onSubmit: OnSubmit<T>;
   children: (api: FormAPI<T>) => React.ReactNode;
+  /** Sets max-width for container. Use it instead of setting individual widths on inputs.*/
+  maxWidth?: number | 'none';
 }
 
-export function Form<T>({ defaultValues, onSubmit, children, validateOn = 'onSubmit' }: FormProps<T>) {
-  const { handleSubmit, register, errors, control, reset, getValues } = useForm<T>({
+export function Form<T>({
+  defaultValues,
+  onSubmit,
+  validateOnMount = false,
+  validateFieldsOnMount,
+  children,
+  validateOn = 'onSubmit',
+  maxWidth = 600,
+  ...htmlProps
+}: FormProps<T>) {
+  const { handleSubmit, register, errors, control, triggerValidation, getValues, formState, watch } = useForm<T>({
     mode: validateOn,
     defaultValues,
   });
 
   useEffect(() => {
-    reset({ ...getValues(), ...defaultValues });
-  }, [defaultValues]);
+    if (validateOnMount) {
+      triggerValidation(validateFieldsOnMount);
+    }
+  }, [triggerValidation, validateFieldsOnMount, validateOnMount]);
 
-  return <form onSubmit={handleSubmit(onSubmit)}>{children({ register, errors, control })}</form>;
+  return (
+    <form
+      className={css`
+        max-width: ${maxWidth !== 'none' ? maxWidth + 'px' : maxWidth};
+        width: 100%;
+      `}
+      onSubmit={handleSubmit(onSubmit)}
+      {...htmlProps}
+    >
+      {children({ register, errors, control, getValues, formState, watch })}
+    </form>
+  );
 }

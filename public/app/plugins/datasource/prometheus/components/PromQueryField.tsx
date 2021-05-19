@@ -10,29 +10,42 @@ import {
   TypeaheadOutput,
   QueryField,
   BracesPlugin,
+  DOMUtil,
+  SuggestionsState,
 } from '@grafana/ui';
 
-import Prism from 'prismjs';
+import { LanguageMap, languages as prismLanguages } from 'prismjs';
 
 // dom also includes Element polyfills
 import { PromQuery, PromOptions, PromMetricsMetadata } from '../types';
+import { roundMsToMin } from '../language_utils';
 import { CancelablePromise, makePromiseCancelable } from 'app/core/utils/CancelablePromise';
-import { ExploreQueryFieldProps, QueryHint, isDataFrame, toLegacyResponseData, HistoryItem } from '@grafana/data';
-import { DOMUtil, SuggestionsState } from '@grafana/ui';
+import {
+  ExploreQueryFieldProps,
+  QueryHint,
+  isDataFrame,
+  toLegacyResponseData,
+  HistoryItem,
+  TimeRange,
+} from '@grafana/data';
 import { PrometheusDatasource } from '../datasource';
-import PromQlLanguageProvider from '../language_provider';
 
 const HISTOGRAM_GROUP = '__histograms__';
-const PRISM_SYNTAX = 'promql';
 export const RECORDING_RULES_GROUP = '__recording_rules__';
 
-function getChooserText(hasSyntax: boolean, metrics: string[]) {
+function getChooserText(metricsLookupDisabled: boolean, hasSyntax: boolean, metrics: string[]) {
+  if (metricsLookupDisabled) {
+    return '(Disabled)';
+  }
+
   if (!hasSyntax) {
     return 'Loading metrics...';
   }
+
   if (metrics && metrics.length === 0) {
     return '(No metrics found)';
   }
+
   return 'Metrics';
 }
 
@@ -48,14 +61,14 @@ function addMetricsMetadata(metric: string, metadata?: PromMetricsMetadata): Cas
 export function groupMetricsByPrefix(metrics: string[], metadata?: PromMetricsMetadata): CascaderOption[] {
   // Filter out recording rules and insert as first option
   const ruleRegex = /:\w+:/;
-  const ruleNames = metrics.filter(metric => ruleRegex.test(metric));
+  const ruleNames = metrics.filter((metric) => ruleRegex.test(metric));
   const rulesOption = {
     label: 'Recording rules',
     value: RECORDING_RULES_GROUP,
     children: ruleNames
       .slice()
       .sort()
-      .map(name => ({ label: name, value: name })),
+      .map((name) => ({ label: name, value: name })),
   };
 
   const options = ruleNames.length > 0 ? [rulesOption] : [];
@@ -67,7 +80,7 @@ export function groupMetricsByPrefix(metrics: string[], metadata?: PromMetricsMe
     .map(
       (metricsForPrefix: string[], prefix: string): CascaderOption => {
         const prefixIsMetric = metricsForPrefix.length === 1 && metricsForPrefix[0] === prefix;
-        const children = prefixIsMetric ? [] : metricsForPrefix.sort().map(m => addMetricsMetadata(m, metadata));
+        const children = prefixIsMetric ? [] : metricsForPrefix.sort().map((m) => addMetricsMetadata(m, metadata));
         return {
           children,
           label: prefix,
@@ -121,22 +134,20 @@ interface PromQueryFieldState {
 
 class PromQueryField extends React.PureComponent<PromQueryFieldProps, PromQueryFieldState> {
   plugins: Plugin[];
-  languageProvider: PromQlLanguageProvider;
   languageProviderInitializationPromise: CancelablePromise<any>;
 
   constructor(props: PromQueryFieldProps, context: React.Context<any>) {
     super(props, context);
 
-    if (props.datasource.languageProvider) {
-      this.languageProvider = props.datasource.languageProvider;
-    }
-
     this.plugins = [
       BracesPlugin(),
-      SlatePrism({
-        onlyIn: (node: any) => node.type === 'code_block',
-        getSyntax: (node: any) => 'promql',
-      }),
+      SlatePrism(
+        {
+          onlyIn: (node: any) => node.type === 'code_block',
+          getSyntax: (node: any) => 'promql',
+        },
+        { ...(prismLanguages as LanguageMap), promql: this.props.datasource.languageProvider.syntax }
+      ),
     ];
 
     this.state = {
@@ -147,9 +158,8 @@ class PromQueryField extends React.PureComponent<PromQueryFieldProps, PromQueryF
   }
 
   componentDidMount() {
-    if (this.languageProvider) {
-      Prism.languages[PRISM_SYNTAX] = this.languageProvider.syntax;
-      this.refreshMetrics(makePromiseCancelable(this.languageProvider.start()));
+    if (this.props.datasource.languageProvider) {
+      this.refreshMetrics();
     }
     this.refreshHint();
   }
@@ -161,7 +171,26 @@ class PromQueryField extends React.PureComponent<PromQueryFieldProps, PromQueryF
   }
 
   componentDidUpdate(prevProps: PromQueryFieldProps) {
-    const { data } = this.props;
+    const {
+      data,
+      datasource: { languageProvider },
+      range,
+    } = this.props;
+
+    if (languageProvider !== prevProps.datasource.languageProvider) {
+      // We reset this only on DS change so we do not flesh loading state on every rangeChange which happens on every
+      // query run if using relative range.
+      this.setState({
+        metricsOptions: [],
+        syntaxLoaded: false,
+      });
+    }
+
+    const changedRangeToRefresh = this.rangeChangedToRefresh(range, prevProps.range);
+    // We want to refresh metrics when language provider changes and/or when range changes (we round up intervals to a minute)
+    if (languageProvider !== prevProps.datasource.languageProvider || changedRangeToRefresh) {
+      this.refreshMetrics();
+    }
 
     if (data && prevProps.data && prevProps.data.series !== data.series) {
       this.refreshHint();
@@ -178,29 +207,52 @@ class PromQueryField extends React.PureComponent<PromQueryFieldProps, PromQueryF
 
     const result = isDataFrame(data.series[0]) ? data.series.map(toLegacyResponseData) : data.series;
     const hints = datasource.getQueryHints(query, result);
-    const hint = hints && hints.length > 0 ? hints[0] : null;
+    let hint = hints.length > 0 ? hints[0] : null;
+
+    // Hint for big disabled lookups
+    if (!hint && datasource.lookupsDisabled) {
+      hint = {
+        label: `Labels and metrics lookup was disabled in data source settings.`,
+        type: 'INFO',
+      };
+    }
     this.setState({ hint });
   };
 
-  refreshMetrics = (cancelablePromise: CancelablePromise<any>) => {
-    this.languageProviderInitializationPromise = cancelablePromise;
-    this.languageProviderInitializationPromise.promise
-      .then(remaining => {
-        remaining.map((task: Promise<any>) => task.then(this.onUpdateLanguage).catch(() => {}));
-      })
-      .then(() => this.onUpdateLanguage())
-      .catch(err => {
-        if (!err.isCanceled) {
-          throw err;
-        }
-      });
+  refreshMetrics = async () => {
+    const {
+      datasource: { languageProvider },
+    } = this.props;
+
+    this.languageProviderInitializationPromise = makePromiseCancelable(languageProvider.start());
+
+    try {
+      const remainingTasks = await this.languageProviderInitializationPromise.promise;
+      await Promise.all(remainingTasks);
+      this.onUpdateLanguage();
+    } catch (err) {
+      if (!err.isCanceled) {
+        throw err;
+      }
+    }
   };
+
+  rangeChangedToRefresh(range?: TimeRange, prevRange?: TimeRange): boolean {
+    if (range && prevRange) {
+      const sameMinuteFrom = roundMsToMin(range.from.valueOf()) === roundMsToMin(prevRange.from.valueOf());
+      const sameMinuteTo = roundMsToMin(range.to.valueOf()) === roundMsToMin(prevRange.to.valueOf());
+      // If both are same, don't need to refresh.
+      return !(sameMinuteFrom && sameMinuteTo);
+    }
+    return false;
+  }
 
   onChangeMetrics = (values: string[], selectedOptions: CascaderOption[]) => {
     let query;
     if (selectedOptions.length === 1) {
-      if (selectedOptions[0].children.length === 0) {
-        query = selectedOptions[0].value;
+      const selectedOption = selectedOptions[0];
+      if (!selectedOption.children || selectedOption.children.length === 0) {
+        query = selectedOption.value;
       } else {
         // Ignore click on group
         return;
@@ -234,18 +286,16 @@ class PromQueryField extends React.PureComponent<PromQueryFieldProps, PromQueryF
     const { datasource, query, onChange, onRunQuery } = this.props;
     const { hint } = this.state;
 
-    onChange(datasource.modifyQuery(query, hint.fix.action));
+    onChange(datasource.modifyQuery(query, hint!.fix!.action));
     onRunQuery();
   };
 
   onUpdateLanguage = () => {
     const {
-      histogramMetrics,
-      metrics,
-      metricsMetadata,
-      lookupsDisabled,
-      lookupMetricsThreshold,
-    } = this.languageProvider;
+      datasource: { languageProvider },
+    } = this.props;
+    const { histogramMetrics, metrics, metricsMetadata } = languageProvider;
+
     if (!metrics) {
       return;
     }
@@ -261,52 +311,50 @@ class PromQueryField extends React.PureComponent<PromQueryFieldProps, PromQueryF
           ]
         : metricsByPrefix;
 
-    // Hint for big disabled lookups
-    let hint: QueryHint;
-    if (lookupsDisabled) {
-      hint = {
-        label: `Dynamic label lookup is disabled for datasources with more than ${lookupMetricsThreshold} metrics.`,
-        type: 'INFO',
-      };
-    }
-
-    this.setState({ hint, metricsOptions, syntaxLoaded: true });
+    this.setState({ metricsOptions, syntaxLoaded: true });
   };
 
   onTypeahead = async (typeahead: TypeaheadInput): Promise<TypeaheadOutput> => {
-    if (!this.languageProvider) {
+    const {
+      datasource: { languageProvider },
+    } = this.props;
+
+    if (!languageProvider) {
       return { suggestions: [] };
     }
 
     const { history } = this.props;
     const { prefix, text, value, wrapperClasses, labelKey } = typeahead;
 
-    const result = await this.languageProvider.provideCompletionItems(
+    const result = await languageProvider.provideCompletionItems(
       { text, value, prefix, wrapperClasses, labelKey },
       { history }
     );
-
-    // console.log('handleTypeahead', wrapperClasses, text, prefix, labelKey, result.context);
 
     return result;
   };
 
   render() {
-    const { query, ExtraFieldElement } = this.props;
+    const {
+      datasource,
+      datasource: { languageProvider },
+      query,
+      ExtraFieldElement,
+    } = this.props;
     const { metricsOptions, syntaxLoaded, hint } = this.state;
-    const cleanText = this.languageProvider ? this.languageProvider.cleanText : undefined;
-    const chooserText = getChooserText(syntaxLoaded, metricsOptions);
+    const cleanText = languageProvider ? languageProvider.cleanText : undefined;
+    const chooserText = getChooserText(datasource.lookupsDisabled, syntaxLoaded, metricsOptions);
     const buttonDisabled = !(syntaxLoaded && metricsOptions && metricsOptions.length > 0);
 
     return (
       <>
-        <div className="gf-form-inline gf-form-inline--nowrap flex-grow-1">
-          <div className="gf-form flex-shrink-0">
+        <div className="gf-form-inline gf-form-inline--xs-view-flex-column flex-grow-1">
+          <div className="gf-form flex-shrink-0 min-width-5">
             <ButtonCascader options={metricsOptions} disabled={buttonDisabled} onChange={this.onChangeMetrics}>
               {chooserText}
             </ButtonCascader>
           </div>
-          <div className="gf-form gf-form--grow flex-shrink-1">
+          <div className="gf-form gf-form--grow flex-shrink-1 min-width-15">
             <QueryField
               additionalPlugins={this.plugins}
               cleanText={cleanText}
@@ -316,13 +364,13 @@ class PromQueryField extends React.PureComponent<PromQueryFieldProps, PromQueryF
               onBlur={this.props.onBlur}
               onChange={this.onChangeQuery}
               onRunQuery={this.props.onRunQuery}
-              placeholder="Enter a PromQL query"
+              placeholder="Enter a PromQL query (run with Shift+Enter)"
               portalOrigin="prometheus"
               syntaxLoaded={syntaxLoaded}
             />
           </div>
-          {ExtraFieldElement}
         </div>
+        {ExtraFieldElement}
         {hint ? (
           <div className="query-row-break">
             <div className="prom-query-field-info text-warning">

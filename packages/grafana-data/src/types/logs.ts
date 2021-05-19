@@ -1,6 +1,7 @@
 import { Labels } from './data';
 import { GraphSeriesXY } from './graph';
 import { DataFrame } from './dataFrame';
+import { AbsoluteTimeRange } from './time';
 
 /**
  * Mapping of log level abbreviation to canonical log level.
@@ -8,6 +9,7 @@ import { DataFrame } from './dataFrame';
  */
 export enum LogLevel {
   emerg = 'critical',
+  fatal = 'critical',
   alert = 'critical',
   crit = 'critical',
   critical = 'critical',
@@ -17,6 +19,7 @@ export enum LogLevel {
   eror = 'error',
   error = 'error',
   info = 'info',
+  information = 'info',
   notice = 'info',
   dbug = 'debug',
   debug = 'debug',
@@ -24,10 +27,17 @@ export enum LogLevel {
   unknown = 'unknown',
 }
 
+// Used for meta information such as common labels or returned log rows in logs view in Explore
 export enum LogsMetaKind {
   Number,
   String,
   LabelsMap,
+  Error,
+}
+
+export enum LogsSortOrder {
+  Descending = 'Descending',
+  Ascending = 'Ascending',
 }
 
 export interface LogsMetaItem {
@@ -52,12 +62,16 @@ export interface LogRowModel {
   // Actual log line
   entry: string;
   hasAnsi: boolean;
+  hasUnescapedContent: boolean;
   labels: Labels;
   logLevel: LogLevel;
   raw: string;
   searchWords?: string[];
   timeFromNow: string;
   timeEpochMs: number;
+  // timeEpochNs stores time with nanosecond-level precision,
+  // as millisecond-level precision is usually not enough for proper sorting of logs
+  timeEpochNs: string;
   timeLocal: string;
   timeUtc: string;
   uid: string;
@@ -69,6 +83,7 @@ export interface LogsModel {
   meta?: LogsMetaItem[];
   rows: LogRowModel[];
   series?: GraphSeriesXY[];
+  visibleRange?: AbsoluteTimeRange;
 }
 
 export interface LogSearchMatch {

@@ -1,21 +1,7 @@
-import { PieChartType, SingleStatBaseOptions } from '@grafana/ui';
-import { standardFieldDisplayOptions } from '../stat/types';
-import { ReducerID, VizOrientation } from '@grafana/data';
+import { PieChartType, SingleStatBaseOptions, PieChartLabels, PieChartLegendOptions } from '@grafana/ui';
 
 export interface PieChartOptions extends SingleStatBaseOptions {
   pieType: PieChartType;
-  strokeWidth: number;
+  displayLabels: PieChartLabels[];
+  legend: PieChartLegendOptions;
 }
-
-export const defaults: PieChartOptions = {
-  pieType: PieChartType.PIE,
-  strokeWidth: 1,
-  orientation: VizOrientation.Auto,
-  fieldOptions: {
-    ...standardFieldDisplayOptions,
-    calcs: [ReducerID.last],
-    defaults: {
-      unit: 'short',
-    },
-  },
-};

@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/go-xorm/xorm"
+	"xorm.io/xorm"
 )
 
 type DBSession struct {
@@ -19,7 +19,7 @@ func (sess *DBSession) publishAfterCommit(msg interface{}) {
 }
 
 // NewSession returns a new DBSession
-func (ss *SqlStore) NewSession() *DBSession {
+func (ss *SQLStore) NewSession() *DBSession {
 	return &DBSession{Session: ss.engine.NewSession()}
 }
 
@@ -28,7 +28,7 @@ func newSession() *DBSession {
 }
 
 func startSession(ctx context.Context, engine *xorm.Engine, beginTran bool) (*DBSession, error) {
-	value := ctx.Value(ContextSessionName)
+	value := ctx.Value(ContextSessionKey{})
 	var sess *DBSession
 	sess, ok := value.(*DBSession)
 
@@ -46,21 +46,14 @@ func startSession(ctx context.Context, engine *xorm.Engine, beginTran bool) (*DB
 	return newSess, nil
 }
 
-// WithDbSession calls the callback with an session attached to the context.
-func (ss *SqlStore) WithDbSession(ctx context.Context, callback dbTransactionFunc) error {
-	sess, err := startSession(ctx, ss.engine, false)
-	if err != nil {
-		return err
-	}
-
-	return callback(sess)
+// WithDbSession calls the callback with a session.
+func (ss *SQLStore) WithDbSession(ctx context.Context, callback dbTransactionFunc) error {
+	return withDbSession(ctx, ss.engine, callback)
 }
 
-func withDbSession(ctx context.Context, callback dbTransactionFunc) error {
-	sess, err := startSession(ctx, x, false)
-	if err != nil {
-		return err
-	}
+func withDbSession(ctx context.Context, engine *xorm.Engine, callback dbTransactionFunc) error {
+	sess := &DBSession{Session: engine.NewSession()}
+	defer sess.Close()
 
 	return callback(sess)
 }

@@ -1,16 +1,15 @@
 import React, { FC } from 'react';
-import { debounce } from 'lodash';
-import { useAsyncFn } from 'react-use';
+import debounce from 'debounce-promise';
 import { SelectableValue } from '@grafana/data';
-import { Forms } from '@grafana/ui';
-import { FormInputSize } from '@grafana/ui/src/components/Forms/types';
+import { AsyncSelect } from '@grafana/ui';
 import { backendSrv } from 'app/core/services/backend_srv';
-import { DashboardSearchHit, DashboardDTO } from 'app/types';
+import { DashboardSearchHit } from 'app/features/search/types';
+import { DashboardDTO } from 'app/types';
 
 export interface Props {
-  onSelected: (dashboard: DashboardDTO) => void;
-  currentDashboard?: SelectableValue<number>;
-  size?: FormInputSize;
+  onChange: (dashboard: DashboardDTO) => void;
+  value?: SelectableValue;
+  width?: number;
   isClearable?: boolean;
   invalid?: boolean;
   disabled?: boolean;
@@ -20,38 +19,26 @@ const getDashboards = (query = '') => {
   return backendSrv.search({ type: 'dash-db', query }).then((result: DashboardSearchHit[]) => {
     return result.map((item: DashboardSearchHit) => ({
       id: item.id,
+      uid: item.uid,
       value: item.id,
-      label: `${item.folderTitle ? item.folderTitle : 'General'}/${item.title}`,
+      label: `${item?.folderTitle ?? 'General'}/${item.title}`,
     }));
   });
 };
 
-export const DashboardPicker: FC<Props> = ({
-  onSelected,
-  currentDashboard,
-  size = 'md',
-  isClearable = false,
-  invalid,
-  disabled,
-}) => {
-  const debouncedSearch = debounce(getDashboards, 300, {
-    leading: true,
-    trailing: true,
-  });
-
-  const [state, searchDashboards] = useAsyncFn(debouncedSearch, []);
+export const DashboardPicker: FC<Props> = ({ onChange, value, width, isClearable = false, invalid, disabled }) => {
+  const debouncedSearch = debounce(getDashboards, 300);
 
   return (
-    <Forms.AsyncSelect
-      size={size}
-      isLoading={state.loading}
+    <AsyncSelect
+      width={width}
       isClearable={isClearable}
       defaultOptions={true}
-      loadOptions={searchDashboards}
-      onChange={onSelected}
+      loadOptions={debouncedSearch}
+      onChange={onChange}
       placeholder="Select dashboard"
       noOptionsMessage="No dashboards found"
-      value={currentDashboard}
+      value={value}
       invalid={invalid}
       disabled={disabled}
     />

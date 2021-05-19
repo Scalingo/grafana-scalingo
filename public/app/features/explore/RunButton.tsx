@@ -1,53 +1,41 @@
 import React from 'react';
-import { RefreshPicker } from '@grafana/ui';
-import memoizeOne from 'memoize-one';
-import { css } from 'emotion';
-import classNames from 'classnames';
+import { RefreshPicker, defaultIntervals } from '@grafana/ui';
+import { getTimeSrv } from 'app/features/dashboard/services/TimeSrv';
 
-import { ResponsiveButton } from './ResponsiveButton';
-
-const getStyles = memoizeOne(() => {
-  return {
-    selectButtonOverride: css`
-      label: selectButtonOverride;
-      .select-button-value {
-        color: white !important;
-      }
-    `,
-  };
-});
-
-type Props = {
-  splitted: boolean;
+export type Props = {
+  isSmall?: boolean;
   loading: boolean;
-  onRun: () => void;
+  isLive: boolean;
+  onRun: (loading: boolean) => void;
   refreshInterval?: string;
   onChangeRefreshInterval: (interval: string) => void;
   showDropdown: boolean;
 };
 
 export function RunButton(props: Props) {
-  const { splitted, loading, onRun, onChangeRefreshInterval, refreshInterval, showDropdown } = props;
-  const styles = getStyles();
-  const runButton = (
-    <ResponsiveButton
-      splitted={splitted}
-      title="Run Query"
-      onClick={onRun}
-      buttonClassName={classNames('navbar-button--secondary', { 'btn--radius-right-0': showDropdown })}
-      iconClassName={loading ? 'fa fa-spinner fa-fw fa-spin run-icon' : 'fa fa-refresh fa-fw'}
+  const { isSmall, loading, onRun, onChangeRefreshInterval, refreshInterval, showDropdown, isLive } = props;
+  const intervals = getTimeSrv().getValidIntervals(defaultIntervals);
+  let text: string | undefined;
+
+  if (isLive) {
+    return null;
+  }
+
+  if (!isSmall) {
+    text = loading ? 'Cancel' : 'Run query';
+  }
+
+  return (
+    <RefreshPicker
+      onIntervalChanged={onChangeRefreshInterval}
+      value={refreshInterval}
+      isLoading={loading}
+      text={text}
+      intervals={intervals}
+      isLive={isLive}
+      onRefresh={() => onRun(loading)}
+      noIntervalPicker={!showDropdown}
+      primary={true}
     />
   );
-
-  if (showDropdown) {
-    return (
-      <RefreshPicker
-        onIntervalChanged={onChangeRefreshInterval}
-        value={refreshInterval}
-        buttonSelectClassName={`navbar-button--secondary ${styles.selectButtonOverride}`}
-        refreshButton={runButton}
-      />
-    );
-  }
-  return runButton;
 }

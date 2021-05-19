@@ -1,15 +1,19 @@
 import React, { PureComponent } from 'react';
 import { connect, MapStateToProps } from 'react-redux';
 import { StoreState } from '../../../../types';
-import { getVariableClones } from '../../../templating/state/selectors';
-import { VariableHide, VariableModel } from '../../../templating/variable';
+import { getSubMenuVariables } from '../../../variables/state/selectors';
+import { VariableHide, VariableModel } from '../../../variables/types';
 import { DashboardModel } from '../../state';
-import { AngularDashboardLinks } from './AngularDashboardLinks';
+import { DashboardLinks } from './DashboardLinks';
 import { Annotations } from './Annotations';
 import { SubMenuItems } from './SubMenuItems';
+import { DashboardLink } from '../../state/DashboardModel';
+import { AnnotationQuery } from '@grafana/data';
 
 interface OwnProps {
   dashboard: DashboardModel;
+  links: DashboardLink[];
+  annotations: AnnotationQuery[];
 }
 
 interface ConnectedProps {
@@ -39,38 +43,39 @@ class SubMenuUnConnected extends PureComponent<Props> {
       return true;
     }
 
-    const visibleVariables = this.props.variables.filter(variable => variable.hide !== VariableHide.hideVariable);
+    const visibleVariables = this.props.variables.filter((variable) => variable.hide !== VariableHide.hideVariable);
     if (visibleVariables.length > 0) {
       return true;
     }
 
-    const visibleAnnotations = this.props.dashboard.annotations.list.filter(annotation => annotation.hide !== true);
+    const visibleAnnotations = this.props.dashboard.annotations.list.filter((annotation) => annotation.hide !== true);
     return visibleAnnotations.length > 0;
   };
 
   render() {
+    const { dashboard, variables, links, annotations } = this.props;
+
     if (!this.isSubMenuVisible()) {
       return null;
     }
 
     return (
       <div className="submenu-controls">
-        <SubMenuItems variables={this.props.variables} />
-        <Annotations
-          annotations={this.props.dashboard.annotations.list}
-          onAnnotationChanged={this.onAnnotationStateChanged}
-        />
+        <SubMenuItems variables={variables} />
+        <Annotations annotations={annotations} onAnnotationChanged={this.onAnnotationStateChanged} />
         <div className="gf-form gf-form--grow" />
-        <AngularDashboardLinks dashboard={this.props.dashboard} />
+        {dashboard && <DashboardLinks dashboard={dashboard} links={links} />}
         <div className="clearfix" />
       </div>
     );
   }
 }
 
-const mapStateToProps: MapStateToProps<ConnectedProps, OwnProps, StoreState> = state => ({
-  variables: getVariableClones(state, false),
-});
+const mapStateToProps: MapStateToProps<ConnectedProps, OwnProps, StoreState> = (state) => {
+  return {
+    variables: getSubMenuVariables(state.templating.variables),
+  };
+};
 
 export const SubMenu = connect(mapStateToProps)(SubMenuUnConnected);
 SubMenu.displayName = 'SubMenu';

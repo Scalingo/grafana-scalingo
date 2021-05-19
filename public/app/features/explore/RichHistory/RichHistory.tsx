@@ -1,16 +1,13 @@
 import React, { PureComponent } from 'react';
-import { css } from 'emotion';
 
 //Services & Utils
-import { SortOrder } from 'app/core/utils/explore';
-import { RICH_HISTORY_SETTING_KEYS } from 'app/core/utils/richHistory';
+import { RICH_HISTORY_SETTING_KEYS, SortOrder } from 'app/core/utils/richHistory';
 import store from 'app/core/store';
-import { stylesFactory, withTheme } from '@grafana/ui';
+import { Themeable, withTheme, TabbedContainer, TabConfig } from '@grafana/ui';
 
 //Types
 import { RichHistoryQuery, ExploreId } from 'app/types/explore';
-import { SelectableValue, GrafanaTheme } from '@grafana/data';
-import { TabsBar, Tab, TabContent, Themeable, CustomScrollbar } from '@grafana/ui';
+import { SelectableValue } from '@grafana/data';
 
 //Components
 import { RichHistorySettings } from './RichHistorySettings';
@@ -24,8 +21,8 @@ export enum Tabs {
 }
 
 export const sortOrderOptions = [
-  { label: 'Time ascending', value: SortOrder.Ascending },
-  { label: 'Time descending', value: SortOrder.Descending },
+  { label: 'Newest first', value: SortOrder.Descending },
+  { label: 'Oldest first', value: SortOrder.Ascending },
   { label: 'Data source A-Z', value: SortOrder.DatasourceAZ },
   { label: 'Data source Z-A', value: SortOrder.DatasourceZA },
 ];
@@ -41,7 +38,6 @@ export interface RichHistoryProps extends Themeable {
 }
 
 interface RichHistoryState {
-  activeTab: Tabs;
   sortOrder: SortOrder;
   retentionPeriod: number;
   starredTabAsFirstTab: boolean;
@@ -49,45 +45,15 @@ interface RichHistoryState {
   datasourceFilters: SelectableValue[] | null;
 }
 
-const getStyles = stylesFactory((theme: GrafanaTheme) => {
-  const borderColor = theme.isLight ? theme.colors.gray5 : theme.colors.dark6;
-  const tabBarBg = theme.isLight ? theme.colors.white : theme.colors.black;
-  const tabContentBg = theme.isLight ? theme.colors.gray7 : theme.colors.dark2;
-  return {
-    container: css`
-      height: 100%;
-      background-color: ${tabContentBg};
-    `,
-    tabContent: css`
-      background-color: ${tabContentBg};
-      padding: ${theme.spacing.md};
-    `,
-    close: css`
-      position: absolute;
-      right: ${theme.spacing.sm};
-      cursor: pointer;
-    `,
-    tabs: css`
-      background-color: ${tabBarBg};
-      padding-top: ${theme.spacing.sm};
-      border-color: ${borderColor};
-      ul {
-        margin-left: ${theme.spacing.md};
-      }
-    `,
-  };
-});
-
 class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistoryState> {
   constructor(props: RichHistoryProps) {
     super(props);
     this.state = {
-      activeTab: this.props.firstTab,
       sortOrder: SortOrder.Descending,
       datasourceFilters: store.getObject(RICH_HISTORY_SETTING_KEYS.datasourceFilters, null),
       retentionPeriod: store.getObject(RICH_HISTORY_SETTING_KEYS.retentionPeriod, 7),
       starredTabAsFirstTab: store.getBool(RICH_HISTORY_SETTING_KEYS.starredTabAsFirstTab, false),
-      activeDatasourceOnly: store.getBool(RICH_HISTORY_SETTING_KEYS.activeDatasourceOnly, false),
+      activeDatasourceOnly: store.getBool(RICH_HISTORY_SETTING_KEYS.activeDatasourceOnly, true),
     };
   }
 
@@ -106,7 +72,7 @@ class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistorySta
     store.set(RICH_HISTORY_SETTING_KEYS.starredTabAsFirstTab, starredTabAsFirstTab);
   };
 
-  toggleactiveDatasourceOnly = () => {
+  toggleActiveDatasourceOnly = () => {
     const activeDatasourceOnly = !this.state.activeDatasourceOnly;
     this.setState({
       activeDatasourceOnly,
@@ -115,18 +81,21 @@ class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistorySta
   };
 
   onSelectDatasourceFilters = (value: SelectableValue[] | null) => {
-    store.setObject(RICH_HISTORY_SETTING_KEYS.datasourceFilters, value);
+    try {
+      store.setObject(RICH_HISTORY_SETTING_KEYS.datasourceFilters, value);
+    } catch (error) {
+      console.error(error);
+    }
+    /* Set data source filters to state even though they were not successfully saved in
+     * localStorage to allow interaction and filtering.
+     **/
     this.setState({ datasourceFilters: value });
-  };
-
-  onSelectTab = (item: SelectableValue<Tabs>) => {
-    this.setState({ activeTab: item.value! });
   };
 
   onChangeSortOrder = (sortOrder: SortOrder) => this.setState({ sortOrder });
 
   /* If user selects activeDatasourceOnly === true, set datasource filter to currently active datasource.
-   *  Filtering based on datasource won't be available. Otherwise set to null, as filtering will be
+   * Filtering based on datasource won't be available. Otherwise set to null, as filtering will be
    * available for user.
    */
   updateFilters() {
@@ -140,6 +109,7 @@ class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistorySta
   componentDidMount() {
     this.updateFilters();
   }
+
   componentDidUpdate(prevProps: RichHistoryProps, prevState: RichHistoryState) {
     if (
       this.props.activeDatasourceInstance !== prevProps.activeDatasourceInstance ||
@@ -150,11 +120,10 @@ class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistorySta
   }
 
   render() {
-    const { datasourceFilters, sortOrder, activeTab, activeDatasourceOnly, retentionPeriod } = this.state;
-    const { theme, richHistory, height, exploreId, deleteRichHistory, onClose } = this.props;
-    const styles = getStyles(theme);
+    const { datasourceFilters, sortOrder, activeDatasourceOnly, retentionPeriod } = this.state;
+    const { richHistory, height, exploreId, deleteRichHistory, onClose, firstTab } = this.props;
 
-    const QueriesTab = {
+    const QueriesTab: TabConfig = {
       label: 'Query history',
       value: Tabs.RichHistory,
       content: (
@@ -170,10 +139,10 @@ class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistorySta
           height={height}
         />
       ),
-      icon: 'fa fa-history',
+      icon: 'history',
     };
 
-    const StarredTab = {
+    const StarredTab: TabConfig = {
       label: 'Starred',
       value: Tabs.Starred,
       content: (
@@ -187,10 +156,10 @@ class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistorySta
           exploreId={exploreId}
         />
       ),
-      icon: 'fa fa-star',
+      icon: 'star',
     };
 
-    const SettingsTab = {
+    const SettingsTab: TabConfig = {
       label: 'Settings',
       value: Tabs.Settings,
       content: (
@@ -200,38 +169,16 @@ class UnThemedRichHistory extends PureComponent<RichHistoryProps, RichHistorySta
           activeDatasourceOnly={this.state.activeDatasourceOnly}
           onChangeRetentionPeriod={this.onChangeRetentionPeriod}
           toggleStarredTabAsFirstTab={this.toggleStarredTabAsFirstTab}
-          toggleactiveDatasourceOnly={this.toggleactiveDatasourceOnly}
+          toggleactiveDatasourceOnly={this.toggleActiveDatasourceOnly}
           deleteRichHistory={deleteRichHistory}
         />
       ),
-      icon: 'gicon gicon-preferences',
+      icon: 'sliders-v-alt',
     };
 
     let tabs = [QueriesTab, StarredTab, SettingsTab];
     return (
-      <div className={styles.container}>
-        <TabsBar className={styles.tabs}>
-          {tabs.map(t => (
-            <Tab
-              key={t.value}
-              label={t.label}
-              active={t.value === activeTab}
-              onChangeTab={() => this.onSelectTab(t)}
-              icon={t.icon}
-            />
-          ))}
-          <div className={styles.close} onClick={onClose}>
-            <i className="fa fa-times" title="Close query history" />
-          </div>
-        </TabsBar>
-        <CustomScrollbar
-          className={css`
-            min-height: 100% !important;
-          `}
-        >
-          <TabContent className={styles.tabContent}>{tabs.find(t => t.value === activeTab)?.content}</TabContent>
-        </CustomScrollbar>
-      </div>
+      <TabbedContainer tabs={tabs} onClose={onClose} defaultTab={firstTab} closeIconTooltip="Close query history" />
     );
   }
 }

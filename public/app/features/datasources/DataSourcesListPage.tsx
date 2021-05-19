@@ -9,6 +9,7 @@ import EmptyListCTA from 'app/core/components/EmptyListCTA/EmptyListCTA';
 import DataSourcesList from './DataSourcesList';
 // Types
 import { DataSourceSettings, NavModel } from '@grafana/data';
+import { IconName } from '@grafana/ui';
 import { StoreState } from 'app/types';
 import { LayoutMode } from 'app/core/components/LayoutSelector/LayoutSelector';
 // Actions
@@ -37,7 +38,7 @@ export interface Props {
 
 const emptyListModel = {
   title: 'There are no data sources defined yet',
-  buttonIcon: 'gicon gicon-datasources',
+  buttonIcon: 'database' as IconName,
   buttonLink: 'datasources/new',
   buttonTitle: 'Add data source',
   proTip: 'You can also define data sources through configuration files.',
@@ -48,11 +49,7 @@ const emptyListModel = {
 
 export class DataSourcesListPage extends PureComponent<Props> {
   componentDidMount() {
-    this.fetchDataSources();
-  }
-
-  async fetchDataSources() {
-    return await this.props.loadDataSources();
+    this.props.loadDataSources();
   }
 
   render() {
@@ -63,7 +60,6 @@ export class DataSourcesListPage extends PureComponent<Props> {
       layoutMode,
       searchQuery,
       setDataSourcesSearchQuery,
-      setDataSourcesLayoutMode,
       hasFetched,
     } = this.props;
 
@@ -80,10 +76,8 @@ export class DataSourcesListPage extends PureComponent<Props> {
             {hasFetched &&
               dataSourcesCount > 0 && [
                 <OrgActionBar
-                  layoutMode={layoutMode}
                   searchQuery={searchQuery}
-                  onSetLayoutMode={mode => setDataSourcesLayoutMode(mode)}
-                  setSearchQuery={query => setDataSourcesSearchQuery(query)}
+                  setSearchQuery={(query) => setDataSourcesSearchQuery(query)}
                   linkButton={linkButton}
                   key="action-bar"
                 />,

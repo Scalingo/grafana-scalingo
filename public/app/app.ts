@@ -1,3 +1,4 @@
+import 'symbol-observable';
 import 'core-js/stable';
 import 'regenerator-runtime/runtime';
 
@@ -7,28 +8,30 @@ import 'abortcontroller-polyfill/dist/polyfill-patch-fetch'; // fetch polyfill n
 import ttiPolyfill from 'tti-polyfill';
 
 import 'file-saver';
-import 'lodash';
 import 'jquery';
-import 'angular';
+import _ from 'lodash';
+import angular from 'angular';
 import 'angular-route';
 import 'angular-sanitize';
-import 'angular-native-dragdrop';
 import 'angular-bindonce';
 import 'react';
 import 'react-dom';
 
 import 'vendor/bootstrap/bootstrap';
 import 'vendor/angular-other/angular-strap';
-
-import $ from 'jquery';
-import angular from 'angular';
 import config from 'app/core/config';
 // @ts-ignore ignoring this for now, otherwise we would have to extend _ interface with move
-import _ from 'lodash';
-import { AppEvents, setLocale, setMarkdownOptions, standardFieldConfigEditorRegistry } from '@grafana/data';
+import {
+  AppEvents,
+  setLocale,
+  setTimeZoneResolver,
+  standardEditorsRegistry,
+  standardFieldConfigEditorRegistry,
+  standardTransformersRegistry,
+} from '@grafana/data';
 import appEvents from 'app/core/app_events';
-import { addClassIfNoOverlayScrollbar } from 'app/core/utils/scrollbar';
 import { checkBrowserCompatibility } from 'app/core/utils/browser';
+import { arrayMove } from 'app/core/utils/arrayMove';
 import { importPluginModule } from 'app/features/plugins/plugin_loader';
 import { angularModules, coreModule } from 'app/core/core_module';
 import { registerAngularDirectives } from 'app/core/core';
@@ -37,17 +40,19 @@ import { registerEchoBackend, setEchoSrv } from '@grafana/runtime';
 import { Echo } from './core/services/echo/Echo';
 import { reportPerformance } from './core/services/echo/EchoSrv';
 import { PerformanceBackend } from './core/services/echo/backends/PerformanceBackend';
-
 import 'app/routes/GrafanaCtrl';
 import 'app/features/all';
-import { getStandardFieldConfigs } from '@grafana/ui';
+import { getScrollbarWidth, getStandardFieldConfigs, getStandardOptionEditors } from '@grafana/ui';
+import { getDefaultVariableAdapters, variableAdapters } from './features/variables/adapters';
+import { initDevFeatures } from './dev';
+import { getStandardTransformers } from 'app/core/utils/standardTransformers';
+import { SentryEchoBackend } from './core/services/echo/backends/sentry/SentryBackend';
+import { monkeyPatchInjectorWithPreAssignedBindings } from './core/injectorMonkeyPatch';
+import { setVariableQueryRunner, VariableQueryRunner } from './features/variables/query/VariableQueryRunner';
 
-// add move to lodash for backward compatabiltiy
+// add move to lodash for backward compatabilty with plugins
 // @ts-ignore
-_.move = (array: [], fromIndex: number, toIndex: number) => {
-  array.splice(toIndex, 0, array.splice(fromIndex, 1)[0]);
-  return array;
-};
+_.move = arrayMove;
 
 // import symlinked extensions
 const extensionsIndex = (require as any).context('.', true, /extensions\/index.ts/);
@@ -55,13 +60,16 @@ extensionsIndex.keys().forEach((key: any) => {
   extensionsIndex(key);
 });
 
+if (process.env.NODE_ENV === 'development') {
+  initDevFeatures();
+}
+
 export class GrafanaApp {
   registerFunctions: any;
   ngModuleDependencies: any[];
   preBootModules: any[] | null;
 
   constructor() {
-    addClassIfNoOverlayScrollbar('no-overlay-scrollbar');
     this.preBootModules = [];
     this.registerFunctions = {};
     this.ngModuleDependencies = [];
@@ -80,23 +88,25 @@ export class GrafanaApp {
   init() {
     const app = angular.module('grafana', []);
 
+    addClassIfNoOverlayScrollbar();
     setLocale(config.bootData.user.locale);
+    setTimeZoneResolver(() => config.bootData.user.timezone);
 
-    setMarkdownOptions({ sanitize: !config.disableSanitizeHtml });
+    standardEditorsRegistry.setInit(getStandardOptionEditors);
     standardFieldConfigEditorRegistry.setInit(getStandardFieldConfigs);
+    standardTransformersRegistry.setInit(getStandardTransformers);
+    variableAdapters.setInit(getDefaultVariableAdapters);
+
+    setVariableQueryRunner(new VariableQueryRunner());
 
     app.config(
       (
-        $locationProvider: angular.ILocationProvider,
         $controllerProvider: angular.IControllerProvider,
         $compileProvider: angular.ICompileProvider,
         $filterProvider: angular.IFilterProvider,
         $httpProvider: angular.IHttpProvider,
         $provide: angular.auto.IProvideService
       ) => {
-        // pre assing bindings before constructor calls
-        $compileProvider.preAssignBindingsEnabled(true);
-
         if (config.buildInfo.env !== 'development') {
           $compileProvider.debugInfoEnabled(false);
         }
@@ -134,7 +144,6 @@ export class GrafanaApp {
       'ngRoute',
       'ngSanitize',
       '$strap.directives',
-      'ang-drag-drop',
       'grafana',
       'pasvaz.bindonce',
       'react',
@@ -153,7 +162,9 @@ export class GrafanaApp {
     $.fn.tooltip.defaults.animation = false;
 
     // bootstrap the app
-    angular.bootstrap(document, this.ngModuleDependencies).invoke(() => {
+    const injector: any = angular.bootstrap(document, this.ngModuleDependencies);
+
+    injector.invoke(() => {
       _.each(this.preBootModules, (module: angular.IModule) => {
         _.extend(module, this.registerFunctions);
       });
@@ -170,6 +181,8 @@ export class GrafanaApp {
       }
     });
 
+    monkeyPatchInjectorWithPreAssignedBindings(injector);
+
     // Preload selected app plugins
     for (const modulePath of config.pluginsToPreload) {
       importPluginModule(modulePath);
@@ -179,21 +192,47 @@ export class GrafanaApp {
   initEchoSrv() {
     setEchoSrv(new Echo({ debug: process.env.NODE_ENV === 'development' }));
 
-    ttiPolyfill.getFirstConsistentlyInteractive().then((tti: any) => {
-      // Collecting paint metrics first
-      const paintMetrics = performance && performance.getEntriesByType ? performance.getEntriesByType('paint') : [];
+    window.addEventListener('load', (e) => {
+      const loadMetricName = 'frontend_boot_load_time_seconds';
 
-      for (const metric of paintMetrics) {
-        reportPerformance(metric.name, Math.round(metric.startTime + metric.duration));
+      if (performance && performance.getEntriesByType) {
+        performance.mark(loadMetricName);
+
+        const paintMetrics = performance.getEntriesByType('paint');
+
+        for (const metric of paintMetrics) {
+          reportPerformance(
+            `frontend_boot_${metric.name}_time_seconds`,
+            Math.round(metric.startTime + metric.duration) / 1000
+          );
+        }
+
+        const loadMetric = performance.getEntriesByName(loadMetricName)[0];
+        reportPerformance(loadMetric.name, Math.round(loadMetric.startTime + loadMetric.duration) / 1000);
       }
-      reportPerformance('tti', tti);
     });
 
     registerEchoBackend(new PerformanceBackend({}));
 
+    if (config.sentry.enabled) {
+      registerEchoBackend(
+        new SentryEchoBackend({
+          ...config.sentry,
+          user: config.bootData.user,
+          buildInfo: config.buildInfo,
+        })
+      );
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       reportPerformance('dcl', Math.round(performance.now()));
     });
+  }
+}
+
+function addClassIfNoOverlayScrollbar() {
+  if (getScrollbarWidth() > 0) {
+    document.body.classList.add('no-overlay-scrollbar');
   }
 }
 

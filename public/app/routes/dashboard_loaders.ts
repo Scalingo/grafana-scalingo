@@ -1,9 +1,8 @@
 import coreModule from 'app/core/core_module';
-import locationUtil from 'app/core/utils/location_util';
-import { UrlQueryMap } from '@grafana/runtime';
+import { locationUtil, UrlQueryMap } from '@grafana/data';
 import { DashboardLoaderSrv } from 'app/features/dashboard/services/DashboardLoaderSrv';
 import { ILocationService } from 'angular';
-import { Scope, CoreEvents, AppEventEmitter } from 'app/types';
+import { AppEventEmitter, Scope } from 'app/types';
 import { backendSrv } from 'app/core/services/backend_srv';
 
 export class LoadDashboardCtrl {
@@ -12,11 +11,8 @@ export class LoadDashboardCtrl {
     $scope: Scope & AppEventEmitter,
     $routeParams: UrlQueryMap,
     dashboardLoaderSrv: DashboardLoaderSrv,
-    $location: ILocationService,
-    $browser: any
+    $location: ILocationService
   ) {
-    $scope.appEvent(CoreEvents.dashboardFetchStart);
-
     if (!$routeParams.uid && !$routeParams.slug) {
       backendSrv.get('/api/dashboards/home').then((homeDash: { redirectUri: string; meta: any }) => {
         if (homeDash.redirectUri) {
@@ -34,7 +30,7 @@ export class LoadDashboardCtrl {
     // if no uid, redirect to new route based on slug
     if (!($routeParams.type === 'script' || $routeParams.type === 'snapshot') && !$routeParams.uid) {
       // @ts-ignore
-      backendSrv.getDashboardBySlug($routeParams.slug).then(res => {
+      backendSrv.getDashboardBySlug($routeParams.slug).then((res) => {
         if (res) {
           $location.path(locationUtil.stripBaseFromUrl(res.meta.url)).replace();
         }

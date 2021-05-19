@@ -48,24 +48,26 @@ func (pm *PluginManager) checkForUpdates() {
 
 	pluginSlugs := getAllExternalPluginSlugs()
 	resp, err := httpClient.Get("https://grafana.com/api/plugins/versioncheck?slugIn=" + pluginSlugs + "&grafanaVersion=" + setting.BuildVersion)
-
 	if err != nil {
-		log.Trace("Failed to get plugins repo from grafana.com, %v", err.Error())
+		log.Tracef("Failed to get plugins repo from grafana.com, %v", err.Error())
 		return
 	}
-
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Warn("Failed to close response body", "err", err)
+		}
+	}()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Trace("Update check failed, reading response from grafana.com, %v", err.Error())
+		log.Tracef("Update check failed, reading response from grafana.com, %v", err.Error())
 		return
 	}
 
 	gNetPlugins := []GrafanaNetPlugin{}
 	err = json.Unmarshal(body, &gNetPlugins)
 	if err != nil {
-		log.Trace("Failed to unmarshal plugin repo, reading response from grafana.com, %v", err.Error())
+		log.Tracef("Failed to unmarshal plugin repo, reading response from grafana.com, %v", err.Error())
 		return
 	}
 
@@ -88,36 +90,38 @@ func (pm *PluginManager) checkForUpdates() {
 
 	resp2, err := httpClient.Get("https://raw.githubusercontent.com/grafana/grafana/master/latest.json")
 	if err != nil {
-		log.Trace("Failed to get latest.json repo from github.com: %v", err.Error())
+		log.Tracef("Failed to get latest.json repo from github.com: %v", err.Error())
 		return
 	}
-
-	defer resp2.Body.Close()
+	defer func() {
+		if err := resp2.Body.Close(); err != nil {
+			pm.log.Warn("Failed to close response body", "err", err)
+		}
+	}()
 	body, err = ioutil.ReadAll(resp2.Body)
 	if err != nil {
-		log.Trace("Update check failed, reading response from github.com, %v", err.Error())
+		log.Tracef("Update check failed, reading response from github.com, %v", err.Error())
 		return
 	}
 
 	var githubLatest GithubLatest
 	err = json.Unmarshal(body, &githubLatest)
 	if err != nil {
-		log.Trace("Failed to unmarshal github.com latest, reading response from github.com: %v", err.Error())
+		log.Tracef("Failed to unmarshal github.com latest, reading response from github.com: %v", err.Error())
 		return
 	}
 
 	if strings.Contains(setting.BuildVersion, "-") {
-		GrafanaLatestVersion = githubLatest.Testing
-		GrafanaHasUpdate = !strings.HasPrefix(setting.BuildVersion, githubLatest.Testing)
+		pm.GrafanaLatestVersion = githubLatest.Testing
+		pm.GrafanaHasUpdate = !strings.HasPrefix(setting.BuildVersion, githubLatest.Testing)
 	} else {
-		GrafanaLatestVersion = githubLatest.Stable
-		GrafanaHasUpdate = githubLatest.Stable != setting.BuildVersion
+		pm.GrafanaLatestVersion = githubLatest.Stable
+		pm.GrafanaHasUpdate = githubLatest.Stable != setting.BuildVersion
 	}
 
 	currVersion, err1 := version.NewVersion(setting.BuildVersion)
-	latestVersion, err2 := version.NewVersion(GrafanaLatestVersion)
-
+	latestVersion, err2 := version.NewVersion(pm.GrafanaLatestVersion)
 	if err1 == nil && err2 == nil {
-		GrafanaHasUpdate = currVersion.LessThan(latestVersion)
+		pm.GrafanaHasUpdate = currVersion.LessThan(latestVersion)
 	}
 }

@@ -1,10 +1,12 @@
 import _ from 'lodash';
 
-const keywords = 'by|without|on|ignoring|group_left|group_right|bool|or|and|unless';
+const keywords = 'by|without|on|ignoring|group_left|group_right|bool';
+const logicalOperators = 'or|and|unless';
 
 // Duplicate from mode-prometheus.js, which can't be used in tests due to global ace not being loaded.
 const builtInWords = [
   keywords,
+  logicalOperators,
   'count|count_values|min|max|avg|sum|stddev|stdvar|bottomk|topk|quantile',
   'true|false|null|__name__|job',
   'abs|absent|ceil|changes|clamp_max|clamp_min|count_scalar|day_of_month|day_of_week|days_in_month|delta|deriv',
@@ -15,30 +17,35 @@ const builtInWords = [
   .join('|')
   .split('|');
 
-const metricNameRegexp = /([A-Za-z:][\w:]*)\b(?![\(\]{=!",])/g;
-const selectorRegexp = /{([^{]*)}/g;
+// We want to extract all possible metrics and also keywords
+const metricsAndKeywordsRegexp = /([A-Za-z:][\w:]*)\b(?![\]{=!",])/g;
+// Safari currently doesn't support negative lookbehind. When it does, we should refactor this.
+// We are creating 2 matching groups. (\$) is for the Grafana's variables such as ${__rate_s}. We want to ignore
+// ${__rate_s} and not add variable to it.
+const selectorRegexp = /(\$)?{([^{]*)}/g;
 
-// addLabelToQuery('foo', 'bar', 'baz') => 'foo{bar="baz"}'
-export function addLabelToQuery(query: string, key: string, value: string, operator?: string): string {
+export function addLabelToQuery(
+  query: string,
+  key: string,
+  value: string | number,
+  operator?: string,
+  hasNoMetrics?: boolean
+): string {
   if (!key || !value) {
     throw new Error('Need label to add to query.');
   }
 
+  // We need to make sure that we convert the value back to string because it may be a number
+  const transformedValue = value === Infinity ? '+Inf' : value.toString();
+
   // Add empty selectors to bare metric names
   let previousWord: string;
-  query = query.replace(metricNameRegexp, (match, word, offset) => {
-    const insideSelector = isPositionInsideChars(query, offset, '{', '}');
-    // Handle "sum by (key) (metric)"
-    const previousWordIsKeyWord = previousWord && keywords.split('|').indexOf(previousWord) > -1;
 
-    // check for colon as as "word boundary" symbol
-    const isColonBounded = word.endsWith(':');
-
+  query = query.replace(metricsAndKeywordsRegexp, (match, word, offset) => {
+    const isMetric = isWordMetric(query, word, offset, previousWord, hasNoMetrics);
     previousWord = word;
-    if (!insideSelector && !isColonBounded && !previousWordIsKeyWord && builtInWords.indexOf(word) === -1) {
-      return `${word}{}`;
-    }
-    return word;
+
+    return isMetric ? `${word}{}` : word;
   });
 
   // Adding label to existing selectors
@@ -49,11 +56,19 @@ export function addLabelToQuery(query: string, key: string, value: string, opera
 
   while (match) {
     const prefix = query.slice(lastIndex, match.index);
-    const selector = match[1];
-    const selectorWithLabel = addLabelToSelector(selector, key, value, operator);
-    lastIndex = match.index + match[1].length + 2;
+    lastIndex = match.index + match[2].length + 2;
     suffix = query.slice(match.index + match[0].length);
-    parts.push(prefix, selectorWithLabel);
+    // If we matched 1st group, we know it is Grafana's variable and we don't want to add labels
+    if (match[1]) {
+      parts.push(prefix);
+      parts.push(match[0]);
+    } else {
+      // If we didn't match first group, we are inside selector and we want to add labels
+      const selector = match[2];
+      const selectorWithLabel = addLabelToSelector(selector, key, transformedValue, operator);
+      parts.push(prefix, selectorWithLabel);
+    }
+
     match = selectorRegexp.exec(query);
   }
 
@@ -91,16 +106,38 @@ export function addLabelToSelector(selector: string, labelKey: string, labelValu
   return `{${formatted}}`;
 }
 
-export function keepSelectorFilters(selector: string) {
-  // Remove all label-key between {} and return filters. If first character is space, remove it.
-  const filters = selector.replace(/\{(.*?)\}/g, '').replace(/^ /, '');
-  return filters;
-}
-
 function isPositionInsideChars(text: string, position: number, openChar: string, closeChar: string) {
   const nextSelectorStart = text.slice(position).indexOf(openChar);
   const nextSelectorEnd = text.slice(position).indexOf(closeChar);
   return nextSelectorEnd > -1 && (nextSelectorStart === -1 || nextSelectorStart > nextSelectorEnd);
+}
+
+function isWordMetric(query: string, word: string, offset: number, previousWord: string, hasNoMetrics?: boolean) {
+  const insideSelector = isPositionInsideChars(query, offset, '{', '}');
+  // Handle "sum by (key) (metric)"
+  const previousWordIsKeyWord = previousWord && keywords.split('|').indexOf(previousWord) > -1;
+  // Check for colon as as "word boundary" symbol
+  const isColonBounded = word.endsWith(':');
+  // Check for words that start with " which means that they are not metrics
+  const startsWithQuote = query[offset - 1] === '"';
+  // Check for template variables
+  const isTemplateVariable = query[offset - 1] === '$';
+  // Check for time units
+  const isTimeUnit = ['s', 'm', 'h', 'd', 'w'].includes(word) && Boolean(Number(query[offset - 1]));
+
+  if (
+    !hasNoMetrics &&
+    !insideSelector &&
+    !isColonBounded &&
+    !previousWordIsKeyWord &&
+    !startsWithQuote &&
+    !isTemplateVariable &&
+    !isTimeUnit &&
+    builtInWords.indexOf(word) === -1
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export default addLabelToQuery;

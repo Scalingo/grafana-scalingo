@@ -1,6 +1,7 @@
-import resolve from 'rollup-plugin-node-resolve';
-import commonjs from 'rollup-plugin-commonjs';
+import resolve from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
 import sourceMaps from 'rollup-plugin-sourcemaps';
+import json from '@rollup/plugin-json';
 import { terser } from 'rollup-plugin-terser';
 
 const pkg = require('./package.json');
@@ -20,26 +21,13 @@ const buildCjsPackage = ({ env }) => {
         globals: {},
       },
     ],
-    external: ['lodash', 'apache-arrow'], // Use Lodash & arrow from grafana
+    external: ['lodash', 'rxjs', 'apache-arrow'], // Use Lodash, rxjs & arrow from grafana
     plugins: [
+      json({
+        include: ['../../node_modules/moment-timezone/data/packed/latest.json'],
+      }),
       commonjs({
         include: /node_modules/,
-        namedExports: {
-          '../../node_modules/lodash/lodash.js': [
-            'flatten',
-            'find',
-            'upperFirst',
-            'debounce',
-            'isNil',
-            'isNumber',
-            'flattenDeep',
-            'map',
-            'chunk',
-            'sortBy',
-            'uniqueId',
-            'zip',
-          ],
-        },
       }),
       resolve(),
       sourceMaps(),

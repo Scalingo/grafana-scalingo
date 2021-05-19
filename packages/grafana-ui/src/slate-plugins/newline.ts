@@ -23,17 +23,14 @@ export function NewlinePlugin(): Plugin {
         return next();
       }
 
-      if (keyEvent.key === 'Enter' && keyEvent.shiftKey) {
+      if (keyEvent.key === 'Enter') {
         keyEvent.preventDefault();
 
         const { startBlock } = value;
         const currentLineText = startBlock.text;
         const indent = getIndent(currentLineText);
 
-        return editor
-          .splitBlock()
-          .insertText(indent)
-          .focus();
+        return editor.splitBlock().insertText(indent).focus();
       }
 
       return next();

@@ -3,10 +3,6 @@ title = "Folder HTTP API "
 description = "Grafana Folder HTTP API"
 keywords = ["grafana", "http", "documentation", "api", "folder"]
 aliases = ["/docs/grafana/latest/http_api/folder/"]
-type = "docs"
-[menu.docs]
-name = "Folder"
-parent = "http_api"
 +++
 
 # Folder API
@@ -28,7 +24,7 @@ that you cannot use this API for retrieving information about the General folder
 
 `GET /api/folders`
 
-Returns all folders that the authenticated user has permission to view.
+Returns all folders that the authenticated user has permission to view. You can control the maximum number of folders returned through the `limit` query parameter, the default is 1000.
 
 **Example Request**:
 
@@ -49,17 +45,12 @@ Content-Type: application/json
   {
     "id":1,
     "uid": "nErXDvCkzz",
-    "title": "Department ABC",
-    "url": "/dashboards/f/nErXDvCkzz/department-abc",
-    "hasAcl": false,
-    "canSave": true,
-    "canEdit": true,
-    "canAdmin": true,
-    "createdBy": "admin",
-    "created": "2018-01-31T17:43:12+01:00",
-    "updatedBy": "admin",
-    "updated": "2018-01-31T17:43:12+01:00",
-    "version": 1
+    "title": "Department ABC"
+  },
+  {
+    "id":2,
+    "uid": "k3S1cklGk",
+    "title": "Department RND"
   }
 ]
 ```
@@ -264,7 +255,8 @@ HTTP/1.1 200
 Content-Type: application/json
 
 {
-  "message":"Folder deleted"
+  "message":"Folder deleted",
+  "id": 2
 }
 ```
 

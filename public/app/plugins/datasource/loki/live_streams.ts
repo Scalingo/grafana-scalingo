@@ -1,26 +1,18 @@
 import { DataFrame, FieldType, parseLabels, KeyValue, CircularDataFrame } from '@grafana/data';
-import { Observable } from 'rxjs';
+import { Observable, throwError, timer } from 'rxjs';
 import { webSocket } from 'rxjs/webSocket';
-import { LokiLegacyStreamResponse, LokiTailResponse } from './types';
-import { finalize, map } from 'rxjs/operators';
-import { appendLegacyResponseToBufferedData, appendResponseToBufferedData } from './result_transformer';
+import { LokiTailResponse } from './types';
+import { finalize, map, retryWhen, mergeMap } from 'rxjs/operators';
+import { appendResponseToBufferedData } from './result_transformer';
 
 /**
  * Maps directly to a query in the UI (refId is key)
  */
-export interface LegacyTarget {
+export interface LokiLiveTarget {
   query: string;
-  regexp: string;
   url: string;
   refId: string;
   size: number;
-}
-
-export interface LiveTarget {
-  query: string;
-  delay_for?: string;
-  limit?: string;
-  start?: string;
 }
 
 /**
@@ -30,7 +22,7 @@ export interface LiveTarget {
 export class LiveStreams {
   private streams: KeyValue<Observable<DataFrame[]>> = {};
 
-  getLegacyStream(target: LegacyTarget): Observable<DataFrame[]> {
+  getStream(target: LokiLiveTarget, retryInterval = 5000): Observable<DataFrame[]> {
     let stream = this.streams[target.url];
 
     if (stream) {
@@ -38,48 +30,42 @@ export class LiveStreams {
     }
 
     const data = new CircularDataFrame({ capacity: target.size });
-    data.addField({ name: 'ts', type: FieldType.time, config: { title: 'Time' } });
+    data.addField({ name: 'ts', type: FieldType.time, config: { displayName: 'Time' } });
+    data.addField({ name: 'tsNs', type: FieldType.time, config: { displayName: 'Time ns' } });
     data.addField({ name: 'line', type: FieldType.string }).labels = parseLabels(target.query);
     data.addField({ name: 'labels', type: FieldType.other }); // The labels for each line
     data.addField({ name: 'id', type: FieldType.string });
+    data.meta = { ...data.meta, preferredVisualisationType: 'logs' };
+    data.refId = target.refId;
 
     stream = webSocket(target.url).pipe(
-      finalize(() => {
-        delete this.streams[target.url];
-      }),
-
-      map((response: LokiLegacyStreamResponse) => {
-        appendLegacyResponseToBufferedData(response, data);
-        return [data];
-      })
-    );
-    this.streams[target.url] = stream;
-
-    return stream;
-  }
-
-  getStream(target: LegacyTarget): Observable<DataFrame[]> {
-    let stream = this.streams[target.url];
-
-    if (stream) {
-      return stream;
-    }
-
-    const data = new CircularDataFrame({ capacity: target.size });
-    data.addField({ name: 'ts', type: FieldType.time, config: { title: 'Time' } });
-    data.addField({ name: 'tsNs', type: FieldType.time, config: { title: 'Time ns' } });
-    data.addField({ name: 'line', type: FieldType.string }).labels = parseLabels(target.query);
-    data.addField({ name: 'labels', type: FieldType.other }); // The labels for each line
-    data.addField({ name: 'id', type: FieldType.string });
-
-    stream = webSocket(target.url).pipe(
-      finalize(() => {
-        delete this.streams[target.url];
-      }),
-
       map((response: LokiTailResponse) => {
         appendResponseToBufferedData(response, data);
         return [data];
+      }),
+      retryWhen((attempts: Observable<any>) =>
+        attempts.pipe(
+          mergeMap((error, i) => {
+            const retryAttempt = i + 1;
+            // Code 1006 is used to indicate that a connection was closed abnormally.
+            // Added hard limit of 30 on number of retries.
+            // If connection was closed abnormally, and we wish to retry, otherwise throw error.
+            if (error.code === 1006 && retryAttempt < 30) {
+              if (retryAttempt > 10) {
+                // If more than 10 times retried, consol.warn, but keep reconnecting
+                console.warn(
+                  `Websocket connection is being disrupted. We keep reconnecting but consider starting new live tailing again. Error: ${error.reason}`
+                );
+              }
+              // Retry every 5s
+              return timer(retryInterval);
+            }
+            return throwError(error);
+          })
+        )
+      ),
+      finalize(() => {
+        delete this.streams[target.url];
       })
     );
     this.streams[target.url] = stream;

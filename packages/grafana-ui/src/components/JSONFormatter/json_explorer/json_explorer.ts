@@ -9,7 +9,7 @@ const DATE_STRING_REGEX = /(^\d{1,4}[\.|\\/|-]\d{1,2}[\.|\\/|-]\d{1,4})(\s*(?:0?
 const PARTIAL_DATE_REGEX = /\d{2}:\d{2}:\d{2} GMT-\d{4}/;
 const JSON_DATE_REGEX = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z/;
 
-// When toggleing, don't animated removal or addition of more than a few items
+// When toggling, don't animated removal or addition of more than a few items
 const MAX_ANIMATED_TOGGLE_ITEMS = 10;
 
 const requestAnimationFrame =
@@ -173,7 +173,7 @@ export class JsonExplorer {
    */
   private get keys(): string[] {
     if (this.isObject) {
-      return Object.keys(this.json).map(key => (key ? key : '""'));
+      return Object.keys(this.json).map((key) => (key ? key : '""'));
     } else {
       return [];
     }
@@ -391,7 +391,7 @@ export class JsonExplorer {
 
       requestAnimationFrame(addAChild);
     } else {
-      this.keys.forEach(key => {
+      this.keys.forEach((key) => {
         const formatter = new JsonExplorer(this.json[key], this.open - 1, this.config, key);
         children.appendChild(formatter.render());
       });

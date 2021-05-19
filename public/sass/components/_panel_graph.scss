@@ -10,6 +10,7 @@
       .graph-legend {
         flex: 0 1 10px;
         max-height: 100%;
+        overflow-y: initial;
       }
 
       .graph-legend-series {
@@ -50,6 +51,7 @@
   max-height: 35%;
   margin: 0;
   text-align: center;
+  overflow-y: auto;
   padding-top: 6px;
   position: relative;
 
@@ -74,7 +76,7 @@
   display: inline;
   cursor: pointer;
   white-space: nowrap;
-  font-size: 85%;
+  font-size: 12px;
   text-align: left;
   &.current::before {
     content: 'Current: ';
@@ -103,6 +105,8 @@
   float: left;
   white-space: nowrap;
   padding-left: 10px;
+  display: flex;
+  align-items: center;
 
   &--right-y {
     float: right;
@@ -118,31 +122,7 @@
   padding-left: 6px;
 }
 
-// fix for phantomjs
-.body--phantomjs {
-  .graph-panel {
-    display: -webkit-box;
-  }
-
-  .graph-panel--legend-right {
-    .graph-legend {
-      display: block;
-      max-width: min-content;
-    }
-
-    .graph-panel__chart {
-      display: flex;
-    }
-
-    .graph-legend-table {
-      display: table;
-      width: auto;
-    }
-  }
-}
-
 .graph-legend-table {
-  padding-bottom: 1px;
   padding-right: 5px;
   padding-left: 5px;
 
@@ -168,17 +148,12 @@
     float: none;
     display: table-cell;
     white-space: nowrap;
-    padding: 2px 10px;
+    padding: 2px;
     text-align: right;
   }
 
   .graph-legend-icon {
-    width: 5px;
-    padding: 0;
-    top: 0;
-    .fa {
-      top: 4px;
-    }
+    cursor: pointer;
   }
 
   .graph-legend-value {
@@ -186,15 +161,13 @@
   }
 
   .graph-legend-alias {
-    padding-left: 7px;
     text-align: left;
-    width: 95%;
     max-width: 650px;
     text-overflow: ellipsis;
     overflow: hidden;
   }
 
-  .graph-legend-series:nth-child(odd) {
+  .graph-legend-series:nth-child(even) {
     background: $table-bg-accent;
   }
 
@@ -220,6 +193,11 @@
   }
 }
 
+.graph-legend-series__table-name {
+  display: flex;
+  align-items: center;
+}
+
 .graph-legend-series-hidden {
   .graph-legend-value,
   .graph-legend-alias {
@@ -243,18 +221,8 @@
   color: $purple;
 }
 
-.graph-series-override {
-  input {
-    float: left;
-    margin-right: 10px;
-  }
-  .graph-series-override-option {
-    float: left;
-    padding: 2px 6px;
-  }
-  .graph-series-override-selector {
-    float: left;
-  }
+.graph-series-override__properties {
+  margin-left: $space-md;
 }
 
 .graph-tooltip {
@@ -354,16 +322,12 @@
   top: 50%;
   left: 8px;
   transform: translateX(-50%) translateY(-50%) rotate(-90deg);
-  // this is needed for phantomsjs 2.1
-  -webkit-transform: translateX(-50%) translateY(-50%) rotate(-90deg);
 }
 
 .right-yaxis-label {
   top: 50%;
   right: 8px;
   transform: translateX(50%) translateY(-50%) rotate(90deg);
-  // this is needed for phantomsjs 2.1
-  -webkit-transform: translateX(50%) translateY(-50%) rotate(90deg);
 }
 
 .axisLabel {

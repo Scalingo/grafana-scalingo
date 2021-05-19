@@ -1,21 +1,23 @@
 import React, { PureComponent } from 'react';
-import { Forms } from '@grafana/ui';
-import { AppEvents, SelectableValue } from '@grafana/data';
 import { debounce } from 'lodash';
-import appEvents from '../../app_events';
+import { AsyncSelect } from '@grafana/ui';
+import { AppEvents, SelectableValue } from '@grafana/data';
 import { getBackendSrv } from '@grafana/runtime';
+import { selectors } from '@grafana/e2e-selectors';
+
+import appEvents from '../../app_events';
 import { contextSrv } from 'app/core/services/context_srv';
-import { DashboardSearchHit } from '../../../types';
+import { DashboardSearchHit } from 'app/features/search/types';
+import { createFolder } from 'app/features/manage-dashboards/state/actions';
 
 export interface Props {
   onChange: ($folder: { title: string; id: number }) => void;
-  enableCreateNew: boolean;
+  enableCreateNew?: boolean;
   rootName?: string;
   enableReset?: boolean;
   dashboardId?: any;
   initialTitle?: string;
   initialFolderId?: number;
-  useNewForms?: boolean;
 }
 
 interface State {
@@ -60,7 +62,7 @@ export class FolderPicker extends PureComponent<Props, State> {
     // TODO: move search to BackendSrv interface
     // @ts-ignore
     const searchHits = (await getBackendSrv().search(params)) as DashboardSearchHit[];
-    const options: Array<SelectableValue<number>> = searchHits.map(hit => ({ label: hit.title, value: hit.id }));
+    const options: Array<SelectableValue<number>> = searchHits.map((hit) => ({ label: hit.title, value: hit.id }));
     if (contextSrv.isEditor && rootName?.toLowerCase().startsWith(query.toLowerCase())) {
       options.unshift({ label: rootName, value: 0 });
     }
@@ -87,7 +89,7 @@ export class FolderPicker extends PureComponent<Props, State> {
 
   createNewFolder = async (folderName: string) => {
     // @ts-ignore
-    const newFolder = await getBackendSrv().createFolder({ title: folderName });
+    const newFolder = await createFolder({ title: folderName });
     let folder = { value: -1, label: 'Not created' };
     if (newFolder.id > -1) {
       appEvents.emit(AppEvents.alertSuccess, ['Folder Created', 'OK']);
@@ -110,12 +112,12 @@ export class FolderPicker extends PureComponent<Props, State> {
     let folder: SelectableValue<number> = { value: -1 };
 
     if (initialFolderId !== undefined && initialFolderId !== null && initialFolderId > -1) {
-      folder = options.find(option => option.value === initialFolderId) || { value: -1 };
+      folder = options.find((option) => option.value === initialFolderId) || { value: -1 };
     } else if (enableReset && initialTitle) {
       folder = resetFolder;
     }
 
-    if (!folder) {
+    if (folder.value === -1) {
       if (contextSrv.isEditor) {
         folder = rootFolder;
       } else {
@@ -144,43 +146,21 @@ export class FolderPicker extends PureComponent<Props, State> {
 
   render() {
     const { folder } = this.state;
-    const { enableCreateNew, useNewForms } = this.props;
+    const { enableCreateNew } = this.props;
 
     return (
-      <>
-        {useNewForms && (
-          <Forms.AsyncSelect
-            loadingMessage="Loading folders..."
-            defaultOptions
-            defaultValue={folder}
-            value={folder}
-            allowCustomValue={enableCreateNew}
-            loadOptions={this.debouncedSearch}
-            onChange={this.onFolderChange}
-            onCreateOption={this.createNewFolder}
-            size="sm"
-            menuPosition="fixed"
-          />
-        )}
-        {!useNewForms && (
-          <div className="gf-form-inline">
-            <div className="gf-form">
-              <label className="gf-form-label width-7">Folder</label>
-              <Forms.AsyncSelect
-                loadingMessage="Loading folders..."
-                defaultOptions
-                defaultValue={folder}
-                value={folder}
-                allowCustomValue={enableCreateNew}
-                loadOptions={this.debouncedSearch}
-                onChange={this.onFolderChange}
-                onCreateOption={this.createNewFolder}
-                size="sm"
-              />
-            </div>
-          </div>
-        )}
-      </>
+      <div aria-label={selectors.components.FolderPicker.container}>
+        <AsyncSelect
+          loadingMessage="Loading folders..."
+          defaultOptions
+          defaultValue={folder}
+          value={folder}
+          allowCustomValue={enableCreateNew}
+          loadOptions={this.debouncedSearch}
+          onChange={this.onFolderChange}
+          onCreateOption={this.createNewFolder}
+        />
+      </div>
     );
   }
 }

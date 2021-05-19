@@ -1,31 +1,30 @@
 import { Field, DataFrame, DataFrameDTO, FieldDTO, FieldType } from '../types/dataFrame';
-import { KeyValue, QueryResultMeta } from '../types/data';
+import { QueryResultMeta } from '../types/data';
 import { guessFieldTypeFromValue, guessFieldTypeForField, toDataFrameDTO } from './processDataFrame';
-import isArray from 'lodash/isArray';
 import isString from 'lodash/isString';
 import { makeFieldParser } from '../utils/fieldParser';
 import { MutableVector, Vector } from '../types/vector';
 import { ArrayVector } from '../vector/ArrayVector';
-import { vectorToArray } from '../vector/vectorToArray';
+import { FunctionalVector } from '../vector/FunctionalVector';
 
 export type MutableField<T = any> = Field<T, MutableVector<T>>;
 
 type MutableVectorCreator = (buffer?: any[]) => MutableVector;
 
-export const MISSING_VALUE: any = null;
+export const MISSING_VALUE: any = undefined; // Treated as connected in new graph panel
 
-export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
+export class MutableDataFrame<T = any> extends FunctionalVector<T> implements DataFrame, MutableVector<T> {
   name?: string;
   refId?: string;
   meta?: QueryResultMeta;
-
   fields: MutableField[] = [];
-  values: KeyValue<MutableVector> = {};
 
   private first: Vector = new ArrayVector();
   private creator: MutableVectorCreator;
 
   constructor(source?: DataFrame | DataFrameDTO, creator?: MutableVectorCreator) {
+    super();
+
     // This creates the underlying storage buffers
     this.creator = creator
       ? creator
@@ -77,7 +76,7 @@ export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
     let buffer: any[] | undefined = undefined;
 
     if (f.values) {
-      if (isArray(f.values)) {
+      if (Array.isArray(f.values)) {
         buffer = f.values as any[];
       } else {
         buffer = (f.values as Vector).toArray();
@@ -100,19 +99,15 @@ export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
     // Make sure it has a name
     let name = f.name;
     if (!name) {
-      if (type === FieldType.time) {
-        name = this.values['Time'] ? `Time ${this.fields.length + 1}` : 'Time';
-      } else {
-        name = `Field ${this.fields.length + 1}`;
-      }
+      name = `Field ${this.fields.length + 1}`;
     }
 
     const field: MutableField = {
+      ...f,
       name,
       type,
       config: f.config || {},
       values: this.creator(buffer),
-      labels: f.labels,
     };
 
     if (type === FieldType.other) {
@@ -124,13 +119,6 @@ export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
 
     this.fields.push(field);
     this.first = this.fields[0].values;
-
-    // The Field Already exists
-    if (this.values[name]) {
-      console.warn(`Duplicate field names found: ${name}, only the first will be accessible`);
-    } else {
-      this.values[name] = field.values;
-    }
 
     // Make sure the field starts with a given length
     if (startLength) {
@@ -150,21 +138,10 @@ export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
       return Math.max(v, f.values.length);
     }, 0);
 
-    // Add empty elements until everything mastches
+    // Add empty elements until everything matches
     for (const field of this.fields) {
       while (field.values.length !== length) {
         field.values.add(MISSING_VALUE);
-      }
-    }
-  }
-
-  private addMissingFieldsFor(value: any) {
-    for (const key of Object.keys(value)) {
-      if (!this.values[key]) {
-        this.addField({
-          name: key,
-          type: guessFieldTypeFromValue(value[key]),
-        });
       }
     }
   }
@@ -214,13 +191,9 @@ export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
   }
 
   /**
-   * Add all properties of the value as fields on the frame
+   * Add values from an object to corresponding fields. Similar to appendRow but does not create new fields.
    */
-  add(value: T, addMissingFields?: boolean) {
-    if (addMissingFields) {
-      this.addMissingFieldsFor(value);
-    }
-
+  add(value: T) {
     // Will add one value for every field
     const obj = value as any;
     for (const field of this.fields) {
@@ -241,13 +214,9 @@ export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
     }
   }
 
-  set(index: number, value: T, addMissingFields?: boolean) {
+  set(index: number, value: T) {
     if (index > this.length) {
       throw new Error('Unable ot set value beyond current length');
-    }
-
-    if (addMissingFields) {
-      this.addMissingFieldsFor(value);
     }
 
     const obj = (value as any) || {};
@@ -265,10 +234,6 @@ export class MutableDataFrame<T = any> implements DataFrame, MutableVector<T> {
       v[field.name] = field.values.get(idx);
     }
     return v as T;
-  }
-
-  toArray(): T[] {
-    return vectorToArray(this);
   }
 
   /**

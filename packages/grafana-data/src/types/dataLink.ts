@@ -1,19 +1,23 @@
-import { ScopedVars } from './ScopedVars';
+import { DataQuery } from './datasource';
+import { InterpolateFunction } from './panel';
 
 /**
  * Callback info for DataLink click events
  */
 export interface DataLinkClickEvent<T = any> {
   origin: T;
-  scopedVars: ScopedVars;
+  replaceVariables: InterpolateFunction | undefined;
   e?: any; // mouse|react event
 }
 
 /**
- * Link configuration.  The values may contain variables that need to be
- * processed before running
+ * Link configuration. The values may contain variables that need to be
+ * processed before showing the link to user.
+ *
+ * TODO: <T extends DataQuery> is not strictly true for internal links as we do not need refId for example but all
+ *  data source defined queries extend this so this is more for documentation.
  */
-export interface DataLink {
+export interface DataLink<T extends DataQuery = any> {
   title: string;
   targetBlank?: boolean;
 
@@ -27,14 +31,27 @@ export interface DataLink {
   // 1: If exists, handle click directly
   // Not saved in JSON/DTO
   onClick?: (event: DataLinkClickEvent) => void;
+
+  // If dataLink represents internal link this has to be filled. Internal link is defined as a query in a particular
+  // data source that we want to show to the user. Usually this results in a link to explore but can also lead to
+  // more custom onClick behaviour if needed.
+  // @internal and subject to change in future releases
+  internal?: InternalDataLink<T>;
 }
 
-export type LinkTarget = '_blank' | '_self';
+/** @internal */
+export interface InternalDataLink<T extends DataQuery = any> {
+  query: T;
+  datasourceUid: string;
+  datasourceName: string;
+}
+
+export type LinkTarget = '_blank' | '_self' | undefined;
 
 /**
- * Processed Link Model.  The values are ready to use
+ * Processed Link Model. The values are ready to use
  */
-export interface LinkModel<T> {
+export interface LinkModel<T = any> {
   href: string;
   title: string;
   target: LinkTarget;
@@ -50,7 +67,7 @@ export interface LinkModel<T> {
  * TODO: ScopedVars in in GrafanaUI package!
  */
 export interface LinkModelSupplier<T extends object> {
-  getLinks(scopedVars?: any): Array<LinkModel<T>>;
+  getLinks(replaceVariables?: InterpolateFunction): Array<LinkModel<T>>;
 }
 
 export enum VariableOrigin {

@@ -2,13 +2,13 @@
 title = "Grafana documentation"
 description = "Guides, Installation and Feature Documentation"
 keywords = ["grafana", "installation", "documentation"]
-type = "docs"
 aliases = ["/docs/grafana/v1.1", "/docs/grafana/latest/guides/reference/admin", "/docs/grafana/v3.1"]
 +++
 
 # Grafana documentation
 
-<h2>Installing Grafana</h2>
+## Installing Grafana
+
 <div class="nav-cards">
     <a href="{{< relref "installation/debian.md" >}}" class="nav-cards__item nav-cards__item--install">
         <div class="nav-cards__icon fa fa-linux">
@@ -26,10 +26,10 @@ aliases = ["/docs/grafana/v1.1", "/docs/grafana/latest/guides/reference/admin", 
         <h5>Install on Windows</h5>
     </a>
     <a href="{{< relref "installation/docker.md" >}}" class="nav-cards__item nav-cards__item--install">
-        <h4>Run Docker image</h4>
-        <p>Run Grafana on a Docker image.</p>
+        <img src="/static/img/logos/logo-docker.svg">
+        <h5>Run Docker image</h5>
     </a>
-    <a href="https://grafana.com/cloud/grafana" class="nav-cards__item nav-cards__item--install">
+    <a href="https://grafana.com/docs/grafana-cloud/" class="nav-cards__item nav-cards__item--install">
         <div class="nav-cards__icon fa fa-cloud">
         </div>
         <h5>Grafana Cloud</h5>
@@ -41,22 +41,22 @@ aliases = ["/docs/grafana/v1.1", "/docs/grafana/latest/guides/reference/admin", 
     </a>
 </div>
 
-<h2>Guides</h2>
+## Guides
 
 <div class="nav-cards">
-    <a href="{{< relref "guides/what-is-grafana.md" >}}" class="nav-cards__item nav-cards__item--guide">
-        <h4>What is Grafana?</h4>
-        <p>Get an overview of Grafana's key features.</p>
-    </a>
-    <a href="{{< relref "guides/getting_started.md" >}}" class="nav-cards__item nav-cards__item--guide">
+    <a href="{{< relref "getting-started/getting-started.md" >}}" class="nav-cards__item nav-cards__item--guide">
         <h4>Getting started</h4>
         <p>Learn the basics of using Grafana.</p>
     </a>
-    <a href="{{< relref "installation/configuration.md" >}}" class="nav-cards__item nav-cards__item--guide">
+    <a href="{{< relref "basics/_index.md" >}}" class="nav-cards__item nav-cards__item--guide">
+        <h4>Grafana basics</h4>
+        <p>Learn basic observability.</p>
+    </a>  
+    <a href="{{< relref "administration/configuration.md" >}}" class="nav-cards__item nav-cards__item--guide">
         <h4>Configure Grafana</h4>
         <p>Review the configuration and setup options.</p>
     </a>
-    <a href="{{< relref "guides/timeseries.md" >}}" class="nav-cards__item nav-cards__item--guide">
+    <a href="{{< relref "basics/timeseries.md" >}}" class="nav-cards__item nav-cards__item--guide">
         <h4>Intro to time series</h4>
         <p>Learn about time series data.</p>
     </a>
@@ -64,60 +64,61 @@ aliases = ["/docs/grafana/v1.1", "/docs/grafana/latest/guides/reference/admin", 
         <h4>Provisioning</h4>
         <p>Learn how to automate your Grafana configuration.</p>
     </a>
-    <a href="{{< relref "guides/whats-new-in-v6-6.md" >}}" class="nav-cards__item nav-cards__item--guide">
-        <h4>What's new in v6.6</h4>
+    <a href="{{< relref "whatsnew/whats-new-in-v7-5.md" >}}" class="nav-cards__item nav-cards__item--guide">
+        <h4>What's new in v7.5</h4>
         <p>Explore the features and enhancements in the latest release.</p>
     </a>
 
 </div>
 
-<h2>Data source guides</h2>
+## Data source guides
+
 <div class="nav-cards">
-    <a href="{{< relref "features/datasources/graphite.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/graphite.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_graphite.svg" >
       <h5>Graphite</h5>
     </a>
-    <a href="{{< relref "features/datasources/elasticsearch.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/elasticsearch.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_elasticsearch.svg" >
       <h5>Elasticsearch</h5>
     </a>
-    <a href="{{< relref "features/datasources/influxdb.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/influxdb/_index.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_influxdb.svg" >
       <h5>InfluxDB</h5>
     </a>
-    <a href="{{< relref "features/datasources/prometheus.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/prometheus.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_prometheus.svg" >
       <h5>Prometheus</h5>
     </a>
-    <a href="{{< relref "features/datasources/stackdriver.md" >}}" class="nav-cards__item nav-cards__item--ds">
-      <img src="/img/docs/logos/icon_stackdriver.svg">
-      <h5>Google Stackdriver</h5>
+    <a href="{{< relref "datasources/google-cloud-monitoring/_index.md" >}}" class="nav-cards__item nav-cards__item--ds">
+      <img src="/img/docs/logos/icon_cloudmonitoring.svg">
+      <h5>Google Cloud Monitoring</h5>
     </a>
-    <a href="{{< relref "features/datasources/cloudwatch.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/cloudwatch.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_cloudwatch.svg">
       <h5>AWS CloudWatch</h5>
     </a>
-    <a href="{{< relref "features/datasources/azuremonitor.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/azuremonitor.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_azure_monitor.jpg">
       <h5>Azure Monitor</h5>
     </a>
-    <a href="{{< relref "features/datasources/loki.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/loki.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_loki.svg">
       <h5>Loki</h5>
     </a>
-    <a href="{{< relref "features/datasources/mysql.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/mysql.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_mysql.png" >
       <h5>MySQL</h5>
     </a>
-    <a href="{{< relref "features/datasources/postgres.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/postgres.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_postgres.svg" >
       <h5>Postgres</h5>
     </a>
-    <a href="{{< relref "features/datasources/mssql.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/mssql.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/sql_server_logo.svg">
       <h5>Microsoft SQL Server</h5>
     </a>
-    <a href="{{< relref "features/datasources/opentsdb.md" >}}" class="nav-cards__item nav-cards__item--ds">
+    <a href="{{< relref "datasources/opentsdb.md" >}}" class="nav-cards__item nav-cards__item--ds">
       <img src="/img/docs/logos/icon_opentsdb.png" >
       <h5>OpenTSDB</h5>
     </a>

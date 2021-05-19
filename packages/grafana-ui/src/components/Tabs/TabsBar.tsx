@@ -24,6 +24,8 @@ const getTabsBarStyles = stylesFactory((theme: GrafanaTheme, hideBorder = false)
       position: relative;
       top: 1px;
       display: flex;
+      // Sometimes TabsBar is rendered without any tabs, and should preserve height
+      height: 41px;
     `,
   };
 });
@@ -38,3 +40,5 @@ export const TabsBar = React.forwardRef<HTMLDivElement, Props>(({ children, clas
     </div>
   );
 });
+
+TabsBar.displayName = 'TabsBar';

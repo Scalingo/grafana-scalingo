@@ -97,7 +97,15 @@ export function SuggestionsPlugin({
 
           break;
 
-        case 'Enter':
+        case 'Enter': {
+          if (!(keyEvent.shiftKey || keyEvent.ctrlKey) && hasSuggestions) {
+            keyEvent.preventDefault();
+            return typeaheadRef.insertSuggestion();
+          }
+
+          break;
+        }
+
         case 'Tab': {
           if (hasSuggestions) {
             keyEvent.preventDefault();
@@ -108,7 +116,10 @@ export function SuggestionsPlugin({
         }
 
         default: {
-          handleTypeaheadDebounced(editor, setState, onTypeahead, cleanText);
+          // Don't react on meta keys
+          if (keyEvent.key.length === 1) {
+            handleTypeaheadDebounced(editor, setState, onTypeahead, cleanText);
+          }
           break;
         }
       }
@@ -157,11 +168,7 @@ export function SuggestionsPlugin({
         // If new-lines, apply suggestion as block
         if (suggestionText.match(/\n/)) {
           const fragment = makeFragment(suggestionText);
-          return editor
-            .deleteBackward(backward)
-            .deleteForward(forward)
-            .insertFragment(fragment)
-            .focus();
+          return editor.deleteBackward(backward).deleteForward(forward).insertFragment(fragment).focus();
         }
 
         state = {
@@ -178,7 +185,7 @@ export function SuggestionsPlugin({
       },
     },
 
-    renderEditor: (props, editor, next) => {
+    renderEditor(props, editor, next) {
       if (editor.value.selection.isExpanded) {
         return next();
       }
@@ -217,14 +224,16 @@ const handleTypeahead = async (
 
   // Get decorations associated with the current line
   const parentBlock = value.document.getClosestBlock(value.focusBlock.key);
-  const myOffset = value.selection.start.offset - 1;
+  const selectionStartOffset = value.selection.start.offset - 1;
   const decorations = parentBlock && parentBlock.getDecorations(editor as any);
 
   const filteredDecorations = decorations
     ? decorations
         .filter(
-          decoration =>
-            decoration!.start.offset <= myOffset && decoration!.end.offset > myOffset && decoration!.type === TOKEN_MARK
+          (decoration) =>
+            decoration!.start.offset <= selectionStartOffset &&
+            decoration!.end.offset > selectionStartOffset &&
+            decoration!.type === TOKEN_MARK
         )
         .toArray()
     : [];
@@ -234,8 +243,8 @@ const handleTypeahead = async (
     decorations &&
     decorations
       .filter(
-        decoration =>
-          decoration!.end.offset <= myOffset &&
+        (decoration) =>
+          decoration!.end.offset <= selectionStartOffset &&
           decoration!.type === TOKEN_MARK &&
           decoration!.data.get('className').includes('label-key')
       )
@@ -244,10 +253,10 @@ const handleTypeahead = async (
   const labelKey = labelKeyDec && value.focusText.text.slice(labelKeyDec.start.offset, labelKeyDec.end.offset);
 
   const wrapperClasses = filteredDecorations
-    .map(decoration => decoration.data.get('className'))
+    .map((decoration) => decoration.data.get('className'))
     .join(' ')
     .split(' ')
-    .filter(className => className.length);
+    .filter((className) => className.length);
 
   let text = value.focusText.text;
   let prefix = text.slice(0, selection.focus.offset);
@@ -272,36 +281,40 @@ const handleTypeahead = async (
     value,
     wrapperClasses,
     labelKey: labelKey || undefined,
+    editor,
   });
 
   const filteredSuggestions = suggestions
-    .map(group => {
+    .map((group) => {
       if (!group.items) {
         return group;
       }
 
+      let newGroup = { ...group };
       if (prefix) {
         // Filter groups based on prefix
         if (!group.skipFilter) {
-          group.items = group.items.filter(c => (c.filterText || c.label).length >= prefix.length);
+          newGroup.items = newGroup.items.filter((c) => (c.filterText || c.label).length >= prefix.length);
           if (group.prefixMatch) {
-            group.items = group.items.filter(c => (c.filterText || c.label).startsWith(prefix));
+            newGroup.items = newGroup.items.filter((c) => (c.filterText || c.label).startsWith(prefix));
           } else {
-            group.items = group.items.filter(c => (c.filterText || c.label).includes(prefix));
+            newGroup.items = newGroup.items.filter((c) => (c.filterText || c.label).includes(prefix));
           }
         }
 
-        // Filter out the already typed value (prefix) unless it inserts custom text
-        group.items = group.items.filter(c => c.insertText || (c.filterText || c.label) !== prefix);
+        // Filter out the already typed value (prefix) unless it inserts custom text not matching the prefix
+        newGroup.items = newGroup.items.filter(
+          (c) => !(c.insertText === prefix || (c.filterText ?? c.label) === prefix)
+        );
       }
 
       if (!group.skipSort) {
-        group.items = sortBy(group.items, (item: CompletionItem) => item.sortText || item.label);
+        newGroup.items = sortBy(newGroup.items, (item: CompletionItem) => item.sortText || item.label);
       }
 
-      return group;
+      return newGroup;
     })
-    .filter(group => group.items && group.items.length); // Filter out empty groups
+    .filter((gr) => gr.items && gr.items.length); // Filter out empty groups
 
   onStateChange({
     groupedItems: filteredSuggestions,

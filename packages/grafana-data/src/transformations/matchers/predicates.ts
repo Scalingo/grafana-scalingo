@@ -1,4 +1,4 @@
-import { Field, DataFrame } from '../../types/dataFrame';
+import { Field, DataFrame, FieldType } from '../../types/dataFrame';
 import { MatcherID } from './ids';
 import { getFieldMatcher, fieldMatchers, getFrameMatchers, frameMatchers } from '../matchers';
 import { FieldMatcherInfo, MatcherConfig, FrameMatcherInfo } from '../../types/transformations';
@@ -11,12 +11,12 @@ const anyFieldMatcher: FieldMatcherInfo<MatcherConfig[]> = {
   defaultOptions: [], // empty array
 
   get: (options: MatcherConfig[]) => {
-    const children = options.map(option => {
+    const children = options.map((option) => {
       return getFieldMatcher(option);
     });
-    return (field: Field) => {
+    return (field: Field, frame: DataFrame, allFrames: DataFrame[]) => {
       for (const child of children) {
-        if (child(field)) {
+        if (child(field, frame, allFrames)) {
           return true;
         }
       }
@@ -45,7 +45,7 @@ const anyFrameMatcher: FrameMatcherInfo<MatcherConfig[]> = {
   defaultOptions: [], // empty array
 
   get: (options: MatcherConfig[]) => {
-    const children = options.map(option => {
+    const children = options.map((option) => {
       return getFrameMatchers(option);
     });
     return (frame: DataFrame) => {
@@ -79,12 +79,12 @@ const allFieldsMatcher: FieldMatcherInfo<MatcherConfig[]> = {
   defaultOptions: [], // empty array
 
   get: (options: MatcherConfig[]) => {
-    const children = options.map(option => {
+    const children = options.map((option) => {
       return getFieldMatcher(option);
     });
-    return (field: Field) => {
+    return (field: Field, frame: DataFrame, allFrames: DataFrame[]) => {
       for (const child of children) {
-        if (!child(field)) {
+        if (!child(field, frame, allFrames)) {
           return false;
         }
       }
@@ -113,7 +113,7 @@ const allFramesMatcher: FrameMatcherInfo<MatcherConfig[]> = {
   defaultOptions: [], // empty array
 
   get: (options: MatcherConfig[]) => {
-    const children = options.map(option => {
+    const children = options.map((option) => {
       return getFrameMatchers(option);
     });
     return (frame: DataFrame) => {
@@ -147,8 +147,8 @@ const notFieldMatcher: FieldMatcherInfo<MatcherConfig> = {
 
   get: (option: MatcherConfig) => {
     const check = getFieldMatcher(option);
-    return (field: Field) => {
-      return !check(field);
+    return (field: Field, frame: DataFrame, allFrames: DataFrame[]) => {
+      return !check(field, frame, allFrames);
     };
   },
 
@@ -189,6 +189,10 @@ export const alwaysFrameMatcher = (frame: DataFrame) => {
 
 export const neverFieldMatcher = (field: Field) => {
   return false;
+};
+
+export const notTimeFieldMatcher = (field: Field) => {
+  return field.type !== FieldType.time;
 };
 
 export const neverFrameMatcher = (frame: DataFrame) => {

@@ -1,24 +1,26 @@
 import React, { useState } from 'react';
-import { Legend } from './Legend';
 
 import { withCenteredStory } from '../../utils/storybook/withCenteredStory';
 import { withStoryContainer } from '../../utils/storybook/withStoryContainer';
-import { Field } from './Field';
-import { Input } from './Input/Input';
-import { Button } from './Button';
-import { Form } from './Form';
-import { Switch } from './Switch';
-import { Checkbox } from './Checkbox';
-
-import { RadioButtonGroup } from './RadioButtonGroup/RadioButtonGroup';
-import { Select } from './Select/Select';
-import Forms from './index';
 import mdx from './Form.mdx';
+import { ValidateResult } from 'react-hook-form';
 import { boolean } from '@storybook/addon-knobs';
-import { TextArea } from './TextArea/TextArea';
+import {
+  Field,
+  Legend,
+  Input,
+  Button,
+  Form,
+  Switch,
+  Checkbox,
+  Select,
+  InputControl,
+  TextArea,
+  RadioButtonGroup,
+} from '@grafana/ui';
 
 export default {
-  title: 'Forms/Test forms',
+  title: 'Forms/Example forms',
   decorators: [withStoryContainer, withCenteredStory],
   parameters: {
     docs: {
@@ -69,28 +71,22 @@ const renderForm = (defaultValues?: Partial<FormDTO>) => (
           <Legend>Edit user</Legend>
 
           <Field label="Name" invalid={!!errors.name} error="Name is required">
-            <Input name="name" placeholder="Roger Waters" size="md" ref={register({ required: true })} />
+            <Input name="name" placeholder="Roger Waters" ref={register({ required: true })} />
           </Field>
 
           <Field label="Email" invalid={!!errors.email} error="E-mail is required">
-            <Input
-              id="email"
-              name="email"
-              placeholder="roger.waters@grafana.com"
-              size="md"
-              ref={register({ required: true })}
-            />
+            <Input id="email" name="email" placeholder="roger.waters@grafana.com" ref={register({ required: true })} />
           </Field>
 
           <Field label="Username">
-            <Input name="username" placeholder="mr.waters" size="md" ref={register} />
+            <Input name="username" placeholder="mr.waters" ref={register} />
           </Field>
           <Field label="Nested object">
-            <Input name="nested.path" placeholder="Nested path" size="md" ref={register} />
+            <Input name="nested.path" placeholder="Nested path" ref={register} />
           </Field>
 
           <Field label="Textarea" invalid={!!errors.text} error="Text is required">
-            <TextArea name="text" placeholder="Long text" size="md" ref={register({ required: true })} />
+            <TextArea name="text" placeholder="Long text" ref={register({ required: true })} />
           </Field>
 
           <Field label="Checkbox" invalid={!!errors.checkbox} error="We need your consent">
@@ -102,11 +98,11 @@ const renderForm = (defaultValues?: Partial<FormDTO>) => (
           </Field>
 
           <Field label="RadioButton">
-            <Forms.InputControl name="radio" control={control} options={selectOptions} as={RadioButtonGroup} />
+            <InputControl name="radio" control={control} options={selectOptions} as={RadioButtonGroup} />
           </Field>
 
           <Field label="Select" invalid={!!errors.select} error="Select is required">
-            <Forms.InputControl
+            <InputControl
               name="select"
               control={control}
               rules={{
@@ -124,11 +120,11 @@ const renderForm = (defaultValues?: Partial<FormDTO>) => (
   </Form>
 );
 
-export const basic = () => {
+export const Basic = () => {
   return <>{renderForm()}</>;
 };
 
-export const defaultValues = () => {
+export const DefaultValues = () => {
   const defaultValues = [
     {
       name: 'Roger Waters',
@@ -156,7 +152,7 @@ export const defaultValues = () => {
       {renderForm(defaultValues[defaultsIdx])}
       <Button
         onClick={() => {
-          setDefaultsIdx(s => (s + 1) % 2);
+          setDefaultsIdx((s) => (s + 1) % 2);
         }}
         variant="secondary"
       >
@@ -164,4 +160,55 @@ export const defaultValues = () => {
       </Button>
     </>
   );
+};
+
+export const AsyncValidation = () => {
+  const passAsyncValidation = boolean('Pass username validation', true);
+  return (
+    <>
+      <Form
+        onSubmit={(data: FormDTO) => {
+          alert('Submitted successfully!');
+        }}
+      >
+        {({ register, control, errors, formState }) =>
+          (console.log(errors) as any) || (
+            <>
+              <Legend>Edit user</Legend>
+
+              <Field label="Name" invalid={!!errors.name} error="Username is already taken">
+                <Input
+                  name="name"
+                  placeholder="Roger Waters"
+                  ref={register({ validate: validateAsync(passAsyncValidation) })}
+                />
+              </Field>
+
+              <Button type="submit" disabled={formState.isSubmitting}>
+                Submit
+              </Button>
+            </>
+          )
+        }
+      </Form>
+    </>
+  );
+};
+
+const validateAsync = (shouldPass: boolean) => async () => {
+  try {
+    await new Promise<ValidateResult | void>((resolve, reject) => {
+      setTimeout(() => {
+        if (shouldPass) {
+          resolve();
+        } else {
+          reject('Something went wrong...');
+        }
+      }, 2000);
+    });
+    return true;
+  } catch (e) {
+    console.log(e);
+    return false;
+  }
 };

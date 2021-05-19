@@ -5,14 +5,14 @@ const common = require('./webpack.common.js');
 const path = require('path');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const CleanWebpackPlugin = require('clean-webpack-plugin');
+const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 // const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 
 module.exports = (env = {}) =>
   merge(common, {
-    devtool: 'cheap-module-source-map',
+    devtool: 'inline-source-map',
     mode: 'development',
 
     entry: {
@@ -73,23 +73,12 @@ module.exports = (env = {}) =>
                 ],
               },
             },
-            {
-              loader: 'eslint-loader',
-              options: {
-                emitError: true,
-                emitWarning: true,
-              },
-            },
           ],
         },
         require('./sass.rule.js')({
           sourceMap: false,
           preserveUrl: false,
         }),
-        {
-          test: /\.(png|jpg|gif|ttf|eot|svg|woff(2)?)(\?[a-z0-9=&.]+)?$/,
-          loader: 'file-loader',
-        },
       ],
     },
 
@@ -98,7 +87,20 @@ module.exports = (env = {}) =>
       env.noTsCheck
         ? new webpack.DefinePlugin({}) // bogus plugin to satisfy webpack API
         : new ForkTsCheckerWebpackPlugin({
-            checkSyntacticErrors: true,
+            eslint: {
+              enabled: true,
+              files: ['public/app/**/*.{ts,tsx}', 'packages/*/src/**/*.{ts,tsx}'],
+              options: {
+                cache: true,
+              },
+            },
+            typescript: {
+              mode: 'write-references',
+              diagnosticOptions: {
+                semantic: true,
+                syntactic: true,
+              },
+            },
           }),
       new MiniCssExtractPlugin({
         filename: 'grafana.[name].[hash].css',

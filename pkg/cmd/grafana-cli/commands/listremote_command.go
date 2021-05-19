@@ -13,14 +13,14 @@ func (cmd Command) listRemoteCommand(c utils.CommandLine) error {
 		return err
 	}
 
-	for _, plugin := range plugin.Plugins {
+	for _, p := range plugin.Plugins {
+		plugin := p
 		if len(plugin.Versions) > 0 {
 			ver := latestSupportedVersion(&plugin)
 			if ver != nil {
-				logger.Infof("id: %v version: %s\n", plugin.Id, ver.Version)
+				logger.Infof("id: %v version: %s\n", plugin.ID, ver.Version)
 			}
 		}
-
 	}
 
 	return nil

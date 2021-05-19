@@ -1,7 +1,7 @@
 import React from 'react';
 import { HttpSettingsProps } from './types';
 import { FormField } from '../FormField/FormField';
-import { SecretFormField } from '../SecretFormFied/SecretFormField';
+import { SecretFormField } from '../SecretFormField/SecretFormField';
 
 export const BasicAuthSettings: React.FC<HttpSettingsProps> = ({ dataSourceConfig, onChange }) => {
   const password = dataSourceConfig.secureJsonData ? dataSourceConfig.secureJsonData.basicAuthPassword : '';
@@ -40,7 +40,7 @@ export const BasicAuthSettings: React.FC<HttpSettingsProps> = ({ dataSourceConfi
           inputWidth={18}
           placeholder="user"
           value={dataSourceConfig.basicAuthUser}
-          onChange={event => onChange({ ...dataSourceConfig, basicAuthUser: event.currentTarget.value })}
+          onChange={(event) => onChange({ ...dataSourceConfig, basicAuthUser: event.currentTarget.value })}
         />
       </div>
       <div className="gf-form">

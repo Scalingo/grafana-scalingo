@@ -26,30 +26,28 @@ func init() {
 		Type:        "telegram",
 		Name:        "Telegram",
 		Description: "Sends notifications to Telegram",
+		Heading:     "Telegram API settings",
 		Factory:     NewTelegramNotifier,
-		OptionsTemplate: `
-      <h3 class="page-heading">Telegram API settings</h3>
-      <div class="gf-form">
-        <span class="gf-form-label width-9">BOT API Token</span>
-        <input type="text" required
-					class="gf-form-input"
-					ng-model="ctrl.model.settings.bottoken"
-					placeholder="Telegram BOT API Token"></input>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-9">Chat ID</span>
-        <input type="text" required
-					class="gf-form-input"
-					ng-model="ctrl.model.settings.chatid"
-					data-placement="right">
-        </input>
-        <info-popover mode="right-absolute">
-					Integer Telegram Chat Identifier
-        </info-popover>
-      </div>
-    `,
+		Options: []alerting.NotifierOption{
+			{
+				Label:        "BOT API Token",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				Placeholder:  "Telegram BOT API Token",
+				PropertyName: "bottoken",
+				Required:     true,
+				Secure:       true,
+			},
+			{
+				Label:        "Chat ID",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				Description:  "Integer Telegram Chat Identifier",
+				PropertyName: "chatid",
+				Required:     true,
+			},
+		},
 	})
-
 }
 
 // TelegramNotifier is responsible for sending
@@ -68,7 +66,7 @@ func NewTelegramNotifier(model *models.AlertNotification) (alerting.Notifier, er
 		return nil, alerting.ValidationError{Reason: "No Settings Supplied"}
 	}
 
-	botToken := model.Settings.Get("bottoken").MustString()
+	botToken := model.DecryptedValue("bottoken", model.Settings.Get("bottoken").MustString())
 	chatID := model.Settings.Get("chatid").MustString()
 	uploadImage := model.Settings.Get("uploadImage").MustBool()
 
@@ -107,16 +105,16 @@ func (tn *TelegramNotifier) buildMessageLinkedImage(evalContext *alerting.EvalCo
 
 	ruleURL, err := evalContext.GetRuleURL()
 	if err == nil {
-		message = message + fmt.Sprintf("URL: %s\n", ruleURL)
+		message += fmt.Sprintf("URL: %s\n", ruleURL)
 	}
 
 	if evalContext.ImagePublicURL != "" {
-		message = message + fmt.Sprintf("Image: %s\n", evalContext.ImagePublicURL)
+		message += fmt.Sprintf("Image: %s\n", evalContext.ImagePublicURL)
 	}
 
 	metrics := generateMetricsMessage(evalContext)
 	if metrics != "" {
-		message = message + fmt.Sprintf("\n<i>Metrics:</i>%s", metrics)
+		message += fmt.Sprintf("\n<i>Metrics:</i>%s", metrics)
 	}
 
 	return tn.generateTelegramCmd(message, "text", "sendMessage", func(w *multipart.Writer) {
@@ -172,6 +170,11 @@ func (tn *TelegramNotifier) buildMessageInlineImage(evalContext *alerting.EvalCo
 func (tn *TelegramNotifier) generateTelegramCmd(message string, messageField string, apiAction string, extraConf func(writer *multipart.Writer)) (*models.SendWebhookSync, error) {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
+	defer func() {
+		if err := w.Close(); err != nil {
+			tn.log.Warn("Failed to close writer", "err", err)
+		}
+	}()
 
 	fw, err := w.CreateFormField("chat_id")
 	if err != nil {
@@ -191,7 +194,9 @@ func (tn *TelegramNotifier) generateTelegramCmd(message string, messageField str
 
 	extraConf(w)
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
 
 	tn.log.Info("Sending telegram notification", "chat_id", tn.ChatID, "bot_token", tn.BotToken, "apiAction", apiAction)
 	url := fmt.Sprintf(telegramAPIURL, tn.BotToken, apiAction)
@@ -228,7 +233,6 @@ func generateImageCaption(evalContext *alerting.EvalContext, ruleURL string, met
 
 	if len(message) > captionLengthLimit {
 		message = message[0:captionLengthLimit]
-
 	}
 
 	if len(ruleURL) > 0 {
@@ -248,7 +252,7 @@ func appendIfPossible(message string, extra string, sizeLimit int) string {
 	if len(extra)+len(message) <= sizeLimit {
 		return message + extra
 	}
-	log.Debug("Line too long for image caption. value: %s", extra)
+	log.Debugf("Line too long for image caption. value: %s", extra)
 	return message
 }
 

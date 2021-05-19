@@ -3,10 +3,6 @@ title = "User HTTP API "
 description = "Grafana User HTTP API"
 keywords = ["grafana", "http", "documentation", "api", "user"]
 aliases = ["/docs/grafana/latest/http_api/user/"]
-type = "docs"
-[menu.docs]
-name = "Users"
-parent = "http_api"
 +++
 
 # User HTTP resources / actions
@@ -38,14 +34,22 @@ Content-Type: application/json
     "name": "Admin",
     "login": "admin",
     "email": "admin@mygraf.com",
-    "isAdmin": true
+    "isAdmin": true,
+    "isDisabled": false,
+    "lastSeenAt": "2020-04-10T20:29:27+03:00",
+    "lastSeenAtAge': "2m",
+    "authLabels": ["OAuth"]
   },
   {
     "id": 2,
     "name": "User",
     "login": "user",
     "email": "user@mygraf.com",
-    "isAdmin": false
+    "isAdmin": false,
+    "isDisabled": false,
+    "lastSeenAt": "2020-01-24T12:38:47+02:00",
+    "lastSeenAtAge": "2M",
+    "authLabels": []
   }
 ]
 ```
@@ -80,14 +84,22 @@ Content-Type: application/json
       "name": "Admin",
       "login": "admin",
       "email": "admin@mygraf.com",
-      "isAdmin": true
+      "isAdmin": true,
+      "isDisabled": false,
+      "lastSeenAt": "2020-04-10T20:29:27+03:00",
+      "lastSeenAtAge': "2m",
+      "authLabels": ["OAuth"]
     },
     {
       "id": 2,
       "name": "User",
       "login": "user",
       "email": "user@mygraf.com",
-      "isAdmin": false
+      "isAdmin": false,
+      "isDisabled": false,
+      "lastSeenAt": "2020-01-24T12:38:47+02:00",
+      "lastSeenAtAge": "2M",
+      "authLabels": []
     }
   ],
   "page": 1,
@@ -127,7 +139,8 @@ Content-Type: application/json
   "isExternal": false,
   "authLabels": [],
   "updatedAt": "2019-09-09T11:31:26+01:00",
-  "createdAt": "2019-09-09T11:31:26+01:00"
+  "createdAt": "2019-09-09T11:31:26+01:00",
+  "avatarUrl": ""
 }
 ```
 
@@ -173,7 +186,8 @@ Content-Type: application/json
   "isExternal": false,
   "authLabels": null,
   "updatedAt": "2019-09-25T14:44:37+01:00",
-  "createdAt": "2019-09-25T14:44:37+01:00"
+  "createdAt": "2019-09-25T14:44:37+01:00",
+  "avatarUrl":""
 }
 ```
 
@@ -284,8 +298,10 @@ Content-Type: application/json
 GET /api/user HTTP/1.1
 Accept: application/json
 Content-Type: application/json
-Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
+Authorization: Basic YWRtaW46YWRtaW4=
 ```
+
+Requires basic authentication.
 
 **Example Response**:
 
@@ -294,12 +310,19 @@ HTTP/1.1 200
 Content-Type: application/json
 
 {
+  "id":1,
   "email":"admin@mygraf.com",
   "name":"Admin",
   "login":"admin",
   "theme":"light",
   "orgId":1,
-  "isGrafanaAdmin":true
+  "isGrafanaAdmin":true,
+  "isDisabled":false
+  "isExternal": false,
+  "authLabels": [],
+  "updatedAt": "2019-09-09T11:31:26+01:00",
+  "createdAt": "2019-09-09T11:31:26+01:00",
+  "avatarUrl": ""
 }
 ```
 
@@ -307,7 +330,7 @@ Content-Type: application/json
 
 `PUT /api/user/password`
 
-Changes the password for the user
+Changes the password for the user. Requires basic authentication.
 
 **Example Request**:
 
@@ -315,7 +338,7 @@ Changes the password for the user
 PUT /api/user/password HTTP/1.1
 Accept: application/json
 Content-Type: application/json
-Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
+Authorization: Basic YWRtaW46YWRtaW4=
 
 {
   "oldPassword": "old_password",
@@ -394,7 +417,7 @@ Content-Type: application/json
 
 `GET /api/user/orgs`
 
-Return a list of all organizations of the current user.
+Return a list of all organizations of the current user. Requires basic authentication.
 
 **Example Request**:
 
@@ -402,7 +425,7 @@ Return a list of all organizations of the current user.
 GET /api/user/orgs HTTP/1.1
 Accept: application/json
 Content-Type: application/json
-Authorization: Bearer eyJrIjoiT0tTcG1pUlY2RnVKZTFVaDFsNFZXdE9ZWmNrMkZYbk
+Authorization: Basic YWRtaW46YWRtaW4=
 ```
 
 **Example Response**:

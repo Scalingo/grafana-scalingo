@@ -16,17 +16,71 @@ import (
 )
 
 // for stubbing in tests
+//nolint: gocritic
 var newImageUploaderProvider = func() (imguploader.ImageUploader, error) {
 	return imguploader.NewImageUploader()
 }
 
 // NotifierPlugin holds meta information about a notifier.
 type NotifierPlugin struct {
-	Type            string          `json:"type"`
-	Name            string          `json:"name"`
-	Description     string          `json:"description"`
-	OptionsTemplate string          `json:"optionsTemplate"`
-	Factory         NotifierFactory `json:"-"`
+	Type        string           `json:"type"`
+	Name        string           `json:"name"`
+	Heading     string           `json:"heading"`
+	Description string           `json:"description"`
+	Info        string           `json:"info"`
+	Factory     NotifierFactory  `json:"-"`
+	Options     []NotifierOption `json:"options"`
+}
+
+// NotifierOption holds information about options specific for the NotifierPlugin.
+type NotifierOption struct {
+	Element        ElementType    `json:"element"`
+	InputType      InputType      `json:"inputType"`
+	Label          string         `json:"label"`
+	Description    string         `json:"description"`
+	Placeholder    string         `json:"placeholder"`
+	PropertyName   string         `json:"propertyName"`
+	SelectOptions  []SelectOption `json:"selectOptions"`
+	ShowWhen       ShowWhen       `json:"showWhen"`
+	Required       bool           `json:"required"`
+	ValidationRule string         `json:"validationRule"`
+	Secure         bool           `json:"secure"`
+}
+
+// InputType is the type of input that can be rendered in the frontend.
+type InputType string
+
+const (
+	// InputTypeText will render a text field in the frontend
+	InputTypeText = "text"
+	// InputTypePassword will render a text field in the frontend
+	InputTypePassword = "password"
+)
+
+// ElementType is the type of element that can be rendered in the frontend.
+type ElementType string
+
+const (
+	// ElementTypeInput will render an input
+	ElementTypeInput = "input"
+	// ElementTypeSelect will render a select
+	ElementTypeSelect = "select"
+	// ElementTypeCheckbox will render a checkbox
+	ElementTypeCheckbox = "checkbox"
+	// ElementTypeTextArea will render a textarea
+	ElementTypeTextArea = "textarea"
+)
+
+// SelectOption is a simple type for Options that have dropdown options. Should be used when Element is ElementTypeSelect.
+type SelectOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// ShowWhen holds information about when options are dependant on other options.
+type ShowWhen struct {
+	Field string `json:"field"`
+	Is    string `json:"is"`
 }
 
 func newNotificationService(renderService rendering.Service) *notificationService {
@@ -77,9 +131,11 @@ func (n *notificationService) sendAndMarkAsComplete(evalContext *EvalContext, no
 	n.log.Debug("Sending notification", "type", notifier.GetType(), "uid", notifier.GetNotifierUID(), "isDefault", notifier.GetIsDefault())
 	metrics.MAlertingNotificationSent.WithLabelValues(notifier.GetType()).Inc()
 
-	err := notifier.Notify(evalContext)
+	if err := evalContext.evaluateNotificationTemplateFields(); err != nil {
+		n.log.Error("failed trying to evaluate notification template fields", "uid", notifier.GetNotifierUID(), "error", err)
+	}
 
-	if err != nil {
+	if err := notifier.Notify(evalContext); err != nil {
 		n.log.Error("failed to send notification", "uid", notifier.GetNotifierUID(), "error", err)
 		metrics.MAlertingNotificationFailed.WithLabelValues(notifier.GetType()).Inc()
 		return err
@@ -106,11 +162,11 @@ func (n *notificationService) sendNotification(evalContext *EvalContext, notifie
 		}
 
 		err := bus.DispatchCtx(evalContext.Ctx, setPendingCmd)
-		if err == models.ErrAlertNotificationStateVersionConflict {
-			return nil
-		}
-
 		if err != nil {
+			if errors.Is(err, models.ErrAlertNotificationStateVersionConflict) {
+				return nil
+			}
+
 			return err
 		}
 
@@ -168,6 +224,7 @@ func (n *notificationService) renderAndUploadImage(evalCtx *EvalContext, timeout
 	n.log.Debug("Rendered alert panel image", "ruleId", evalCtx.Rule.ID, "path", result.FilePath, "took", took)
 
 	evalCtx.ImageOnDiskPath = result.FilePath
+
 	n.log.Debug("Uploading alert panel image to external image store", "ruleId", evalCtx.Rule.ID, "path", evalCtx.ImageOnDiskPath)
 
 	start = time.Now()
@@ -226,7 +283,7 @@ func (n *notificationService) getNeededNotifiers(orgID int64, notificationUids [
 func InitNotifier(model *models.AlertNotification) (Notifier, error) {
 	notifierPlugin, found := notifierFactories[model.Type]
 	if !found {
-		return nil, errors.New("Unsupported notification type")
+		return nil, fmt.Errorf("unsupported notification type %q", model.Type)
 	}
 
 	return notifierPlugin.Factory(model)

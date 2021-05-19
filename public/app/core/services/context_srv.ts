@@ -1,7 +1,7 @@
 import config from '../../core/config';
 import _ from 'lodash';
 import coreModule from 'app/core/core_module';
-import kbn from '../utils/kbn';
+import { rangeUtil } from '@grafana/data';
 
 export class User {
   id: number;
@@ -16,6 +16,7 @@ export class User {
   helpFlags1: number;
   lightTheme: boolean;
   hasEditPermissionInFolders: boolean;
+  email?: string;
 
   constructor() {
     if (config.bootData.user) {
@@ -48,6 +49,14 @@ export class ContextSrv {
     this.minRefreshInterval = config.minRefreshInterval;
   }
 
+  /**
+   * Indicate the user has been logged out
+   */
+  setLoggedOut() {
+    this.user.isSignedIn = false;
+    this.isSignedIn = false;
+  }
+
   hasRole(role: string) {
     return this.user.orgRole === role;
   }
@@ -61,7 +70,7 @@ export class ContextSrv {
     if (!config.minRefreshInterval) {
       return true;
     }
-    return kbn.interval_to_ms(interval) >= kbn.interval_to_ms(config.minRefreshInterval);
+    return rangeUtil.intervalToMs(interval) >= rangeUtil.intervalToMs(config.minRefreshInterval);
   }
 
   getValidInterval(interval: string) {

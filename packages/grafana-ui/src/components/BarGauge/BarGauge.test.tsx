@@ -10,6 +10,7 @@ import {
   getTitleStyles,
   getValuePercent,
   BarGaugeDisplayMode,
+  calculateBarAndValueDimensions,
 } from './BarGauge';
 import { getTheme } from '../../themes';
 
@@ -69,12 +70,12 @@ describe('BarGauge', () => {
   describe('Get value color', () => {
     it('should get the threshold color if value is same as a threshold', () => {
       const props = getProps();
-      props.value = props.display(70);
+      props.value = props.display!(70);
       expect(getValueColor(props)).toEqual(orange);
     });
     it('should get the base threshold', () => {
       const props = getProps();
-      props.value = props.display(-10);
+      props.value = props.display!(-10);
       expect(getValueColor(props)).toEqual(green);
     });
   });
@@ -209,6 +210,20 @@ describe('BarGauge', () => {
     it('should render', () => {
       const { wrapper } = setup();
       expect(wrapper).toMatchSnapshot();
+    });
+  });
+
+  describe('calculateBarAndValueDimensions', () => {
+    it('valueWidth should including paddings in valueWidth', () => {
+      const result = calculateBarAndValueDimensions(
+        getProps({
+          height: 30,
+          width: 100,
+          value: getValue(1, 'AA'),
+          orientation: VizOrientation.Horizontal,
+        })
+      );
+      expect(result.valueWidth).toBe(21);
     });
   });
 });

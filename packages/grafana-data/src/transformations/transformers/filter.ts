@@ -1,8 +1,9 @@
+import { map } from 'rxjs/operators';
+
 import { noopTransformer } from './noop';
 import { DataFrame, Field } from '../../types/dataFrame';
 import { DataTransformerID } from './ids';
 import { DataTransformerInfo, MatcherConfig } from '../../types/transformations';
-import { FieldMatcherID } from '../matchers/ids';
 import { getFieldMatcher, getFrameMatchers } from '../matchers';
 
 export interface FilterOptions {
@@ -14,53 +15,54 @@ export const filterFieldsTransformer: DataTransformerInfo<FilterOptions> = {
   id: DataTransformerID.filterFields,
   name: 'Filter Fields',
   description: 'select a subset of fields',
-  defaultOptions: {
-    include: { id: FieldMatcherID.numeric },
-  },
+  defaultOptions: {},
 
   /**
    * Return a modified copy of the series.  If the transform is not or should not
    * be applied, just return the input series
    */
-  transformer: (options: FilterOptions) => {
+  operator: (options: FilterOptions) => (source) => {
     if (!options.include && !options.exclude) {
-      return noopTransformer.transformer({});
+      return source.pipe(noopTransformer.operator({}));
     }
 
-    const include = options.include ? getFieldMatcher(options.include) : null;
-    const exclude = options.exclude ? getFieldMatcher(options.exclude) : null;
+    return source.pipe(
+      map((data) => {
+        const include = options.include ? getFieldMatcher(options.include) : null;
+        const exclude = options.exclude ? getFieldMatcher(options.exclude) : null;
 
-    return (data: DataFrame[]) => {
-      const processed: DataFrame[] = [];
-      for (const series of data) {
-        // Find the matching field indexes
-        const fields: Field[] = [];
-        for (let i = 0; i < series.fields.length; i++) {
-          const field = series.fields[i];
-          if (exclude) {
-            if (exclude(field)) {
-              continue;
+        const processed: DataFrame[] = [];
+        for (const series of data) {
+          // Find the matching field indexes
+          const fields: Field[] = [];
+          for (let i = 0; i < series.fields.length; i++) {
+            const field = series.fields[i];
+
+            if (exclude) {
+              if (exclude(field, series, data)) {
+                continue;
+              }
+              if (!include) {
+                fields.push(field);
+              }
             }
-            if (!include) {
+            if (include && include(field, series, data)) {
               fields.push(field);
             }
           }
-          if (include && include(field)) {
-            fields.push(field);
-          }
-        }
 
-        if (!fields.length) {
-          continue;
+          if (!fields.length) {
+            continue;
+          }
+          const copy = {
+            ...series, // all the other properties
+            fields, // but a different set of fields
+          };
+          processed.push(copy);
         }
-        const copy = {
-          ...series, // all the other properties
-          fields, // but a different set of fields
-        };
-        processed.push(copy);
-      }
-      return processed;
-    };
+        return processed;
+      })
+    );
   },
 };
 
@@ -74,30 +76,32 @@ export const filterFramesTransformer: DataTransformerInfo<FilterOptions> = {
    * Return a modified copy of the series.  If the transform is not or should not
    * be applied, just return the input series
    */
-  transformer: (options: FilterOptions) => {
+  operator: (options) => (source) => {
     if (!options.include && !options.exclude) {
-      return noopTransformer.transformer({});
+      return source.pipe(noopTransformer.operator({}));
     }
 
-    const include = options.include ? getFrameMatchers(options.include) : null;
-    const exclude = options.exclude ? getFrameMatchers(options.exclude) : null;
+    return source.pipe(
+      map((data) => {
+        const include = options.include ? getFrameMatchers(options.include) : null;
+        const exclude = options.exclude ? getFrameMatchers(options.exclude) : null;
 
-    return (data: DataFrame[]) => {
-      const processed: DataFrame[] = [];
-      for (const series of data) {
-        if (exclude) {
-          if (exclude(series)) {
-            continue;
+        const processed: DataFrame[] = [];
+        for (const series of data) {
+          if (exclude) {
+            if (exclude(series)) {
+              continue;
+            }
+            if (!include) {
+              processed.push(series);
+            }
           }
-          if (!include) {
+          if (include && include(series)) {
             processed.push(series);
           }
         }
-        if (include && include(series)) {
-          processed.push(series);
-        }
-      }
-      return processed;
-    };
+        return processed;
+      })
+    );
   },
 };

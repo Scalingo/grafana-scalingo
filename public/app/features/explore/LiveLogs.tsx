@@ -2,10 +2,10 @@ import React, { PureComponent } from 'react';
 import { css, cx } from 'emotion';
 import tinycolor from 'tinycolor2';
 
-import { Themeable, withTheme, getLogRowStyles } from '@grafana/ui';
-import { GrafanaTheme, LogRowModel, TimeZone } from '@grafana/data';
+import { LogMessageAnsi, Themeable, withTheme, getLogRowStyles, Icon } from '@grafana/ui';
+import { GrafanaTheme, LogRowModel, TimeZone, dateTimeFormat } from '@grafana/data';
 
-import ElapsedTime from './ElapsedTime';
+import { ElapsedTime } from './ElapsedTime';
 
 const getStyles = (theme: GrafanaTheme) => ({
   logsRowsLive: css`
@@ -14,8 +14,8 @@ const getStyles = (theme: GrafanaTheme) => ({
     font-size: ${theme.typography.size.sm};
     display: flex;
     flex-flow: column nowrap;
-    height: 65vh;
-    overflow-y: auto;
+    height: 60vh;
+    overflow-y: scroll;
     :first-child {
       margin-top: auto !important;
     }
@@ -23,15 +23,11 @@ const getStyles = (theme: GrafanaTheme) => ({
   logsRowFade: css`
     label: logs-row-fresh;
     color: ${theme.colors.text};
-    background-color: ${tinycolor(theme.colors.blueLight)
-      .setAlpha(0.25)
-      .toString()};
+    background-color: ${tinycolor(theme.palette.blue95).setAlpha(0.25).toString()};
     animation: fade 1s ease-out 1s 1 normal forwards;
     @keyframes fade {
       from {
-        background-color: ${tinycolor(theme.colors.blueLight)
-          .setAlpha(0.25)
-          .toString()};
+        background-color: ${tinycolor(theme.palette.blue95).setAlpha(0.25).toString()};
       }
       to {
         background-color: transparent;
@@ -68,32 +64,12 @@ interface State {
 class LiveLogs extends PureComponent<Props, State> {
   private liveEndDiv: HTMLDivElement | null = null;
   private scrollContainerRef = React.createRef<HTMLTableSectionElement>();
-  private lastScrollPos: number | null = null;
 
   constructor(props: Props) {
     super(props);
     this.state = {
       logRowsToRender: props.logRows,
     };
-  }
-
-  componentDidUpdate(prevProps: Props) {
-    if (!prevProps.isPaused && this.props.isPaused) {
-      // So we paused the view and we changed the content size, but we want to keep the relative offset from the bottom.
-      if (this.lastScrollPos && this.scrollContainerRef.current) {
-        // There is last scroll pos from when user scrolled up a bit so go to that position.
-        const { clientHeight, scrollHeight } = this.scrollContainerRef.current;
-        const scrollTop = scrollHeight - (this.lastScrollPos + clientHeight);
-        this.scrollContainerRef.current.scrollTo(0, scrollTop);
-        this.lastScrollPos = null;
-      } else {
-        // We do not have any position to jump to su the assumption is user just clicked pause. We can just scroll
-        // to the bottom.
-        if (this.liveEndDiv) {
-          this.liveEndDiv.scrollIntoView(false);
-        }
-      }
-    }
   }
 
   static getDerivedStateFromProps(nextProps: Props, state: State) {
@@ -120,7 +96,6 @@ class LiveLogs extends PureComponent<Props, State> {
     const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
     if (distanceFromBottom >= 5 && !isPaused) {
       onPause();
-      this.lastScrollPos = distanceFromBottom;
     }
   };
 
@@ -137,7 +112,6 @@ class LiveLogs extends PureComponent<Props, State> {
   render() {
     const { theme, timeZone, onPause, onResume, isPaused } = this.props;
     const styles = getStyles(theme);
-    const showUtc = timeZone === 'utc';
     const { logsRow, logsRowLocalTime, logsRowMessage } = getLogRowStyles(theme);
 
     return (
@@ -151,27 +125,18 @@ class LiveLogs extends PureComponent<Props, State> {
             {this.rowsToRender().map((row: LogRowModel) => {
               return (
                 <tr className={cx(logsRow, styles.logsRowFade)} key={row.uid}>
-                  {showUtc && (
-                    <td className={cx(logsRowLocalTime)} title={`Local: ${row.timeLocal} (${row.timeFromNow})`}>
-                      {row.timeUtc}
-                    </td>
-                  )}
-                  {!showUtc && (
-                    <td className={cx(logsRowLocalTime)} title={`${row.timeUtc} (${row.timeFromNow})`}>
-                      {row.timeLocal}
-                    </td>
-                  )}
-                  <td className={cx(logsRowMessage)}>{row.entry}</td>
+                  <td className={cx(logsRowLocalTime)}>{dateTimeFormat(row.timeEpochMs, { timeZone })}</td>
+                  <td className={cx(logsRowMessage)}>{row.hasAnsi ? <LogMessageAnsi value={row.raw} /> : row.entry}</td>
                 </tr>
               );
             })}
             <tr
-              ref={element => {
+              ref={(element) => {
                 this.liveEndDiv = element;
                 // This is triggered on every update so on every new row. It keeps the view scrolled at the bottom by
                 // default.
                 if (this.liveEndDiv && !isPaused) {
-                  this.liveEndDiv.scrollIntoView(false);
+                  this.scrollContainerRef.current?.scrollTo(0, this.scrollContainerRef.current.scrollHeight);
                 }
               }}
             />
@@ -179,12 +144,12 @@ class LiveLogs extends PureComponent<Props, State> {
         </table>
         <div className={cx([styles.logsRowsIndicator])}>
           <button onClick={isPaused ? onResume : onPause} className={cx('btn btn-secondary', styles.button)}>
-            <i className={cx('fa', isPaused ? 'fa-play' : 'fa-pause')} />
+            <Icon name={isPaused ? 'play' : 'pause'} />
             &nbsp;
             {isPaused ? 'Resume' : 'Pause'}
           </button>
           <button onClick={this.props.stopLive} className={cx('btn btn-inverse', styles.button)}>
-            <i className={'fa fa-stop'} />
+            <Icon name="square-shape" size="lg" type="mono" />
             &nbsp; Exit live mode
           </button>
           {isPaused || (

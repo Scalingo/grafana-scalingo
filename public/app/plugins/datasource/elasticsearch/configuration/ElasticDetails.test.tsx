@@ -3,7 +3,8 @@ import { last } from 'lodash';
 import { mount } from 'enzyme';
 import { ElasticDetails } from './ElasticDetails';
 import { createDefaultConfigOptions } from './mocks';
-import { Select } from '@grafana/ui';
+import { LegacyForms } from '@grafana/ui';
+const { Select } = LegacyForms;
 
 describe('ElasticDetails', () => {
   it('should render without error', () => {
@@ -63,7 +64,7 @@ describe('ElasticDetails', () => {
     const options = createDefaultConfigOptions();
     const wrapper = mount(<ElasticDetails onChange={onChangeMock} value={options} />);
 
-    testCases.forEach(tc => {
+    testCases.forEach((tc) => {
       it(`sets maxConcurrentShardRequests = ${tc.maxConcurrentShardRequests} if version = ${tc.version},`, () => {
         wrapper.setProps({
           onChange: onChangeMock,

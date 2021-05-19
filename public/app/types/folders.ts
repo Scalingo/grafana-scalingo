@@ -7,6 +7,8 @@ export interface FolderDTO {
   url: string;
   version: number;
   canSave: boolean;
+  canEdit: boolean;
+  canAdmin: boolean;
 }
 
 export interface FolderState {
@@ -21,7 +23,7 @@ export interface FolderState {
 }
 
 export interface FolderInfo {
-  id: number;
-  title: string;
-  url: string;
+  id?: number;
+  title?: string;
+  url?: string;
 }

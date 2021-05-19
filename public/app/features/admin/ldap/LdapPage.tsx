@@ -2,7 +2,8 @@ import React, { PureComponent } from 'react';
 import { hot } from 'react-hot-loader';
 import { connect } from 'react-redux';
 import { NavModel } from '@grafana/data';
-import { FormField, Alert } from '@grafana/ui';
+import { Alert, LegacyForms } from '@grafana/ui';
+const { FormField } = LegacyForms;
 import { getNavModel } from 'app/core/selectors/navModel';
 import config from 'app/core/config';
 import Page from 'app/core/components/Page/Page';
@@ -85,7 +86,9 @@ export class LdapPage extends PureComponent<Props, State> {
           <>
             {ldapError && ldapError.title && (
               <div className="gf-form-group">
-                <Alert title={ldapError.title} severity={AppNotificationSeverity.Error} children={ldapError.body} />
+                <Alert title={ldapError.title} severity={AppNotificationSeverity.Error}>
+                  {ldapError.body}
+                </Alert>
               </div>
             )}
 
@@ -115,9 +118,10 @@ export class LdapPage extends PureComponent<Props, State> {
                 <Alert
                   title={userError.title}
                   severity={AppNotificationSeverity.Error}
-                  children={userError.body}
                   onRemove={this.onClearUserError}
-                />
+                >
+                  {userError.body}
+                </Alert>
               </div>
             )}
             {ldapUser && <LdapUserInfo ldapUser={ldapUser} showAttributeMapping={true} />}

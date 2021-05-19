@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react';
-import { Select } from '@grafana/ui';
+import { Select, Icon } from '@grafana/ui';
 import { SelectableValue } from '@grafana/data';
 import { dashboardPermissionLevels, DashboardAcl, PermissionLevel } from 'app/types/acl';
 import { FolderInfo } from 'app/types';
@@ -16,10 +16,10 @@ function ItemAvatar({ item }: { item: DashboardAcl }) {
     return <img className="filter-table__avatar" src={item.teamAvatarUrl} />;
   }
   if (item.role === 'Editor') {
-    return <i style={{ width: '25px', height: '25px' }} className="gicon gicon-editor" />;
+    return <Icon size="lg" name="edit" />;
   }
 
-  return <i style={{ width: '25px', height: '25px' }} className="gicon gicon-viewer" />;
+  return <Icon size="lg" name="eye" />;
 }
 
 function ItemDescription({ item }: { item: DashboardAcl }) {
@@ -41,7 +41,7 @@ interface Props {
 
 export default class PermissionsListItem extends PureComponent<Props> {
   onPermissionChanged = (option: SelectableValue<PermissionLevel>) => {
-    this.props.onPermissionChanged(this.props.item, option.value);
+    this.props.onPermissionChanged(this.props.item, option.value!);
   };
 
   onRemoveItem = () => {
@@ -51,10 +51,10 @@ export default class PermissionsListItem extends PureComponent<Props> {
   render() {
     const { item, folderInfo } = this.props;
     const inheritedFromRoot = item.dashboardId === -1 && !item.inherited;
-    const currentPermissionLevel = dashboardPermissionLevels.find(dp => dp.value === item.permission);
+    const currentPermissionLevel = dashboardPermissionLevels.find((dp) => dp.value === item.permission);
 
     return (
-      <tr className={setClassNameHelper(item.inherited)}>
+      <tr className={setClassNameHelper(Boolean(item?.inherited))}>
         <td style={{ width: '1%' }}>
           <ItemAvatar item={item} />
         </td>
@@ -74,25 +74,23 @@ export default class PermissionsListItem extends PureComponent<Props> {
         </td>
         <td className="query-keyword">Can</td>
         <td>
-          <div className="gf-form">
-            <Select
-              isSearchable={false}
-              options={dashboardPermissionLevels}
-              onChange={this.onPermissionChanged}
-              isDisabled={item.inherited}
-              className="gf-form-select-box__control--menu-right"
-              value={currentPermissionLevel}
-            />
-          </div>
+          <Select
+            isSearchable={false}
+            options={dashboardPermissionLevels}
+            onChange={this.onPermissionChanged}
+            disabled={item.inherited}
+            value={currentPermissionLevel}
+            width={25}
+          />
         </td>
         <td>
           {!item.inherited ? (
             <a className="btn btn-danger btn-small" onClick={this.onRemoveItem}>
-              <i className="fa fa-remove" />
+              <Icon name="times" style={{ marginBottom: 0 }} />
             </a>
           ) : (
             <button className="btn btn-inverse btn-small">
-              <i className="fa fa-lock" />
+              <Icon name="lock" style={{ marginBottom: '3px' }} />
             </button>
           )}
         </td>

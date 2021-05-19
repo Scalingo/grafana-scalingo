@@ -1,13 +1,12 @@
 // Libraries
-import _ from 'lodash';
+import _, { defaults } from 'lodash';
 // Utils
 import getFactors from 'app/core/utils/factors';
-import { appendQueryToUrl } from 'app/core/utils/url';
 import kbn from 'app/core/utils/kbn';
 // Types
 import { PanelModel } from './PanelModel';
 import { DashboardModel } from './DashboardModel';
-import { DataLink } from '@grafana/data';
+import { DataLink, DataLinkBuiltInVars, urlUtil } from '@grafana/data';
 // Constants
 import {
   DEFAULT_PANEL_SPAN,
@@ -17,7 +16,9 @@ import {
   GRID_COLUMN_COUNT,
   MIN_PANEL_HEIGHT,
 } from 'app/core/constants';
-import { DataLinkBuiltInVars } from '@grafana/ui';
+import { isConstant, isMulti, isQuery } from 'app/features/variables/guard';
+import { alignCurrentWithMulti } from 'app/features/variables/shared/multiOptions';
+import { VariableHide, VariableTag } from '../../variables/types';
 
 export class DashboardMigrator {
   dashboard: DashboardModel;
@@ -30,7 +31,7 @@ export class DashboardMigrator {
     let i, j, k, n;
     const oldVersion = this.dashboard.schemaVersion;
     const panelUpgrades = [];
-    this.dashboard.schemaVersion = 22;
+    this.dashboard.schemaVersion = 27;
 
     if (oldVersion === this.dashboard.schemaVersion) {
       return;
@@ -125,9 +126,8 @@ export class DashboardMigrator {
       }
 
       // update template variables
-      const variables = this.dashboard.getVariables();
-      for (i = 0; i < variables.length; i++) {
-        const variable = variables[i];
+      for (i = 0; i < this.dashboard.templating.list.length; i++) {
+        const variable = this.dashboard.templating.list[i];
         if (variable.datasource === void 0) {
           variable.datasource = null;
         }
@@ -150,7 +150,7 @@ export class DashboardMigrator {
 
       // ensure query refIds
       panelUpgrades.push((panel: any) => {
-        _.each(panel.targets, target => {
+        _.each(panel.targets, (target) => {
           if (!target.refId) {
             target.refId = panel.getNextQueryLetter && panel.getNextQueryLetter();
           }
@@ -160,14 +160,14 @@ export class DashboardMigrator {
 
     if (oldVersion < 8) {
       panelUpgrades.push((panel: any) => {
-        _.each(panel.targets, target => {
+        _.each(panel.targets, (target) => {
           // update old influxdb query schema
           if (target.fields && target.tags && target.groupBy) {
             if (target.rawQuery) {
               delete target.fields;
               delete target.fill;
             } else {
-              target.select = _.map(target.fields, field => {
+              target.select = _.map(target.fields, (field) => {
                 const parts = [];
                 parts.push({ type: 'field', params: [field.name] });
                 parts.push({ type: field.func, params: [] });
@@ -180,7 +180,7 @@ export class DashboardMigrator {
                 return parts;
               });
               delete target.fields;
-              _.each(target.groupBy, part => {
+              _.each(target.groupBy, (part) => {
                 if (part.type === 'time' && part.interval) {
                   part.params = [part.interval];
                   delete part.interval;
@@ -228,7 +228,7 @@ export class DashboardMigrator {
           return;
         }
 
-        _.each(panel.styles, style => {
+        _.each(panel.styles, (style) => {
           if (style.thresholds && style.thresholds.length >= 3) {
             const k = style.thresholds;
             k.shift();
@@ -240,7 +240,7 @@ export class DashboardMigrator {
 
     if (oldVersion < 12) {
       // update template variables
-      _.each(this.dashboard.getVariables(), templateVariable => {
+      _.each(this.dashboard.getVariables(), (templateVariable: any) => {
         if (templateVariable.refresh) {
           templateVariable.refresh = 1;
         }
@@ -388,7 +388,7 @@ export class DashboardMigrator {
           // (ie. [1,2,3,4,6,12,24] for 24 columns)
           panel.maxPerRow =
             factors[
-              _.findIndex(factors, o => {
+              _.findIndex(factors, (o) => {
                 return o > max;
               }) - 1
             ];
@@ -491,10 +491,103 @@ export class DashboardMigrator {
           return;
         }
 
-        _.each(panel.styles, style => {
+        _.each(panel.styles, (style) => {
           style.align = 'auto';
         });
       });
+    }
+
+    if (oldVersion < 23) {
+      for (const variable of this.dashboard.templating.list) {
+        if (!isMulti(variable)) {
+          continue;
+        }
+        const { multi, current } = variable;
+        variable.current = alignCurrentWithMulti(current, multi);
+      }
+    }
+
+    if (oldVersion < 24) {
+      // 7.0
+      // - migrate existing tables to 'table-old'
+      panelUpgrades.push((panel: any) => {
+        const wasAngularTable = panel.type === 'table';
+        if (wasAngularTable && !panel.styles) {
+          return; // styles are missing so assumes default settings
+        }
+        const wasReactTable = panel.table === 'table2';
+        if (!wasAngularTable || wasReactTable) {
+          return;
+        }
+        panel.type = wasAngularTable ? 'table-old' : 'table';
+      });
+    }
+
+    if (oldVersion < 25) {
+      for (const variable of this.dashboard.templating.list) {
+        if (!isQuery(variable)) {
+          continue;
+        }
+
+        const { tags, current } = variable;
+        if (!Array.isArray(tags)) {
+          variable.tags = [];
+          continue;
+        }
+
+        const currentTags = current?.tags ?? [];
+        const currents = currentTags.reduce((all, tag) => {
+          if (tag && tag.hasOwnProperty('text') && typeof tag['text'] === 'string') {
+            all[tag.text] = tag;
+          }
+          return all;
+        }, {} as Record<string, VariableTag>);
+
+        const newTags: VariableTag[] = [];
+
+        for (const tag of tags) {
+          if (typeof tag === 'object') {
+            // new format let's assume it's correct
+            newTags.push(tag);
+            continue;
+          }
+
+          if (typeof tag !== 'string') {
+            // something that we do not support
+            continue;
+          }
+
+          newTags.push(defaults(currents[tag], { text: tag, selected: false }));
+        }
+        variable.tags = newTags;
+      }
+    }
+
+    if (oldVersion < 26) {
+      panelUpgrades.push((panel: any) => {
+        const wasReactText = panel.type === 'text2';
+        if (!wasReactText) {
+          return;
+        }
+
+        panel.type = 'text';
+        delete panel.options.angular;
+      });
+    }
+
+    if (oldVersion < 27) {
+      for (const variable of this.dashboard.templating.list) {
+        if (!isConstant(variable)) {
+          continue;
+        }
+
+        if (variable.hide === VariableHide.dontHide || variable.hide === VariableHide.hideLabel) {
+          variable.type = 'textbox';
+        }
+
+        variable.current = { selected: true, text: variable.query ?? '', value: variable.query ?? '' };
+        variable.options = [variable.current];
+      }
     }
 
     if (panelUpgrades.length === 0) {
@@ -519,7 +612,7 @@ export class DashboardMigrator {
 
     const maxPanelId = _.max(
       _.flattenDeep(
-        _.map(old.rows, row => {
+        _.map(old.rows, (row) => {
           return _.map(row.panels, 'id');
         })
       )
@@ -531,7 +624,7 @@ export class DashboardMigrator {
     }
 
     // Add special "row" panels if even one row is collapsed, repeated or has visible title
-    const showRows = _.some(old.rows, row => row.collapse || row.showTitle || row.repeat);
+    const showRows = _.some(old.rows, (row) => row.collapse || row.showTitle || row.repeat);
 
     for (const row of old.rows) {
       if (row.repeatIteration) {
@@ -542,7 +635,8 @@ export class DashboardMigrator {
       const rowGridHeight = getGridHeight(height);
 
       const rowPanel: any = {};
-      let rowPanelModel: PanelModel;
+      let rowPanelModel: PanelModel | undefined;
+
       if (showRows) {
         // add special row panel
         rowPanel.id = nextRowId;
@@ -710,15 +804,15 @@ function upgradePanelLink(link: any): DataLink {
   }
 
   if (link.keepTime) {
-    url = appendQueryToUrl(url, `$${DataLinkBuiltInVars.keepTime}`);
+    url = urlUtil.appendQueryToUrl(url, `$${DataLinkBuiltInVars.keepTime}`);
   }
 
   if (link.includeVars) {
-    url = appendQueryToUrl(url, `$${DataLinkBuiltInVars.includeVars}`);
+    url = urlUtil.appendQueryToUrl(url, `$${DataLinkBuiltInVars.includeVars}`);
   }
 
   if (link.params) {
-    url = appendQueryToUrl(url, link.params);
+    url = urlUtil.appendQueryToUrl(url, link.params);
   }
 
   return {

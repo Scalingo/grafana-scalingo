@@ -1,6 +1,6 @@
 import React, { PureComponent } from 'react';
 import { saveAs } from 'file-saver';
-import { Button, Switch } from '@grafana/ui';
+import { Button, Field, Switch } from '@grafana/ui';
 import { DashboardModel, PanelModel } from 'app/features/dashboard/state';
 import { DashboardExporter } from 'app/features/dashboard/components/DashExportModal';
 import { appEvents } from 'app/core/core';
@@ -90,17 +90,11 @@ export class ShareExport extends PureComponent<Props, State> {
     return (
       <div className="share-modal-body">
         <div className="share-modal-header">
-          <div className="share-modal-big-icon">
-            <i className="fa fa-cloud-upload"></i>
-          </div>
           <div className="share-modal-content">
-            <Switch
-              labelClass="width-16"
-              label="Export for sharing externally"
-              checked={shareExternally}
-              onChange={this.onShareExternallyChange}
-            />
-
+            <p className="share-modal-info-text">Export this dashboard.</p>
+            <Field label="Export for sharing externally">
+              <Switch value={shareExternally} onChange={this.onShareExternallyChange} />
+            </Field>
             <div className="gf-form-button-row">
               <Button variant="primary" onClick={this.onSaveAsFile}>
                 Save to file
@@ -108,7 +102,7 @@ export class ShareExport extends PureComponent<Props, State> {
               <Button variant="secondary" onClick={this.onViewJson}>
                 View JSON
               </Button>
-              <Button variant="inverse" onClick={onDismiss}>
+              <Button variant="secondary" onClick={onDismiss}>
                 Cancel
               </Button>
             </div>

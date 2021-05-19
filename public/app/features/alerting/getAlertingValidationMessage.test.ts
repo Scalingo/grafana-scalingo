@@ -1,5 +1,5 @@
 import { DataSourceSrv } from '@grafana/runtime';
-import { DataSourceApi, PluginMeta, DataTransformerConfig } from '@grafana/data';
+import { DataSourceApi, PluginMeta, DataTransformerConfig, DataSourceInstanceSettings } from '@grafana/data';
 
 import { ElasticsearchQuery } from '../../plugins/datasource/elasticsearch/types';
 import { getAlertingValidationMessage } from './getAlertingValidationMessage';
@@ -22,10 +22,14 @@ describe('getAlertingValidationMessage', () => {
       const getMock = jest.fn().mockResolvedValue(datasource);
       const datasourceSrv: DataSourceSrv = {
         get: getMock,
+        getList(): DataSourceInstanceSettings[] {
+          return [];
+        },
+        getInstanceSettings: (() => {}) as any,
       };
       const targets: ElasticsearchQuery[] = [
-        { refId: 'A', query: '@hostname:$hostname', isLogsQuery: false },
-        { refId: 'B', query: '@instance:instance', isLogsQuery: false },
+        { refId: 'A', query: '@hostname:$hostname' },
+        { refId: 'B', query: '@instance:instance' },
       ];
       const transformations: DataTransformerConfig[] = [];
 
@@ -58,6 +62,10 @@ describe('getAlertingValidationMessage', () => {
 
           return Promise.resolve(alertingDatasource);
         },
+        getInstanceSettings: (() => {}) as any,
+        getList(): DataSourceInstanceSettings[] {
+          return [];
+        },
       };
       const targets: any[] = [
         { refId: 'A', query: 'some query', datasource: 'alertingDatasource' },
@@ -81,10 +89,14 @@ describe('getAlertingValidationMessage', () => {
       const getMock = jest.fn().mockResolvedValue(datasource);
       const datasourceSrv: DataSourceSrv = {
         get: getMock,
+        getInstanceSettings: (() => {}) as any,
+        getList(): DataSourceInstanceSettings[] {
+          return [];
+        },
       };
       const targets: ElasticsearchQuery[] = [
-        { refId: 'A', query: '@hostname:$hostname', isLogsQuery: false },
-        { refId: 'B', query: '@instance:$instance', isLogsQuery: false },
+        { refId: 'A', query: '@hostname:$hostname' },
+        { refId: 'B', query: '@instance:$instance' },
       ];
       const transformations: DataTransformerConfig[] = [];
 
@@ -106,10 +118,14 @@ describe('getAlertingValidationMessage', () => {
       const getMock = jest.fn().mockResolvedValue(datasource);
       const datasourceSrv: DataSourceSrv = {
         get: getMock,
+        getInstanceSettings: (() => {}) as any,
+        getList(): DataSourceInstanceSettings[] {
+          return [];
+        },
       };
       const targets: ElasticsearchQuery[] = [
-        { refId: 'A', query: '@hostname:hostname', isLogsQuery: false },
-        { refId: 'B', query: '@instance:instance', isLogsQuery: false },
+        { refId: 'A', query: '@hostname:hostname' },
+        { refId: 'B', query: '@instance:instance' },
       ];
       const transformations: DataTransformerConfig[] = [];
 
@@ -131,10 +147,14 @@ describe('getAlertingValidationMessage', () => {
       const getMock = jest.fn().mockResolvedValue(datasource);
       const datasourceSrv: DataSourceSrv = {
         get: getMock,
+        getInstanceSettings: (() => {}) as any,
+        getList(): DataSourceInstanceSettings[] {
+          return [];
+        },
       };
       const targets: ElasticsearchQuery[] = [
-        { refId: 'A', query: '@hostname:hostname', isLogsQuery: false },
-        { refId: 'B', query: '@instance:instance', isLogsQuery: false },
+        { refId: 'A', query: '@hostname:hostname' },
+        { refId: 'B', query: '@instance:instance' },
       ];
       const transformations: DataTransformerConfig[] = [{ id: 'A', options: null }];
 

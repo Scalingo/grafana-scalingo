@@ -1,15 +1,9 @@
-import { SortOrder } from 'app/core/utils/explore';
+import { LogsSortOrder, LogsDedupStrategy } from '@grafana/data';
 
 export interface Options {
   showLabels: boolean;
   showTime: boolean;
   wrapLogMessage: boolean;
-  sortOrder: SortOrder;
+  sortOrder: LogsSortOrder;
+  dedupStrategy: LogsDedupStrategy;
 }
-
-export const defaults: Options = {
-  showLabels: false,
-  showTime: true,
-  wrapLogMessage: true,
-  sortOrder: SortOrder.Descending,
-};

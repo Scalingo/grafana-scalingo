@@ -1,7 +1,7 @@
 package dashboards
 
 import (
-	"github.com/grafana/grafana/pkg/util"
+	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -12,27 +12,29 @@ import (
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/util"
 
 	"github.com/grafana/grafana/pkg/infra/log"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-var (
-	defaultDashboards = "testdata/test-dashboards/folder-one"
-	brokenDashboards  = "testdata/test-dashboards/broken-dashboards"
-	oneDashboard      = "testdata/test-dashboards/one-dashboard"
-	containingId      = "testdata/test-dashboards/containing-id"
-	unprovision       = "testdata/test-dashboards/unprovision"
-
-	fakeService *fakeDashboardProvisioningService
+const (
+	defaultDashboards         = "testdata/test-dashboards/folder-one"
+	brokenDashboards          = "testdata/test-dashboards/broken-dashboards"
+	oneDashboard              = "testdata/test-dashboards/one-dashboard"
+	containingID              = "testdata/test-dashboards/containing-id"
+	unprovision               = "testdata/test-dashboards/unprovision"
+	foldersFromFilesStructure = "testdata/test-dashboards/folders-from-files-structure"
 )
+
+var fakeService *fakeDashboardProvisioningService
 
 func TestCreatingNewDashboardFileReader(t *testing.T) {
 	Convey("creating new dashboard file reader", t, func() {
-		cfg := &DashboardsAsConfig{
+		cfg := &config{
 			Name:    "Default",
 			Type:    "file",
-			OrgId:   1,
+			OrgID:   1,
 			Folder:  "",
 			Options: map[string]interface{}{},
 		}
@@ -46,6 +48,14 @@ func TestCreatingNewDashboardFileReader(t *testing.T) {
 
 		Convey("using folder as options", func() {
 			cfg.Options["folder"] = defaultDashboards
+			reader, err := NewDashboardFileReader(cfg, log.New("test-logger"))
+			So(err, ShouldBeNil)
+			So(reader.Path, ShouldNotEqual, "")
+		})
+
+		Convey("using foldersFromFilesStructure as options", func() {
+			cfg.Options["path"] = foldersFromFilesStructure
+			cfg.Options["foldersFromFilesStructure"] = true
 			reader, err := NewDashboardFileReader(cfg, log.New("test-logger"))
 			So(err, ShouldBeNil)
 			So(reader.Path, ShouldNotEqual, "")
@@ -86,11 +96,10 @@ func TestDashboardFileReader(t *testing.T) {
 		logger := log.New("test.logger")
 
 		Convey("Reading dashboards from disk", func() {
-
-			cfg := &DashboardsAsConfig{
+			cfg := &config{
 				Name:    "Default",
 				Type:    "file",
-				OrgId:   1,
+				OrgID:   1,
 				Folder:  "",
 				Options: map[string]interface{}{},
 			}
@@ -102,7 +111,7 @@ func TestDashboardFileReader(t *testing.T) {
 				reader, err := NewDashboardFileReader(cfg, logger)
 				So(err, ShouldBeNil)
 
-				err = reader.startWalkingDisk()
+				err = reader.walkDisk()
 				So(err, ShouldBeNil)
 
 				folders := 0
@@ -133,29 +142,69 @@ func TestDashboardFileReader(t *testing.T) {
 				reader, err := NewDashboardFileReader(cfg, logger)
 				So(err, ShouldBeNil)
 
-				err = reader.startWalkingDisk()
+				err = reader.walkDisk()
 				So(err, ShouldBeNil)
 
 				So(len(fakeService.inserted), ShouldEqual, 1)
 			})
 
 			Convey("Overrides id from dashboard.json files", func() {
-				cfg.Options["path"] = containingId
+				cfg.Options["path"] = containingID
 
 				reader, err := NewDashboardFileReader(cfg, logger)
 				So(err, ShouldBeNil)
 
-				err = reader.startWalkingDisk()
+				err = reader.walkDisk()
 				So(err, ShouldBeNil)
 
 				So(len(fakeService.inserted), ShouldEqual, 1)
 			})
 
+			Convey("Get folder from files structure", func() {
+				cfg.Options["path"] = foldersFromFilesStructure
+				cfg.Options["foldersFromFilesStructure"] = true
+
+				reader, err := NewDashboardFileReader(cfg, logger)
+				So(err, ShouldBeNil)
+
+				err = reader.walkDisk()
+				So(err, ShouldBeNil)
+
+				So(len(fakeService.inserted), ShouldEqual, 5)
+
+				foldersCount := 0
+				for _, d := range fakeService.inserted {
+					if d.Dashboard.IsFolder {
+						foldersCount++
+					}
+				}
+				So(foldersCount, ShouldEqual, 2)
+
+				foldersAndDashboards := make(map[string]struct{}, 5)
+				for _, d := range fakeService.inserted {
+					title := d.Dashboard.Title
+					if _, ok := foldersAndDashboards[title]; ok {
+						So(fmt.Errorf("dashboard title %q already exists", title), ShouldBeNil)
+					}
+
+					switch title {
+					case "folderOne", "folderTwo":
+						So(d.Dashboard.IsFolder, ShouldBeTrue)
+					case "Grafana1", "Grafana2", "RootDashboard":
+						So(d.Dashboard.IsFolder, ShouldBeFalse)
+					default:
+						So(fmt.Errorf("unknown dashboard title %q", title), ShouldBeNil)
+					}
+
+					foldersAndDashboards[title] = struct{}{}
+				}
+			})
+
 			Convey("Invalid configuration should return error", func() {
-				cfg := &DashboardsAsConfig{
+				cfg := &config{
 					Name:   "Default",
 					Type:   "file",
-					OrgId:  1,
+					OrgID:  1,
 					Folder: "",
 				}
 
@@ -171,19 +220,19 @@ func TestDashboardFileReader(t *testing.T) {
 			})
 
 			Convey("Two dashboard providers should be able to provisioned the same dashboard without uid", func() {
-				cfg1 := &DashboardsAsConfig{Name: "1", Type: "file", OrgId: 1, Folder: "f1", Options: map[string]interface{}{"path": containingId}}
-				cfg2 := &DashboardsAsConfig{Name: "2", Type: "file", OrgId: 1, Folder: "f2", Options: map[string]interface{}{"path": containingId}}
+				cfg1 := &config{Name: "1", Type: "file", OrgID: 1, Folder: "f1", Options: map[string]interface{}{"path": containingID}}
+				cfg2 := &config{Name: "2", Type: "file", OrgID: 1, Folder: "f2", Options: map[string]interface{}{"path": containingID}}
 
 				reader1, err := NewDashboardFileReader(cfg1, logger)
 				So(err, ShouldBeNil)
 
-				err = reader1.startWalkingDisk()
+				err = reader1.walkDisk()
 				So(err, ShouldBeNil)
 
 				reader2, err := NewDashboardFileReader(cfg2, logger)
 				So(err, ShouldBeNil)
 
-				err = reader2.startWalkingDisk()
+				err = reader2.walkDisk()
 				So(err, ShouldBeNil)
 
 				var folderCount int
@@ -202,36 +251,36 @@ func TestDashboardFileReader(t *testing.T) {
 		})
 
 		Convey("Should not create new folder if folder name is missing", func() {
-			cfg := &DashboardsAsConfig{
+			cfg := &config{
 				Name:   "Default",
 				Type:   "file",
-				OrgId:  1,
+				OrgID:  1,
 				Folder: "",
 				Options: map[string]interface{}{
 					"folder": defaultDashboards,
 				},
 			}
 
-			_, err := getOrCreateFolderId(cfg, fakeService)
+			_, err := getOrCreateFolderID(cfg, fakeService, cfg.Folder)
 			So(err, ShouldEqual, ErrFolderNameMissing)
 		})
 
 		Convey("can get or Create dashboard folder", func() {
-			cfg := &DashboardsAsConfig{
+			cfg := &config{
 				Name:   "Default",
 				Type:   "file",
-				OrgId:  1,
+				OrgID:  1,
 				Folder: "TEAM A",
 				Options: map[string]interface{}{
 					"folder": defaultDashboards,
 				},
 			}
 
-			folderId, err := getOrCreateFolderId(cfg, fakeService)
+			folderID, err := getOrCreateFolderID(cfg, fakeService, cfg.Folder)
 			So(err, ShouldBeNil)
 			inserted := false
 			for _, d := range fakeService.inserted {
-				if d.Dashboard.IsFolder && d.Dashboard.Id == folderId {
+				if d.Dashboard.IsFolder && d.Dashboard.Id == folderID {
 					inserted = true
 				}
 			}
@@ -254,10 +303,10 @@ func TestDashboardFileReader(t *testing.T) {
 		})
 
 		Convey("Given missing dashboard file", func() {
-			cfg := &DashboardsAsConfig{
+			cfg := &config{
 				Name:  "Default",
 				Type:  "file",
-				OrgId: 1,
+				OrgID: 1,
 				Options: map[string]interface{}{
 					"folder": unprovision,
 				},
@@ -270,7 +319,7 @@ func TestDashboardFileReader(t *testing.T) {
 
 			absPath1, err := filepath.Abs(unprovision + "/dashboard1.json")
 			So(err, ShouldBeNil)
-			// This one does not exist on disc, simulating a deleted file
+			// This one does not exist on disk, simulating a deleted file
 			absPath2, err := filepath.Abs(unprovision + "/dashboard2.json")
 			So(err, ShouldBeNil)
 
@@ -287,19 +336,18 @@ func TestDashboardFileReader(t *testing.T) {
 				reader, err := NewDashboardFileReader(cfg, logger)
 				So(err, ShouldBeNil)
 
-				err = reader.startWalkingDisk()
+				err = reader.walkDisk()
 				So(err, ShouldBeNil)
 
 				So(len(fakeService.provisioned["Default"]), ShouldEqual, 1)
 				So(fakeService.provisioned["Default"][0].ExternalId, ShouldEqual, absPath1)
-
 			})
 
 			Convey("Missing dashboard should be deleted if DisableDeletion = false", func() {
 				reader, err := NewDashboardFileReader(cfg, logger)
 				So(err, ShouldBeNil)
 
-				err = reader.startWalkingDisk()
+				err = reader.walkDisk()
 				So(err, ShouldBeNil)
 
 				So(len(fakeService.provisioned["Default"]), ShouldEqual, 1)
@@ -410,10 +458,10 @@ func (s *fakeDashboardProvisioningService) SaveFolderForProvisionedDashboards(dt
 	return dto.Dashboard, nil
 }
 
-func (s *fakeDashboardProvisioningService) UnprovisionDashboard(dashboardId int64) error {
+func (s *fakeDashboardProvisioningService) UnprovisionDashboard(dashboardID int64) error {
 	for key, val := range s.provisioned {
 		for index, dashboard := range val {
-			if dashboard.DashboardId == dashboardId {
+			if dashboard.DashboardId == dashboardID {
 				s.provisioned[key] = append(s.provisioned[key][:index], s.provisioned[key][index+1:]...)
 			}
 		}
@@ -421,21 +469,21 @@ func (s *fakeDashboardProvisioningService) UnprovisionDashboard(dashboardId int6
 	return nil
 }
 
-func (s *fakeDashboardProvisioningService) DeleteProvisionedDashboard(dashboardId int64, orgId int64) error {
-	err := s.UnprovisionDashboard(dashboardId)
+func (s *fakeDashboardProvisioningService) DeleteProvisionedDashboard(dashboardID int64, orgID int64) error {
+	err := s.UnprovisionDashboard(dashboardID)
 	if err != nil {
 		return err
 	}
 
 	for index, val := range s.inserted {
-		if val.Dashboard.Id == dashboardId {
+		if val.Dashboard.Id == dashboardID {
 			s.inserted = append(s.inserted[:index], s.inserted[util.MinInt(index+1, len(s.inserted)):]...)
 		}
 	}
 	return nil
 }
 
-func (s *fakeDashboardProvisioningService) GetProvisionedDashboardDataByDashboardId(dashboardId int64) (*models.DashboardProvisioning, error) {
+func (s *fakeDashboardProvisioningService) GetProvisionedDashboardDataByDashboardID(dashboardID int64) (*models.DashboardProvisioning, error) {
 	return nil, nil
 }
 

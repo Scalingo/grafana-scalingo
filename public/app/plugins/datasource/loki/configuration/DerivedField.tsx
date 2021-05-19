@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { css } from 'emotion';
-import { Button, FormField, DataLinkInput, stylesFactory } from '@grafana/ui';
+import { Button, DataLinkInput, stylesFactory, LegacyForms } from '@grafana/ui';
 import { VariableSuggestion } from '@grafana/data';
 import { DerivedFieldConfig } from '../types';
+import { DataSourcePicker } from 'app/core/components/Select/DataSourcePicker';
+import { usePrevious } from 'react-use';
+
+const { Switch, FormField } = LegacyForms;
 
 const getStyles = stylesFactory(() => ({
-  firstRow: css`
+  row: css`
     display: flex;
     align-items: baseline;
   `,
@@ -27,6 +31,18 @@ type Props = {
 export const DerivedField = (props: Props) => {
   const { value, onChange, onDelete, suggestions, className } = props;
   const styles = getStyles();
+  const [showInternalLink, setShowInternalLink] = useState(!!value.datasourceUid);
+  const previousUid = usePrevious(value.datasourceUid);
+
+  // Force internal link visibility change if uid changed outside of this component.
+  useEffect(() => {
+    if (!previousUid && value.datasourceUid && !showInternalLink) {
+      setShowInternalLink(true);
+    }
+    if (previousUid && !value.datasourceUid && showInternalLink) {
+      setShowInternalLink(false);
+    }
+  }, [previousUid, value.datasourceUid, showInternalLink]);
 
   const handleChange = (field: keyof typeof value) => (event: React.ChangeEvent<HTMLInputElement>) => {
     onChange({
@@ -37,7 +53,7 @@ export const DerivedField = (props: Props) => {
 
   return (
     <div className={className}>
-      <div className={styles.firstRow}>
+      <div className={styles.row}>
         <FormField
           className={styles.nameField}
           labelWidth={5}
@@ -60,10 +76,10 @@ export const DerivedField = (props: Props) => {
           }
         />
         <Button
-          variant={'inverse'}
+          variant="destructive"
           title="Remove field"
-          icon={'fa fa-times'}
-          onClick={event => {
+          icon="times"
+          onClick={(event) => {
             event.preventDefault();
             onDelete();
           }}
@@ -74,13 +90,13 @@ export const DerivedField = (props: Props) => {
       </div>
 
       <FormField
-        label="URL"
+        label={showInternalLink ? 'Query' : 'URL'}
         labelWidth={5}
         inputEl={
           <DataLinkInput
-            placeholder={'http://example.com/${__value.raw}'}
+            placeholder={showInternalLink ? '${__value.raw}' : 'http://example.com/${__value.raw}'}
             value={value.url || ''}
-            onChange={newValue =>
+            onChange={(newValue) =>
               onChange({
                 ...value,
                 url: newValue,
@@ -93,6 +109,35 @@ export const DerivedField = (props: Props) => {
           width: 100%;
         `}
       />
+
+      <div className={styles.row}>
+        <Switch
+          label="Internal link"
+          checked={showInternalLink}
+          onChange={() => {
+            if (showInternalLink) {
+              onChange({
+                ...value,
+                datasourceUid: undefined,
+              });
+            }
+            setShowInternalLink(!showInternalLink);
+          }}
+        />
+
+        {showInternalLink && (
+          <DataSourcePicker
+            tracing={true}
+            onChange={(ds) =>
+              onChange({
+                ...value,
+                datasourceUid: ds.uid,
+              })
+            }
+            current={value.datasourceUid}
+          />
+        )}
+      </div>
     </div>
   );
 };

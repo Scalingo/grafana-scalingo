@@ -3,9 +3,9 @@ package migrations
 import (
 	"fmt"
 
-	"github.com/go-xorm/xorm"
 	. "github.com/grafana/grafana/pkg/services/sqlstore/migrator"
 	"github.com/grafana/grafana/pkg/util"
+	"xorm.io/xorm"
 )
 
 func addUserMigrations(mg *Migrator) {
@@ -122,13 +122,17 @@ func addUserMigrations(mg *Migrator) {
 	mg.AddMigration("Add is_disabled column to user", NewAddColumnMigration(userV2, &Column{
 		Name: "is_disabled", Type: DB_Bool, Nullable: false, Default: "0",
 	}))
+
+	mg.AddMigration("Add index user.login/user.email", NewAddIndexMigration(userV2, &Index{
+		Cols: []string{"login", "email"},
+	}))
 }
 
 type AddMissingUserSaltAndRandsMigration struct {
 	MigrationBase
 }
 
-func (m *AddMissingUserSaltAndRandsMigration) Sql(dialect Dialect) string {
+func (m *AddMissingUserSaltAndRandsMigration) SQL(dialect Dialect) string {
 	return "code migration"
 }
 

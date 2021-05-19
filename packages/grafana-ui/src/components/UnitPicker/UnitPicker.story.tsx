@@ -1,11 +1,11 @@
 import React from 'react';
 
 import { withCenteredStory } from '../../utils/storybook/withCenteredStory';
-import { UnitPicker } from './UnitPicker';
+import { UnitPicker } from '@grafana/ui';
 import mdx from './UnitPicker.mdx';
 
 export default {
-  title: 'General/UnitPicker',
+  title: 'Pickers and Editors/UnitPicker',
   component: UnitPicker,
   decorators: [withCenteredStory],
   parameters: {
@@ -13,5 +13,4 @@ export default {
   },
 };
 
-export const simple = () => <UnitPicker useNewForms onChange={val => console.log(val)} />;
-export const old = () => <UnitPicker onChange={val => console.log(val)} />;
+export const simple = () => <UnitPicker onChange={(val) => console.log(val)} />;

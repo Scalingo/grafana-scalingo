@@ -1,13 +1,10 @@
 import React, { PureComponent } from 'react';
-import { connect, MapStateToProps, MapDispatchToProps } from 'react-redux';
-import { css } from 'emotion';
-import { Alert, Button } from '@grafana/ui';
-
+import { connect, MapDispatchToProps, MapStateToProps } from 'react-redux';
+import { Alert, Button, ConfirmModal, Container, CustomScrollbar, HorizontalGroup, IconName, Modal } from '@grafana/ui';
+import { selectors } from '@grafana/e2e-selectors';
 import { AngularComponent, getAngularLoader, getDataSourceSrv } from '@grafana/runtime';
-import appEvents from 'app/core/app_events';
 import { getAlertingValidationMessage } from './getAlertingValidationMessage';
 
-import { EditorTabBody, EditorToolbarView } from '../dashboard/panel_editor/EditorTabBody';
 import EmptyListCTA from 'app/core/components/EmptyListCTA/EmptyListCTA';
 import StateHistory from './StateHistory';
 import 'app/features/alerting/AlertTabCtrl';
@@ -16,9 +13,7 @@ import { DashboardModel } from '../dashboard/state/DashboardModel';
 import { PanelModel } from '../dashboard/state/PanelModel';
 import { TestRuleResult } from './TestRuleResult';
 import { AppNotificationSeverity, StoreState } from 'app/types';
-import { PanelEditorTabIds, getPanelEditorTab } from '../dashboard/panel_editor/state/reducers';
-import { changePanelEditorTab } from '../dashboard/panel_editor/state/actions';
-import { CoreEvents } from 'app/types';
+import { PanelNotSupported } from '../dashboard/components/PanelEditor/PanelNotSupported';
 
 interface OwnProps {
   dashboard: DashboardModel;
@@ -26,17 +21,18 @@ interface OwnProps {
 }
 
 interface ConnectedProps {
-  angularPanelComponent: AngularComponent;
+  angularPanelComponent?: AngularComponent | null;
 }
 
-interface DispatchProps {
-  changePanelEditorTab: typeof changePanelEditorTab;
-}
+interface DispatchProps {}
 
 export type Props = OwnProps & ConnectedProps & DispatchProps;
 
 interface State {
-  validatonMessage: string;
+  validationMessage: string;
+  showStateHistory: boolean;
+  showDeleteConfirmation: boolean;
+  showTestRule: boolean;
 }
 
 class UnConnectedAlertTab extends PureComponent<Props, State> {
@@ -45,7 +41,10 @@ class UnConnectedAlertTab extends PureComponent<Props, State> {
   panelCtrl: any;
 
   state: State = {
-    validatonMessage: '',
+    validationMessage: '',
+    showStateHistory: false,
+    showDeleteConfirmation: false,
+    showTestRule: false,
   };
 
   componentDidMount() {
@@ -91,66 +90,17 @@ class UnConnectedAlertTab extends PureComponent<Props, State> {
 
     this.component = loader.load(this.element, scopeProps, template);
 
-    const validatonMessage = await getAlertingValidationMessage(
+    const validationMessage = await getAlertingValidationMessage(
       panel.transformations,
       panel.targets,
       getDataSourceSrv(),
       panel.datasource
     );
 
-    if (validatonMessage) {
-      this.setState({ validatonMessage });
+    if (validationMessage) {
+      this.setState({ validationMessage });
     }
   }
-
-  stateHistory = (): EditorToolbarView => {
-    return {
-      title: 'State history',
-      render: () => {
-        return (
-          <StateHistory
-            dashboard={this.props.dashboard}
-            panelId={this.props.panel.id}
-            onRefresh={this.panelCtrl.refresh}
-          />
-        );
-      },
-    };
-  };
-
-  deleteAlert = (): EditorToolbarView => {
-    const { panel } = this.props;
-    return {
-      title: 'Delete',
-      btnType: 'danger',
-      onClick: () => {
-        appEvents.emit(CoreEvents.showConfirmModal, {
-          title: 'Delete Alert',
-          text: 'Are you sure you want to delete this alert rule?',
-          text2: 'You need to save dashboard for the delete to take effect',
-          icon: 'fa-trash',
-          yesText: 'Delete',
-          onConfirm: () => {
-            delete panel.alert;
-            panel.thresholds = [];
-            this.panelCtrl.alertState = null;
-            this.panelCtrl.render();
-            this.forceUpdate();
-          },
-        });
-      },
-    };
-  };
-
-  renderTestRuleResult = () => {
-    const { panel, dashboard } = this.props;
-    return <TestRuleResult panelId={panel.id} dashboard={dashboard} />;
-  };
-
-  testRule = (): EditorToolbarView => ({
-    title: 'Test Rule',
-    render: () => this.renderTestRuleResult(),
-  });
 
   onAddAlert = () => {
     this.panelCtrl._enableAlert();
@@ -158,64 +108,130 @@ class UnConnectedAlertTab extends PureComponent<Props, State> {
     this.forceUpdate();
   };
 
-  switchToQueryTab = () => {
-    const { changePanelEditorTab } = this.props;
-    changePanelEditorTab(getPanelEditorTab(PanelEditorTabIds.Queries));
+  onToggleModal = (prop: keyof Omit<State, 'validationMessage'>) => {
+    const value = this.state[prop];
+    this.setState({ ...this.state, [prop]: !value });
   };
 
-  renderValidationMessage = () => {
-    const { validatonMessage } = this.state;
+  renderTestRule = () => {
+    if (!this.state.showTestRule) {
+      return null;
+    }
+
+    const { panel, dashboard } = this.props;
+    const onDismiss = () => this.onToggleModal('showTestRule');
 
     return (
-      <div
-        className={css`
-          width: 508px;
-          margin: 128px auto;
-        `}
-      >
-        <h2>{validatonMessage}</h2>
-        <br />
-        <div className="gf-form-group">
-          <Button size={'md'} variant={'secondary'} icon="fa fa-arrow-left" onClick={this.switchToQueryTab}>
-            Go back to Queries
-          </Button>
-        </div>
-      </div>
+      <Modal isOpen={true} icon="bug" title="Testing rule" onDismiss={onDismiss} onClickBackdrop={onDismiss}>
+        <TestRuleResult panel={panel} dashboard={dashboard} />
+      </Modal>
+    );
+  };
+
+  renderDeleteConfirmation = () => {
+    if (!this.state.showDeleteConfirmation) {
+      return null;
+    }
+
+    const { panel } = this.props;
+    const onDismiss = () => this.onToggleModal('showDeleteConfirmation');
+
+    return (
+      <ConfirmModal
+        isOpen={true}
+        icon="trash-alt"
+        title="Delete"
+        body={
+          <div>
+            Are you sure you want to delete this alert rule?
+            <br />
+            <small>You need to save dashboard for the delete to take effect.</small>
+          </div>
+        }
+        confirmText="Delete Alert"
+        onDismiss={onDismiss}
+        onConfirm={() => {
+          delete panel.alert;
+          panel.thresholds = [];
+          this.panelCtrl.alertState = null;
+          this.panelCtrl.render();
+          this.component.digest();
+          onDismiss();
+        }}
+      />
+    );
+  };
+
+  renderStateHistory = () => {
+    if (!this.state.showStateHistory) {
+      return null;
+    }
+
+    const { panel, dashboard } = this.props;
+    const onDismiss = () => this.onToggleModal('showStateHistory');
+
+    return (
+      <Modal isOpen={true} icon="history" title="State history" onDismiss={onDismiss} onClickBackdrop={onDismiss}>
+        <StateHistory
+          dashboard={dashboard}
+          panelId={panel.editSourceId ?? panel.id}
+          onRefresh={() => this.panelCtrl.refresh()}
+        />
+      </Modal>
     );
   };
 
   render() {
     const { alert, transformations } = this.props.panel;
-    const { validatonMessage } = this.state;
+    const { validationMessage } = this.state;
     const hasTransformations = transformations && transformations.length > 0;
 
-    if (!alert && validatonMessage) {
-      return this.renderValidationMessage();
+    if (!alert && validationMessage) {
+      return <PanelNotSupported message={validationMessage} />;
     }
-
-    const toolbarItems = alert ? [this.stateHistory(), this.testRule(), this.deleteAlert()] : [];
 
     const model = {
       title: 'Panel has no alert rule defined',
-      buttonIcon: 'gicon gicon-alert',
+      buttonIcon: 'bell' as IconName,
       onClick: this.onAddAlert,
       buttonTitle: 'Create Alert',
     };
 
     return (
-      <EditorTabBody heading="Alert" toolbarItems={toolbarItems}>
-        <>
-          {alert && hasTransformations && (
-            <Alert
-              severity={AppNotificationSeverity.Error}
-              title="Transformations are not supported in alert queries"
-            />
-          )}
+      <>
+        <CustomScrollbar autoHeightMin="100%">
+          <Container padding="md">
+            <div aria-label={selectors.components.AlertTab.content}>
+              {alert && hasTransformations && (
+                <Alert
+                  severity={AppNotificationSeverity.Error}
+                  title="Transformations are not supported in alert queries"
+                />
+              )}
 
-          <div ref={element => (this.element = element)} />
-          {!alert && !validatonMessage && <EmptyListCTA {...model} />}
-        </>
-      </EditorTabBody>
+              <div ref={(element) => (this.element = element)} />
+              {alert && (
+                <HorizontalGroup>
+                  <Button onClick={() => this.onToggleModal('showStateHistory')} variant="secondary">
+                    State history
+                  </Button>
+                  <Button onClick={() => this.onToggleModal('showTestRule')} variant="secondary">
+                    Test rule
+                  </Button>
+                  <Button onClick={() => this.onToggleModal('showDeleteConfirmation')} variant="destructive">
+                    Delete
+                  </Button>
+                </HorizontalGroup>
+              )}
+              {!alert && !validationMessage && <EmptyListCTA {...model} />}
+            </div>
+          </Container>
+        </CustomScrollbar>
+
+        {this.renderTestRule()}
+        {this.renderDeleteConfirmation()}
+        {this.renderStateHistory()}
+      </>
     );
   }
 }
@@ -226,6 +242,6 @@ const mapStateToProps: MapStateToProps<ConnectedProps, OwnProps, StoreState> = (
   };
 };
 
-const mapDispatchToProps: MapDispatchToProps<DispatchProps, OwnProps> = { changePanelEditorTab };
+const mapDispatchToProps: MapDispatchToProps<DispatchProps, OwnProps> = {};
 
 export const AlertTab = connect(mapStateToProps, mapDispatchToProps)(UnConnectedAlertTab);

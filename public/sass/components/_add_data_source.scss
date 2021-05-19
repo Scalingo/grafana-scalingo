@@ -24,7 +24,6 @@
   display: flex;
   align-items: center;
   cursor: pointer;
-  box-shadow: $card-shadow;
   background: $panel-editor-viz-item-bg;
   border: 1px solid transparent;
   border-radius: 3px;
@@ -52,6 +51,10 @@
 .add-data-source-item-desc {
   font-size: $font-size-sm;
   color: $text-color-weak;
+}
+
+.add-data-source-item-badge {
+  margin-top: 6px;
 }
 
 .add-data-source-item-text {

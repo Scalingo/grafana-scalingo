@@ -1,6 +1,8 @@
 import { DataTransformerID } from './ids';
-import { transformDataFrame } from '../transformers';
 import { toDataFrame } from '../../dataframe/processDataFrame';
+import { mockTransformationsRegistry } from '../../utils/tests/mockTransformationsRegistry';
+import { filterFramesByRefIdTransformer } from './filterByRefId';
+import { transformDataFrame } from '../transformDataFrame';
 
 export const allSeries = [
   toDataFrame({
@@ -18,18 +20,24 @@ export const allSeries = [
 ];
 
 describe('filterByRefId transformer', () => {
-  it('returns all series if no options provided', () => {
+  beforeAll(() => {
+    mockTransformationsRegistry([filterFramesByRefIdTransformer]);
+  });
+
+  it('returns all series if no options provided', async () => {
     const cfg = {
       id: DataTransformerID.filterByRefId,
       options: {},
     };
 
-    const filtered = transformDataFrame([cfg], allSeries);
-    expect(filtered.length).toBe(3);
+    await expect(transformDataFrame([cfg], allSeries)).toEmitValuesWith((received) => {
+      const filtered = received[0];
+      expect(filtered.length).toBe(3);
+    });
   });
 
   describe('respects', () => {
-    it('inclusion', () => {
+    it('inclusion', async () => {
       const cfg = {
         id: DataTransformerID.filterByRefId,
         options: {
@@ -37,8 +45,10 @@ describe('filterByRefId transformer', () => {
         },
       };
 
-      const filtered = transformDataFrame([cfg], allSeries);
-      expect(filtered.map(f => f.refId)).toEqual(['A', 'B']);
+      await expect(transformDataFrame([cfg], allSeries)).toEmitValuesWith((received) => {
+        const filtered = received[0];
+        expect(filtered.map((f) => f.refId)).toEqual(['A', 'B']);
+      });
     });
   });
 });

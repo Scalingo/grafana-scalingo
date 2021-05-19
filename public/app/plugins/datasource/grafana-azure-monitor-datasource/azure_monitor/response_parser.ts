@@ -57,7 +57,7 @@ export default class ResponseParser {
       };
     }
 
-    const metricData: any = _.find(result.data.value, o => {
+    const metricData: any = _.find(result.data.value, (o) => {
       return _.get(o, 'name.value') === metricName;
     });
 
@@ -75,7 +75,7 @@ export default class ResponseParser {
       return timeGrains;
     }
 
-    metricAvailabilities.forEach(avail => {
+    metricAvailabilities.forEach((avail) => {
       if (avail.timeGrain) {
         timeGrains.push({
           text: TimeGrainConverter.createTimeGrainFromISO8601Duration(avail.timeGrain),
@@ -90,10 +90,6 @@ export default class ResponseParser {
     const dimensions: Array<{ text: string; value: string }> = [];
     if (!metricData.dimensions || metricData.dimensions.length === 0) {
       return dimensions;
-    }
-
-    if (!metricData.isDimensionRequired) {
-      dimensions.push({ text: 'None', value: 'None' });
     }
 
     for (let i = 0; i < metricData.dimensions.length; i++) {

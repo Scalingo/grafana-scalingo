@@ -32,13 +32,14 @@ const renderAndSubmitForm = async (dashboard: any, submitSpy: any) => {
       dashboard={dashboard as DashboardModel}
       onCancel={() => {}}
       onSuccess={() => {}}
-      onSubmit={async jsonModel => {
+      onSubmit={async (jsonModel) => {
         submitSpy(jsonModel);
         return { status: 'success' };
       }}
     />
   );
 
+  // @ts-ignore strict null error below
   await act(async () => {
     const button = container.find('button[aria-label="Dashboard settings Save Dashboard Modal Save button"]');
     button.simulate('submit');

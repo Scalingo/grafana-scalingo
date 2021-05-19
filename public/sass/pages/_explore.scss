@@ -7,11 +7,7 @@
 }
 
 .icon-brand-gradient {
-  text-shadow: none;
-  background: linear-gradient(180deg, #f05a28 30%, #fbca0a 100%);
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  -moz-text-fill-color: transparent;
+  color: linear-gradient(180deg, #f05a28 30%, #fbca0a 100%);
 }
 
 .icon-margin-left {
@@ -24,21 +20,10 @@
 
 .explore-active-button {
   box-shadow: $btn-active-box-shadow;
-  border-color: $orange-dark;
-  background-image: none;
-  background-color: transparent;
+  border: 1px solid $orange-dark !important;
   color: $orange-dark !important;
-  &:focus {
-    background-color: transparent;
-  }
-  i {
-    text-shadow: none;
-    background: linear-gradient(180deg, #f05a28 30%, #fbca0a 100%);
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    -moz-text-fill-color: transparent;
-  }
 }
+
 .explore-ds-picker {
   min-width: 200px;
   max-width: 300px;
@@ -120,7 +105,8 @@
 
 .explore-toolbar-content-item {
   display: flex;
-  padding: 2px 2px;
+  padding: 0px 2px;
+  position: relative;
 
   &:first-child {
     padding-left: $dashboard-padding;
@@ -128,33 +114,7 @@
   }
 }
 
-@media only screen and (max-width: 1545px) {
-  .explore-toolbar.splitted {
-    .timepicker-rangestring {
-      display: none;
-    }
-  }
-}
-
-@media only screen and (max-width: 1400px) {
-  .explore-toolbar.splitted {
-    .explore-toolbar-content-item {
-      .navbar-button {
-        span {
-          display: none;
-        }
-      }
-    }
-  }
-}
-
 @media only screen and (max-width: 1070px) {
-  .timepicker {
-    .timepicker-rangestring {
-      display: none;
-    }
-  }
-
   .explore-toolbar-content {
     justify-content: flex-start;
   }
@@ -166,45 +126,12 @@
   }
 }
 
-@media only screen and (max-width: 897px) {
-  .explore-toolbar {
-    .explore-toolbar-content-item {
-      .navbar-button span {
-        display: none;
-      }
-    }
-  }
-}
-
 @media only screen and (max-width: 810px) {
   .explore-toolbar {
     .explore-toolbar-content-item {
       &:first-child {
         padding-left: 2px;
         margin: 0 12px 0 16px;
-      }
-    }
-  }
-}
-
-.explore-icon-align {
-  .navbar-button {
-    i {
-      position: relative;
-      top: -1px;
-
-      @media only screen and (max-width: 1320px) {
-        margin: 0 -3px;
-      }
-    }
-  }
-}
-
-.explore-toolbar.splitted {
-  .explore-icon-align {
-    .navbar-button {
-      i {
-        margin: 0 -3px;
       }
     }
   }
@@ -243,8 +170,8 @@
   }
 }
 
-.explore-input--ml {
-  margin-left: 4px;
+.explore-input-margin {
+  margin-right: 4px;
 }
 
 .navbar .elapsed-time {
@@ -264,6 +191,9 @@
   display: flex;
   position: relative;
   align-items: flex-start;
+  @include media-breakpoint-down(sm) {
+    flex-wrap: wrap;
+  }
 
   & + & {
     margin-top: $space-sm;
@@ -433,13 +363,14 @@
 // React-component cascade fix: vertical alignment issue with Safari
 .rc-cascader-menu {
   vertical-align: top;
+  // To fix cascader button width issue in windows + firefox
+  scrollbar-width: thin;
 }
 
 // TODO Experimental
 
 .cheat-sheet-item {
   margin: $space-lg 0;
-  width: 50%;
 }
 
 .cheat-sheet-item__title {

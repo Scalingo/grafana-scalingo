@@ -1,12 +1,13 @@
 import React from 'react';
 import _ from 'lodash';
 import { DataSourceApi, DataQuery, DataSourceJsonData } from '@grafana/data';
+import { Icon } from '@grafana/ui';
 import { AdHocFilter } from './AdHocFilter';
 export const DEFAULT_REMOVE_FILTER_VALUE = '-- remove filter --';
 
 const addFilterButton = (onAddFilter: (event: React.MouseEvent) => void) => (
   <button className="gf-form-label gf-form-label--btn query-part" onClick={onAddFilter}>
-    <i className="fa fa-plus" />
+    <Icon name="plus" />
   </button>
 );
 
@@ -46,7 +47,7 @@ export class AdHocFilterField<
     const { datasource, extendedOptions } = this.props;
     const options = extendedOptions || {};
     const tagKeys = datasource.getTagKeys ? await datasource.getTagKeys(options) : [];
-    const keys = tagKeys.map(tagKey => tagKey.text);
+    const keys = tagKeys.map((tagKey) => tagKey.text);
 
     return keys;
   };
@@ -55,7 +56,7 @@ export class AdHocFilterField<
     const { datasource, extendedOptions } = this.props;
     const options = extendedOptions || {};
     const tagValues = datasource.getTagValues ? await datasource.getTagValues({ ...options, key }) : [];
-    const values = tagValues.map(tagValue => tagValue.text);
+    const values = tagValues.map((tagValue) => tagValue.text);
 
     return values;
   };

@@ -1,24 +1,36 @@
 import React from 'react';
-import { mount, shallow } from 'enzyme';
+import { shallow } from 'enzyme';
 import { act } from 'react-dom/test-utils';
 import PromExploreQueryEditor from './PromExploreQueryEditor';
-import { PromExploreExtraField } from './PromExploreExtraField';
 import { PrometheusDatasource } from '../datasource';
 import { PromQuery } from '../types';
-import { LoadingState, PanelData, toUtc } from '@grafana/data';
+import { LoadingState, PanelData, toUtc, TimeRange } from '@grafana/data';
 
 const setup = (renderMethod: any, propOverrides?: object) => {
-  const datasourceMock: unknown = {};
+  const datasourceMock: unknown = {
+    languageProvider: {
+      syntax: () => {},
+    },
+  };
   const datasource: PrometheusDatasource = datasourceMock as PrometheusDatasource;
   const onRunQuery = jest.fn();
   const onChange = jest.fn();
   const query: PromQuery = { expr: '', refId: 'A', interval: '1s' };
+  const range: TimeRange = {
+    from: toUtc('2020-01-01', 'YYYY-MM-DD'),
+    to: toUtc('2020-01-02', 'YYYY-MM-DD'),
+    raw: {
+      from: toUtc('2020-01-01', 'YYYY-MM-DD'),
+      to: toUtc('2020-01-02', 'YYYY-MM-DD'),
+    },
+  };
   const data: PanelData = {
     state: LoadingState.NotStarted,
     series: [],
     request: {
       requestId: '1',
       dashboardId: 1,
+      intervalMs: 1000,
       interval: '1s',
       panelId: 1,
       range: {
@@ -50,6 +62,7 @@ const setup = (renderMethod: any, propOverrides?: object) => {
   const props: any = {
     query,
     data,
+    range,
     datasource,
     exploreMode,
     history,
@@ -79,9 +92,10 @@ describe('PromExploreQueryEditor', () => {
   });
 
   it('should render PromQueryField with ExtraFieldElement', async () => {
+    // @ts-ignore strict null errpr TS2345: Argument of type '() => Promise<void>' is not assignable to parameter of type '() => void | undefined'.
     await act(async () => {
-      const wrapper = setup(mount);
-      expect(wrapper.find(PromExploreExtraField).length).toBe(1);
+      const wrapper = setup(shallow);
+      expect(wrapper.html()).toContain('aria-label="Prometheus extra field"');
     });
   });
 });

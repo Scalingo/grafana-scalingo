@@ -3,10 +3,6 @@ title = "Admin HTTP API "
 description = "Grafana Admin HTTP API"
 keywords = ["grafana", "http", "documentation", "api", "admin"]
 aliases = ["/docs/grafana/latest/http_api/admin/"]
-type = "docs"
-[menu.docs]
-name = "Admin"
-parent = "http_api"
 +++
 
 # Admin API
@@ -224,9 +220,12 @@ Content-Type: application/json
   "name":"User",
   "email":"user@graf.com",
   "login":"user",
-  "password":"userpassword"
+  "password":"userpassword",
+  "OrgId": 1
 }
 ```
+
+Note that `OrgId` is an optional parameter that can be used to assign a new user to a different organization when [auto_assign_org]({{< relref "../administration/configuration.md#auto-assign-org" >}}) is set to `true`.
 
 **Example Response**:
 
@@ -462,11 +461,13 @@ Content-Type: application/json
 
 `POST /api/admin/provisioning/datasources/reload`
 
+`POST /api/admin/provisioning/plugins/reload`
+
 `POST /api/admin/provisioning/notifications/reload`
 
 Reloads the provisioning config files for specified type and provision entities again. It won't return
 until the new provisioned entities are already stored in the database. In case of dashboards, it will stop
-polling for changes in dashboard files and then restart it with new configs after returning.
+polling for changes in dashboard files and then restart it with new configurations after returning.
 
 Only works with Basic Authentication (username and password). See [introduction](http://docs.grafana.org/http_api/admin/#admin-api) for an explanation.
 

@@ -35,6 +35,12 @@ Run load test for 10 virtual users:
 $ ./run.sh -v 10
 ```
 
+Run load test and send the results to the database "myDb" in influxDB running locally on port 8086 (with no authentication):
+
+```bash
+$ ./run.sh  -o influxdb=http://localhost:8086/myDb
+```
+
 Run auth token slow test (random query latency between 1 and 30 seconds):
 
 ```bash
@@ -45,6 +51,12 @@ Run auth proxy test:
 
 ```bash
 $ ./run.sh -c auth_proxy_test
+```
+
+Run API key test (option `-k` must be a valid `admin` API key)
+
+```bash
+$ ./run.sh -c auth_token_test -k "<api key here>"
 ```
 
 
@@ -69,7 +81,7 @@ Example output:
 
     █ user auth token test
 
-      █ user authenticates thru ui with username and password
+      █ user authenticates through ui with username and password
 
         ✓ response status is 200
         ✓ response has cookie 'grafana_session' with 32 characters

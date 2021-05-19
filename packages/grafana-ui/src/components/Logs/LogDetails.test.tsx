@@ -8,6 +8,7 @@ const setup = (propOverrides?: Partial<Props>, rowOverrides?: Partial<LogRowMode
   const props: Props = {
     theme: {} as GrafanaTheme,
     showDuplicates: false,
+    wrapLogMessage: false,
     row: {
       dataFrame: new MutableDataFrame(),
       entryFieldIndex: 0,
@@ -15,9 +16,11 @@ const setup = (propOverrides?: Partial<Props>, rowOverrides?: Partial<LogRowMode
       logLevel: 'error' as LogLevel,
       timeFromNow: '',
       timeEpochMs: 1546297200000,
+      timeEpochNs: '1546297200000000000',
       timeLocal: '',
       timeUtc: '',
       hasAnsi: false,
+      hasUnescapedContent: false,
       entry: '',
       raw: '',
       uid: '0',
@@ -37,19 +40,25 @@ describe('LogDetails', () => {
   describe('when labels are present', () => {
     it('should render heading', () => {
       const wrapper = setup(undefined, { labels: { key1: 'label1', key2: 'label2' } });
-      expect(wrapper.find({ 'aria-label': 'Log Labels' })).toHaveLength(1);
+      expect(wrapper.find({ 'aria-label': 'Log labels' }).hostNodes()).toHaveLength(1);
     });
     it('should render labels', () => {
       const wrapper = setup(undefined, { labels: { key1: 'label1', key2: 'label2' } });
       expect(wrapper.text().includes('key1label1key2label2')).toBe(true);
     });
   });
+  describe('when log row has error', () => {
+    it('should not render log level border', () => {
+      const wrapper = setup({ hasError: true }, undefined);
+      expect(wrapper.find({ 'aria-label': 'Log level' }).html()).not.toContain('logs-row__level');
+    });
+  });
   describe('when row entry has parsable fields', () => {
     it('should render heading ', () => {
       const wrapper = setup(undefined, { entry: 'test=successful' });
-      expect(wrapper.find({ title: 'Ad-hoc statistics' })).toHaveLength(1);
+      expect(wrapper.find({ title: 'Ad-hoc statistics' }).hostNodes()).toHaveLength(1);
     });
-    it('should render parsed fields', () => {
+    it('should render detected fields', () => {
       const wrapper = setup(undefined, { entry: 'test=successful' });
       expect(wrapper.text().includes('testsuccessful')).toBe(true);
     });
@@ -57,10 +66,10 @@ describe('LogDetails', () => {
   describe('when row entry have parsable fields and labels are present', () => {
     it('should render all headings', () => {
       const wrapper = setup(undefined, { entry: 'test=successful', labels: { key: 'label' } });
-      expect(wrapper.find({ 'aria-label': 'Log Labels' })).toHaveLength(1);
-      expect(wrapper.find({ 'aria-label': 'Parsed Fields' })).toHaveLength(1);
+      expect(wrapper.find({ 'aria-label': 'Log labels' })).toHaveLength(1);
+      expect(wrapper.find({ 'aria-label': 'Detected fields' })).toHaveLength(1);
     });
-    it('should render all labels and parsed fields', () => {
+    it('should render all labels and detected fields', () => {
       const wrapper = setup(undefined, {
         entry: 'test=successful',
         labels: { key: 'label' },
@@ -77,7 +86,7 @@ describe('LogDetails', () => {
     it('should not render headings', () => {
       const wrapper = setup(undefined, { entry: '' });
       expect(wrapper.find({ 'aria-label': 'Log labels' })).toHaveLength(0);
-      expect(wrapper.find({ 'aria-label': 'Parsed fields' })).toHaveLength(0);
+      expect(wrapper.find({ 'aria-label': 'Detected fields' })).toHaveLength(0);
     });
   });
 
@@ -99,7 +108,7 @@ describe('LogDetails', () => {
       {
         getFieldLinks: (field: Field, rowIndex: number) => {
           if (field.config && field.config.links) {
-            return field.config.links.map(link => {
+            return field.config.links.map((link) => {
               return {
                 href: link.url.replace('${__value.text}', field.values.get(rowIndex)),
                 title: link.title,
@@ -116,7 +125,7 @@ describe('LogDetails', () => {
     expect(wrapper.find(LogDetailsRow).length).toBe(3);
     const traceIdRow = wrapper.find(LogDetailsRow).filter({ parsedKey: 'traceId' });
     expect(traceIdRow.length).toBe(1);
-    expect(traceIdRow.find('a').length).toBe(1);
+    expect(traceIdRow.find('a').hostNodes().length).toBe(1);
     expect((traceIdRow.find('a').getDOMNode() as HTMLAnchorElement).href).toBe('localhost:3210/1234');
   });
 });

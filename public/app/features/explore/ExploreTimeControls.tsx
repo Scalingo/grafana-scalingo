@@ -3,7 +3,7 @@ import React, { Component } from 'react';
 
 // Types
 import { ExploreId } from 'app/types';
-import { TimeRange, TimeZone, RawTimeRange, dateTimeForTimeZone } from '@grafana/data';
+import { TimeRange, TimeZone, RawTimeRange, dateTimeForTimeZone, dateMath } from '@grafana/data';
 
 // State
 
@@ -23,6 +23,7 @@ export interface Props {
   syncedTimes: boolean;
   onChangeTimeSync: () => void;
   onChangeTime: (range: RawTimeRange) => void;
+  onChangeTimeZone: (timeZone: TimeZone) => void;
 }
 
 export class ExploreTimeControls extends Component<Props> {
@@ -41,7 +42,13 @@ export class ExploreTimeControls extends Component<Props> {
   onMoveBack = () => this.onMoveTimePicker(-1);
 
   onChangeTimePicker = (timeRange: TimeRange) => {
-    this.props.onChangeTime(timeRange.raw);
+    const adjustedFrom = dateMath.isMathString(timeRange.raw.from) ? timeRange.raw.from : timeRange.from;
+    const adjustedTo = dateMath.isMathString(timeRange.raw.to) ? timeRange.raw.to : timeRange.to;
+
+    this.props.onChangeTime({
+      from: adjustedFrom,
+      to: adjustedTo,
+    });
   };
 
   onZoom = () => {
@@ -56,7 +63,7 @@ export class ExploreTimeControls extends Component<Props> {
   };
 
   render() {
-    const { range, timeZone, splitted, syncedTimes, onChangeTimeSync, hideText } = this.props;
+    const { range, timeZone, splitted, syncedTimes, onChangeTimeSync, hideText, onChangeTimeZone } = this.props;
     const timeSyncButton = splitted ? <TimeSyncButton onClick={onChangeTimeSync} isSynced={syncedTimes} /> : undefined;
     const timePickerCommonProps = {
       value: range,
@@ -73,6 +80,7 @@ export class ExploreTimeControls extends Component<Props> {
         timeSyncButton={timeSyncButton}
         isSynced={syncedTimes}
         onChange={this.onChangeTimePicker}
+        onChangeTimeZone={onChangeTimeZone}
       />
     );
   }

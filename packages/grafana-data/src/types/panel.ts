@@ -1,58 +1,121 @@
-import { ComponentClass, ComponentType } from 'react';
 import { DataQueryError, DataQueryRequest, DataQueryTimings } from './datasource';
-import { GrafanaPlugin, PluginMeta } from './plugin';
+import { PluginMeta } from './plugin';
 import { ScopedVars } from './ScopedVars';
 import { LoadingState } from './data';
 import { DataFrame } from './dataFrame';
 import { AbsoluteTimeRange, TimeRange, TimeZone } from './time';
-import { FieldConfigEditorRegistry } from './fieldOverrides';
+import { EventBus } from '../events';
+import { FieldConfigSource } from './fieldOverrides';
+import { Registry } from '../utils';
+import { StandardEditorProps } from '../field';
+import { OptionsEditorItem } from './OptionsUIRegistryBuilder';
+import { OptionEditorConfig } from './options';
 
 export type InterpolateFunction = (value: string, scopedVars?: ScopedVars, format?: string | Function) => string;
 
 export interface PanelPluginMeta extends PluginMeta {
+  /** Indicates that panel does not issue queries */
   skipDataQuery?: boolean;
+  /** Indicates that panel should not be available in visualisation picker */
   hideFromList?: boolean;
+  /** Sort order */
   sort: number;
 }
 
 export interface PanelData {
+  /** State of the data (loading, done, error, streaming) */
   state: LoadingState;
+
+  /** Contains data frames with field overrides applied */
   series: DataFrame[];
+
+  /** A list of annotation items */
+  annotations?: DataFrame[];
+
+  /** Request contains the queries and properties sent to the datasource */
   request?: DataQueryRequest;
+
+  /** Timing measurements */
   timings?: DataQueryTimings;
+
+  /** Any query errors */
   error?: DataQueryError;
-  // Contains the range from the request or a shifted time range if a request uses relative time
+
+  /** Contains the range from the request or a shifted time range if a request uses relative time */
   timeRange: TimeRange;
 }
 
 export interface PanelProps<T = any> {
-  id: number; // ID within the current dashboard
+  /** ID of the panel within the current dashboard */
+  id: number;
+
+  /** Result set of panel queries */
   data: PanelData;
+
+  /** Time range of the current dashboard */
   timeRange: TimeRange;
+
+  /** Time zone of the current dashboard */
   timeZone: TimeZone;
+
+  /** Panel options */
   options: T;
-  onOptionsChange: (options: T) => void;
-  renderCounter: number;
+
+  /** Indicates whether or not panel should be rendered transparent */
   transparent: boolean;
+
+  /** Current width of the panel */
   width: number;
+
+  /** Current height of the panel */
   height: number;
+
+  /** Field options configuration */
+  fieldConfig: FieldConfigSource;
+
+  /** @internal */
+  renderCounter: number;
+
+  /** Panel title */
+  title: string;
+
+  /** EventBus  */
+  eventBus: EventBus;
+
+  /** Panel options change handler */
+  onOptionsChange: (options: T) => void;
+
+  /** Field config change handler */
+  onFieldConfigChange: (config: FieldConfigSource) => void;
+
+  /** Template variables interpolation function */
   replaceVariables: InterpolateFunction;
+
+  /** Time range change handler */
   onChangeTimeRange: (timeRange: AbsoluteTimeRange) => void;
 }
 
 export interface PanelEditorProps<T = any> {
+  /** Panel options */
   options: T;
+  /** Panel options change handler */
   onOptionsChange: (
     options: T,
     // callback can be used to run something right after update.
     callback?: () => void
   ) => void;
-  data: PanelData;
+  /** Result set of panel queries */
+  data?: PanelData;
 }
 
 export interface PanelModel<TOptions = any> {
+  /** ID of the panel within the current dashboard */
   id: number;
+  /** Panel options */
   options: TOptions;
+  /** Field options configuration */
+  fieldConfig: FieldConfigSource;
+  /** Version of the panel plugin */
   pluginVersion?: string;
   scopedVars?: ScopedVars;
 }
@@ -63,77 +126,31 @@ export interface PanelModel<TOptions = any> {
 export type PanelMigrationHandler<TOptions = any> = (panel: PanelModel<TOptions>) => Partial<TOptions>;
 
 /**
- * Called before a panel is initialized
+ * Called before a panel is initialized. Allows panel inspection for any updates before changing the panel type.
  */
 export type PanelTypeChangedHandler<TOptions = any> = (
-  options: Partial<TOptions>,
+  panel: PanelModel<TOptions>,
   prevPluginId: string,
-  prevOptions: any
+  prevOptions: Record<string, any>,
+  prevFieldConfig: FieldConfigSource
 ) => Partial<TOptions>;
 
-export class PanelPlugin<TOptions = any> extends GrafanaPlugin<PanelPluginMeta> {
-  panel: ComponentType<PanelProps<TOptions>>;
-  editor?: ComponentClass<PanelEditorProps<TOptions>>;
-  customFieldConfigs?: FieldConfigEditorRegistry;
-  defaults?: TOptions;
-  onPanelMigration?: PanelMigrationHandler<TOptions>;
-  onPanelTypeChanged?: PanelTypeChangedHandler<TOptions>;
-  noPadding?: boolean;
+export type PanelOptionEditorsRegistry = Registry<PanelOptionsEditorItem>;
 
-  /**
-   * Legacy angular ctrl.  If this exists it will be used instead of the panel
-   */
-  angularPanelCtrl?: any;
+export interface PanelOptionsEditorProps<TValue> extends StandardEditorProps<TValue> {}
 
-  constructor(panel: ComponentType<PanelProps<TOptions>>) {
-    super();
-    this.panel = panel;
-  }
+export interface PanelOptionsEditorItem<TOptions = any, TValue = any, TSettings = any>
+  extends OptionsEditorItem<TOptions, TSettings, PanelOptionsEditorProps<TValue>, TValue> {}
 
-  setEditor(editor: ComponentClass<PanelEditorProps<TOptions>>) {
-    this.editor = editor;
-    return this;
-  }
+export interface PanelOptionsEditorConfig<TOptions, TSettings = any, TValue = any>
+  extends OptionEditorConfig<TOptions, TSettings, TValue> {}
 
-  setDefaults(defaults: TOptions) {
-    this.defaults = defaults;
-    return this;
-  }
-
-  setNoPadding() {
-    this.noPadding = true;
-    return this;
-  }
-
-  /**
-   * This function is called before the panel first loads if
-   * the current version is different than the version that was saved.
-   *
-   * This is a good place to support any changes to the options model
-   */
-  setMigrationHandler(handler: PanelMigrationHandler) {
-    this.onPanelMigration = handler;
-    return this;
-  }
-
-  /**
-   * This function is called when the visualization was changed.  This
-   * passes in the options that were used in the previous visualization
-   */
-  setPanelChangeHandler(handler: PanelTypeChangedHandler) {
-    this.onPanelTypeChanged = handler;
-    return this;
-  }
-
-  setCustomFieldConfigs(registry: FieldConfigEditorRegistry) {
-    this.customFieldConfigs = registry;
-    return this;
-  }
-}
-
+/**
+ * @internal
+ */
 export interface PanelMenuItem {
   type?: 'submenu' | 'divider';
-  text?: string;
+  text: string;
   iconClassName?: string;
   onClick?: (event: React.MouseEvent<any>) => void;
   shortcut?: string;
@@ -141,6 +158,9 @@ export interface PanelMenuItem {
   subMenu?: PanelMenuItem[];
 }
 
+/**
+ * @internal
+ */
 export interface AngularPanelMenuItem {
   click: Function;
   icon: string;

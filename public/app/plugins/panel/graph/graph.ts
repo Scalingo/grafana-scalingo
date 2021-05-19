@@ -11,7 +11,7 @@ import './jquery.flot.events';
 import $ from 'jquery';
 import _ from 'lodash';
 import { tickStep } from 'app/core/utils/ticks';
-import { appEvents, coreModule, updateLegendValues } from 'app/core/core';
+import { coreModule, updateLegendValues } from 'app/core/core';
 import GraphTooltip from './graph_tooltip';
 import { ThresholdManager } from './threshold_manager';
 import { TimeRegionManager } from './time_region_manager';
@@ -24,27 +24,30 @@ import ReactDOM from 'react-dom';
 import { GraphLegendProps, Legend } from './Legend/Legend';
 
 import { GraphCtrl } from './module';
-import { ContextMenuGroup, ContextMenuItem } from '@grafana/ui';
-import { provideTheme, getCurrentTheme } from 'app/core/utils/ConfigProvider';
+import { graphTickFormatter, graphTimeFormat, IconName, MenuItem, MenuItemsGroup } from '@grafana/ui';
+import { provideTheme } from 'app/core/utils/ConfigProvider';
 import {
-  toUtc,
-  LinkModelSupplier,
+  DataFrame,
   DataFrameView,
-  getValueFormat,
   FieldDisplay,
+  FieldType,
+  formattedValueToString,
   getDisplayProcessor,
   getFlotPairsConstant,
-  PanelEvents,
-  formattedValueToString,
-  FieldType,
-  DataFrame,
   getTimeField,
+  getValueFormat,
+  hasLinks,
+  LegacyGraphHoverClearEvent,
+  LegacyGraphHoverEvent,
+  LinkModelSupplier,
+  PanelEvents,
+  toUtc,
 } from '@grafana/data';
 import { GraphContextMenuCtrl } from './GraphContextMenuCtrl';
 import { TimeSrv } from 'app/features/dashboard/services/TimeSrv';
 import { ContextSrv } from 'app/core/services/context_srv';
 import { getFieldLinksSupplier } from 'app/features/panel/panellinks/linkSuppliers';
-import { CoreEvents } from 'app/types';
+import { DashboardModel } from '../../../features/dashboard/state';
 
 const LegendWithThemeProvider = provideTheme(Legend);
 
@@ -52,11 +55,11 @@ class GraphElement {
   ctrl: GraphCtrl;
   contextMenu: GraphContextMenuCtrl;
   tooltip: any;
-  dashboard: any;
+  dashboard: DashboardModel;
   annotations: object[];
   panel: any;
   plot: any;
-  sortedSeries: any[];
+  sortedSeries?: any[];
   data: any[];
   panelWidth: number;
   eventManager: EventManager;
@@ -74,7 +77,7 @@ class GraphElement {
     this.panelWidth = 0;
     this.eventManager = new EventManager(this.ctrl);
     this.thresholdManager = new ThresholdManager(this.ctrl);
-    this.timeRegionManager = new TimeRegionManager(this.ctrl, config.theme.type);
+    this.timeRegionManager = new TimeRegionManager(this.ctrl);
     // @ts-ignore
     this.tooltip = new GraphTooltip(this.elem, this.ctrl.dashboard, this.scope, () => {
       return this.sortedSeries;
@@ -85,8 +88,11 @@ class GraphElement {
     this.ctrl.events.on(PanelEvents.render, this.onRender.bind(this));
 
     // global events
-    appEvents.on(CoreEvents.graphHover, this.onGraphHover.bind(this), scope);
-    appEvents.on(CoreEvents.graphHoverClear, this.onGraphHoverClear.bind(this), scope);
+    // Using old way here to use the scope unsubscribe model as the new $on function does not take scope
+    this.ctrl.dashboard.events.on(LegacyGraphHoverEvent.type, this.onGraphHover.bind(this), this.scope);
+    this.ctrl.dashboard.events.on(LegacyGraphHoverClearEvent.type, this.onGraphHoverClear.bind(this), this.scope);
+
+    // plot events
     this.elem.bind('plotselected', this.onPlotSelected.bind(this));
     this.elem.bind('plotclick', this.onPlotClick.bind(this));
 
@@ -174,7 +180,7 @@ class GraphElement {
       return;
     }
 
-    if ((ranges.ctrlKey || ranges.metaKey) && (this.dashboard.meta.canEdit || this.dashboard.meta.canMakeEditable)) {
+    if ((ranges.ctrlKey || ranges.metaKey) && this.dashboard.canAddAnnotations()) {
       // Add annotation
       setTimeout(() => {
         this.eventManager.updateTime(ranges.xaxis);
@@ -192,20 +198,22 @@ class GraphElement {
   getContextMenuItemsSupplier = (
     flotPosition: { x: number; y: number },
     linksSupplier?: LinkModelSupplier<FieldDisplay>
-  ): (() => ContextMenuGroup[]) => {
+  ): (() => MenuItemsGroup[]) => {
     return () => {
       // Fixed context menu items
-      const items: ContextMenuGroup[] = [
-        {
-          items: [
+      const items: MenuItemsGroup[] = this.dashboard.canAddAnnotations()
+        ? [
             {
-              label: 'Add annotation',
-              icon: 'gicon gicon-annotation',
-              onClick: () => this.eventManager.updateTime({ from: flotPosition.x, to: null }),
+              items: [
+                {
+                  label: 'Add annotation',
+                  icon: 'comment-alt',
+                  onClick: () => this.eventManager.updateTime({ from: flotPosition.x, to: null }),
+                },
+              ],
             },
-          ],
-        },
-      ];
+          ]
+        : [];
 
       if (!linksSupplier) {
         return items;
@@ -213,12 +221,12 @@ class GraphElement {
 
       const dataLinks = [
         {
-          items: linksSupplier.getLinks(this.panel.scopedVars).map<ContextMenuItem>(link => {
+          items: linksSupplier.getLinks(this.panel.replaceVariables).map<MenuItem>((link) => {
             return {
               label: link.title,
               url: link.href,
               target: link.target,
-              icon: `fa ${link.target === '_self' ? 'fa-link' : 'fa-external-link'}`,
+              icon: `${link.target === '_self' ? 'link' : 'external-link-alt'}` as IconName,
               onClick: link.onClick,
             };
           }),
@@ -238,18 +246,24 @@ class GraphElement {
       return;
     }
 
-    if ((pos.ctrlKey || pos.metaKey) && (this.dashboard.meta.canEdit || this.dashboard.meta.canMakeEditable)) {
+    if (pos.ctrlKey || pos.metaKey) {
       // Skip if range selected (added in "plotselected" event handler)
       if (pos.x !== pos.x1) {
         return;
       }
+
+      // skip if dashboard is not saved yet (exists in db) or user cannot edit
+      if (!this.dashboard.id || !this.dashboard.canAddAnnotations()) {
+        return;
+      }
+
       setTimeout(() => {
         this.eventManager.updateTime({ from: pos.x, to: null });
       }, 100);
       return;
     } else {
       this.tooltip.clear(this.plot);
-      let linksSupplier: LinkModelSupplier<FieldDisplay>;
+      let linksSupplier: LinkModelSupplier<FieldDisplay> | undefined;
 
       if (item) {
         // pickup y-axis index to know which field's config to apply
@@ -258,10 +272,11 @@ class GraphElement {
         const field = dataFrame.fields[item.series.fieldIndex];
         const dataIndex = this.getDataIndexWithNullValuesCorrection(item, dataFrame);
 
-        let links = this.panel.options.dataLinks || [];
-        if (field.config.links && field.config.links.length) {
+        let links: any[] = this.panel.options.dataLinks || [];
+        const hasLinksValue = hasLinks(field);
+        if (hasLinksValue) {
           // Append the configured links to the panel datalinks
-          links = [...links, ...field.config.links];
+          links = [...links, ...field.config.links!];
         }
         const fieldConfig = {
           decimals: yAxisConfig.decimals,
@@ -269,7 +284,8 @@ class GraphElement {
         };
         const fieldDisplay = getDisplayProcessor({
           field: { config: fieldConfig, type: FieldType.number },
-          theme: getCurrentTheme(),
+          theme: config.theme,
+          timeZone: this.dashboard.getTimezone(),
         })(field.values.get(dataIndex));
         linksSupplier = links.length
           ? getFieldLinksSupplier({
@@ -279,6 +295,7 @@ class GraphElement {
               rowIndex: dataIndex,
               colIndex: item.series.fieldIndex,
               field: fieldConfig,
+              hasLinks: hasLinksValue,
             })
           : undefined;
       }
@@ -319,7 +336,7 @@ class GraphElement {
       return dataIndex;
     }
 
-    const correctIndex = timeField.values.toArray().findIndex(value => value === ts);
+    const correctIndex = timeField.values.toArray().findIndex((value) => value === ts);
     return correctIndex > -1 ? correctIndex : dataIndex;
   }
 
@@ -350,8 +367,15 @@ class GraphElement {
         .appendTo(this.elem);
     }
 
-    if (this.ctrl.dataWarning) {
-      $(`<div class="datapoints-warning flot-temp-elem">${this.ctrl.dataWarning.title}</div>`).appendTo(this.elem);
+    const { dataWarning } = this.ctrl;
+    if (dataWarning) {
+      const msg = $(`<div class="datapoints-warning flot-temp-elem">${dataWarning.title}</div>`);
+      if (dataWarning.action) {
+        $(`<button class="btn btn-secondary">${dataWarning.actionText}</button>`)
+          .click(dataWarning.action)
+          .appendTo(msg);
+      }
+      msg.appendTo(this.elem);
     }
 
     this.thresholdManager.draw(plot);
@@ -418,7 +442,8 @@ class GraphElement {
 
   // Function for rendering panel
   renderPanel() {
-    this.panelWidth = this.elem.width();
+    this.panelWidth = this.elem.width() ?? 0;
+
     if (this.shouldAbortRender()) {
       return;
     }
@@ -475,8 +500,8 @@ class GraphElement {
         let bucketSize: number;
 
         if (this.data.length) {
-          let histMin = _.min(_.map(this.data, s => s.stats.min));
-          let histMax = _.max(_.map(this.data, s => s.stats.max));
+          let histMin = _.min(_.map(this.data, (s) => s.stats.min));
+          let histMax = _.max(_.map(this.data, (s) => s.stats.max));
           const ticks = panel.xaxis.buckets || this.panelWidth / 50;
           if (panel.xaxis.min != null) {
             const isInvalidXaxisMin = tickStep(panel.xaxis.min, histMax, ticks) <= 0;
@@ -504,7 +529,6 @@ class GraphElement {
       }
       default: {
         options.series.bars.barWidth = this.getMinTimeStepOfSeries(this.data) / 1.5;
-        options.series.bars.align = 'center';
         this.addTimeAxis(options);
         break;
       }
@@ -518,7 +542,7 @@ class GraphElement {
         delete this.ctrl.error;
       }
     } catch (e) {
-      console.log('flotcharts error', e);
+      console.error('flotcharts error', e);
       this.ctrl.error = e.message || 'Render Error';
       this.ctrl.renderError = true;
     }
@@ -606,9 +630,9 @@ class GraphElement {
     const sortDesc = panel.legend.sortDesc === true ? -1 : 1;
 
     if (shouldSortBy) {
-      return _.sortBy(series, s => s.stats[sortBy] * sortDesc);
+      return _.sortBy(series, (s) => s.stats[sortBy] * sortDesc);
     } else {
-      return _.sortBy(series, s => s.zindex);
+      return _.sortBy(series, (s) => s.zindex);
     }
   }
 
@@ -643,7 +667,8 @@ class GraphElement {
       max: max,
       label: 'Datetime',
       ticks: ticks,
-      timeformat: this.time_format(ticks, min, max),
+      timeformat: graphTimeFormat(ticks, min, max),
+      tickFormatter: graphTickFormatter,
     };
   }
 
@@ -679,7 +704,7 @@ class GraphElement {
         }
       }
 
-      ticks = Object.keys(tickValues).map(v => Number(v));
+      ticks = Object.keys(tickValues).map((v) => Number(v));
       min = _.min(ticks)!;
       max = _.max(ticks)!;
 
@@ -718,7 +743,7 @@ class GraphElement {
     };
 
     // Use 'short' format for histogram values
-    this.configureAxisMode(options.xaxis, 'short');
+    this.configureAxisMode(options.xaxis, 'short', null);
   }
 
   addXTableAxis(options: any) {
@@ -769,13 +794,15 @@ class GraphElement {
       this.applyLogScale(options.yaxes[1], data);
       this.configureAxisMode(
         options.yaxes[1],
-        this.panel.percentage && this.panel.stack ? 'percent' : this.panel.yaxes[1].format
+        this.panel.percentage && this.panel.stack ? 'percent' : this.panel.yaxes[1].format,
+        this.panel.yaxes[1].decimals
       );
     }
     this.applyLogScale(options.yaxes[0], data);
     this.configureAxisMode(
       options.yaxes[0],
-      this.panel.percentage && this.panel.stack ? 'percent' : this.panel.yaxes[0].format
+      this.panel.percentage && this.panel.stack ? 'percent' : this.panel.yaxes[0].format,
+      this.panel.yaxes[0].decimals
     );
   }
 
@@ -890,42 +917,20 @@ class GraphElement {
     return ticks;
   }
 
-  configureAxisMode(axis: { tickFormatter: (val: any, axis: any) => string }, format: string) {
+  configureAxisMode(
+    axis: { tickFormatter: (val: any, axis: any) => string },
+    format: string,
+    decimals?: number | null
+  ) {
     axis.tickFormatter = (val, axis) => {
       const formatter = getValueFormat(format);
 
       if (!formatter) {
         throw new Error(`Unit '${format}' is not supported`);
       }
-      return formattedValueToString(formatter(val, axis.tickDecimals, axis.scaledDecimals));
+
+      return formattedValueToString(formatter(val, decimals));
     };
-  }
-
-  time_format(ticks: number, min: number | null, max: number | null) {
-    if (min && max && ticks) {
-      const range = max - min;
-      const secPerTick = range / ticks / 1000;
-      // Need have 10 millisecond margin on the day range
-      // As sometimes last 24 hour dashboard evaluates to more than 86400000
-      const oneDay = 86400010;
-      const oneYear = 31536000000;
-
-      if (secPerTick <= 45) {
-        return '%H:%M:%S';
-      }
-      if (secPerTick <= 7200 || range <= oneDay) {
-        return '%H:%M';
-      }
-      if (secPerTick <= 80000) {
-        return '%m/%d %H:%M';
-      }
-      if (secPerTick <= 2419200 || range <= oneYear) {
-        return '%m/%d';
-      }
-      return '%Y-%m';
-    }
-
-    return '%H:%M';
   }
 }
 

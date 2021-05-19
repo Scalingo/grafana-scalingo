@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net"
+	"strconv"
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"
@@ -71,10 +73,10 @@ const UsersMaxRequest = 500
 var (
 
 	// ErrInvalidCredentials is returned if username and password do not match
-	ErrInvalidCredentials = errors.New("Invalid Username or Password")
+	ErrInvalidCredentials = errors.New("invalid username or password")
 
 	// ErrCouldNotFindUser is returned when username hasn't been found (not username+password)
-	ErrCouldNotFindUser = errors.New("Can't find user in LDAP")
+	ErrCouldNotFindUser = errors.New("can't find user in LDAP")
 )
 
 // New creates the new LDAP connection
@@ -93,6 +95,8 @@ func (server *Server) Dial() error {
 	if server.Config.RootCACert != "" {
 		certPool = x509.NewCertPool()
 		for _, caCertFile := range strings.Split(server.Config.RootCACert, " ") {
+			// nolint:gosec
+			// We can ignore the gosec G304 warning on this one because `caCertFile` comes from ldap config.
 			pem, err := ioutil.ReadFile(caCertFile)
 			if err != nil {
 				return err
@@ -110,7 +114,9 @@ func (server *Server) Dial() error {
 		}
 	}
 	for _, host := range strings.Split(server.Config.Host, " ") {
-		address := fmt.Sprintf("%s:%d", host, server.Config.Port)
+		// Remove any square brackets enclosing IPv6 addresses, a format we support for backwards compatibility
+		host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+		address := net.JoinHostPort(host, strconv.Itoa(server.Config.Port))
 		if server.Config.UseSSL {
 			tlsCfg := &tls.Config{
 				InsecureSkipVerify: server.Config.SkipVerifySSL,
@@ -157,7 +163,7 @@ func (server *Server) Close() {
 // 2. Single bind
 // // If all the users meant to be used with Grafana have the ability to search in LDAP server
 // then we bind with LDAP server with targeted login/password
-// and then search for the said user in order to retrive all the information about them
+// and then search for the said user in order to retrieve all the information about them
 // 3. Unauthenticated bind
 // For some LDAP configurations it is allowed to search the
 // user without login/password binding with LDAP server, in such case
@@ -173,11 +179,12 @@ func (server *Server) Login(query *models.LoginUserQuery) (
 	var authAndBind bool
 
 	// Check if we can use a search user
-	if server.shouldAdminBind() {
+	switch {
+	case server.shouldAdminBind():
 		if err := server.AdminBind(); err != nil {
 			return nil, err
 		}
-	} else if server.shouldSingleBind() {
+	case server.shouldSingleBind():
 		authAndBind = true
 		err = server.UserBind(
 			server.singleBindDN(query.Username),
@@ -186,7 +193,7 @@ func (server *Server) Login(query *models.LoginUserQuery) (
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	default:
 		err := server.Connection.UnauthenticatedBind(server.Config.BindDN)
 		if err != nil {
 			return nil, err
@@ -362,24 +369,29 @@ func (server *Server) getSearchRequest(
 
 	search := ""
 	for _, login := range logins {
-		query := strings.Replace(
+		query := strings.ReplaceAll(
 			server.Config.SearchFilter,
 			"%s", ldap.EscapeFilter(login),
-			-1,
 		)
 
-		search = search + query
+		search += query
 	}
 
 	filter := fmt.Sprintf("(|%s)", search)
 
-	return &ldap.SearchRequest{
+	searchRequest := &ldap.SearchRequest{
 		BaseDN:       base,
 		Scope:        ldap.ScopeWholeSubtree,
 		DerefAliases: ldap.NeverDerefAliases,
 		Attributes:   attributes,
 		Filter:       filter,
 	}
+
+	server.log.Debug(
+		"LDAP SearchRequest", "searchRequest", fmt.Sprintf("%+v\n", searchRequest),
+	)
+
+	return searchRequest
 }
 
 // buildGrafanaUser extracts info from UserInfo model to ExternalUserInfo
@@ -420,6 +432,12 @@ func (server *Server) buildGrafanaUser(user *ldap.Entry) (*models.ExternalUserIn
 		}
 	}
 
+	// If there are group org mappings configured, but no matching mappings,
+	// the user will not be able to login and will be disabled
+	if len(server.Config.Groups) > 0 && len(extUser.OrgRoles) == 0 {
+		extUser.IsDisabled = true
+	}
+
 	return extUser, nil
 }
 
@@ -447,7 +465,7 @@ func (server *Server) AdminBind() error {
 	err := server.userBind(server.Config.BindDN, server.Config.BindPassword)
 	if err != nil {
 		server.log.Error(
-			"Cannot authentificate admin user in LDAP",
+			"Cannot authenticate admin user in LDAP",
 			"error",
 			err,
 		)
@@ -461,11 +479,11 @@ func (server *Server) AdminBind() error {
 func (server *Server) userBind(path, password string) error {
 	err := server.Connection.Bind(path, password)
 	if err != nil {
-		if ldapErr, ok := err.(*ldap.Error); ok {
-			if ldapErr.ResultCode == 49 {
-				return ErrInvalidCredentials
-			}
+		var ldapErr *ldap.Error
+		if errors.As(err, &ldapErr) && ldapErr.ResultCode == 49 {
+			return ErrInvalidCredentials
 		}
+
 		return err
 	}
 
@@ -496,10 +514,9 @@ func (server *Server) requestMemberOf(entry *ldap.Entry) ([]string, error) {
 			)
 		}
 
-		filter := strings.Replace(
+		filter := strings.ReplaceAll(
 			config.GroupSearchFilter, "%s",
 			ldap.EscapeFilter(filterReplace),
-			-1,
 		)
 
 		server.log.Info("Searching for user's groups", "filter", filter)
@@ -526,13 +543,11 @@ func (server *Server) requestMemberOf(entry *ldap.Entry) ([]string, error) {
 
 		if len(groupSearchResult.Entries) > 0 {
 			for _, group := range groupSearchResult.Entries {
-
 				memberOf = append(
 					memberOf,
 					getAttribute(groupIDAttribute, group),
 				)
 			}
-			break
 		}
 	}
 

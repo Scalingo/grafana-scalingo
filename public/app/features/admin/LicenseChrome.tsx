@@ -7,7 +7,7 @@ const title = { fontWeight: 500, fontSize: '26px', lineHeight: '123%' };
 
 const getStyles = stylesFactory((theme: GrafanaTheme) => {
   const backgroundUrl = theme.isDark ? 'public/img/licensing/header_dark.svg' : 'public/img/licensing/header_light.svg';
-  const footerBg = theme.isDark ? theme.colors.dark9 : theme.colors.gray6;
+  const footerBg = theme.isDark ? theme.palette.dark9 : theme.palette.gray6;
 
   return {
     container: css`
@@ -24,7 +24,7 @@ const getStyles = stylesFactory((theme: GrafanaTheme) => {
       padding: 40px 0 0 79px;
       position: relative;
       background: url('${backgroundUrl}') right;
-  `,
+    `,
   };
 });
 

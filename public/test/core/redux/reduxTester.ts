@@ -1,8 +1,8 @@
-import { AnyAction, configureStore, EnhancedStore, Reducer } from '@reduxjs/toolkit';
 import { Dispatch, Middleware, MiddlewareAPI } from 'redux';
+import thunk, { ThunkMiddleware } from 'redux-thunk';
+import { AnyAction, configureStore, EnhancedStore, Reducer, getDefaultMiddleware } from '@reduxjs/toolkit';
 
 import { StoreState } from '../../../app/types';
-import thunk from 'redux-thunk';
 import { setStore } from '../../../app/store/store';
 
 export interface ReduxTesterGiven<State> {
@@ -21,10 +21,11 @@ export interface ReduxTesterWhen<State> {
 }
 
 export interface ReduxTesterThen<State> {
-  thenDispatchedActionShouldEqual: (...dispatchedAction: AnyAction[]) => ReduxTesterWhen<State>;
-  thenDispatchedActionPredicateShouldEqual: (
+  thenDispatchedActionsShouldEqual: (...dispatchedActions: AnyAction[]) => ReduxTesterWhen<State>;
+  thenDispatchedActionsPredicateShouldEqual: (
     predicate: (dispatchedActions: AnyAction[]) => boolean
   ) => ReduxTesterWhen<State>;
+  thenNoActionsWhereDispatched: () => ReduxTesterWhen<State>;
 }
 
 export interface ReduxTesterArguments<State> {
@@ -49,12 +50,19 @@ export const reduxTester = <State>(args?: ReduxTesterArguments<State>): ReduxTes
   const debug = args?.debug ?? false;
   let store: EnhancedStore<State> | null = null;
 
+  const defaultMiddleware = getDefaultMiddleware<State>({
+    thunk: false,
+    serializableCheck: false,
+    immutableCheck: false,
+  } as any);
+
   const givenRootReducer = (rootReducer: Reducer<State>): ReduxTesterWhen<State> => {
     store = configureStore<State>({
       reducer: rootReducer,
-      middleware: [logActionsMiddleWare, thunk],
+      middleware: [...defaultMiddleware, logActionsMiddleWare, thunk] as [ThunkMiddleware<State>],
       preloadedState,
     });
+
     setStore(store as any);
 
     return instance;
@@ -67,8 +75,12 @@ export const reduxTester = <State>(args?: ReduxTesterArguments<State>): ReduxTes
     if (clearPreviousActions) {
       dispatchedActions.length = 0;
     }
-    store.dispatch(action);
 
+    if (store === null) {
+      throw new Error('Store was not setup properly');
+    }
+
+    store.dispatch(action);
     return instance;
   };
 
@@ -80,12 +92,15 @@ export const reduxTester = <State>(args?: ReduxTesterArguments<State>): ReduxTes
       dispatchedActions.length = 0;
     }
 
-    await store.dispatch(action);
+    if (store === null) {
+      throw new Error('Store was not setup properly');
+    }
 
+    await store.dispatch(action);
     return instance;
   };
 
-  const thenDispatchedActionShouldEqual = (...actions: AnyAction[]): ReduxTesterWhen<State> => {
+  const thenDispatchedActionsShouldEqual = (...actions: AnyAction[]): ReduxTesterWhen<State> => {
     if (debug) {
       console.log('Dispatched Actions', JSON.stringify(dispatchedActions, null, 2));
     }
@@ -98,7 +113,7 @@ export const reduxTester = <State>(args?: ReduxTesterArguments<State>): ReduxTes
     return instance;
   };
 
-  const thenDispatchedActionPredicateShouldEqual = (
+  const thenDispatchedActionsPredicateShouldEqual = (
     predicate: (dispatchedActions: AnyAction[]) => boolean
   ): ReduxTesterWhen<State> => {
     if (debug) {
@@ -109,12 +124,22 @@ export const reduxTester = <State>(args?: ReduxTesterArguments<State>): ReduxTes
     return instance;
   };
 
+  const thenNoActionsWhereDispatched = (): ReduxTesterWhen<State> => {
+    if (debug) {
+      console.log('Dispatched Actions', JSON.stringify(dispatchedActions, null, 2));
+    }
+
+    expect(dispatchedActions.length).toBe(0);
+    return instance;
+  };
+
   const instance = {
     givenRootReducer,
     whenActionIsDispatched,
     whenAsyncActionIsDispatched,
-    thenDispatchedActionShouldEqual,
-    thenDispatchedActionPredicateShouldEqual,
+    thenDispatchedActionsShouldEqual,
+    thenDispatchedActionsPredicateShouldEqual,
+    thenNoActionsWhereDispatched,
   };
 
   return instance;

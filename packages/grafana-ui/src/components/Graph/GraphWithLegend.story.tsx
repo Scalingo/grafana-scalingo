@@ -1,14 +1,16 @@
 import React from 'react';
-import { storiesOf } from '@storybook/react';
 
 import { select, text } from '@storybook/addon-knobs';
-import { withHorizontallyCenteredStory } from '../../utils/storybook/withCenteredStory';
+import { withCenteredStory } from '../../utils/storybook/withCenteredStory';
 import { GraphWithLegend, GraphWithLegendProps } from './GraphWithLegend';
+import { LegendPlacement, LegendDisplayMode } from '../VizLegend/types';
+import { GraphSeriesXY, FieldType, ArrayVector, dateTime, FieldColorModeId } from '@grafana/data';
 
-import { LegendPlacement, LegendDisplayMode } from '../Legend/Legend';
-import { GraphSeriesXY, FieldType, ArrayVector, dateTime, FieldColorMode } from '@grafana/data';
-const GraphWithLegendStories = storiesOf('Visualizations/Graph/GraphWithLegend', module);
-GraphWithLegendStories.addDecorator(withHorizontallyCenteredStory);
+export default {
+  title: 'Visualizations/Graph/GraphWithLegend',
+  component: GraphWithLegend,
+  decorator: [withCenteredStory],
+};
 
 const series: GraphSeriesXY[] = [
   {
@@ -33,7 +35,7 @@ const series: GraphSeriesXY[] = [
       values: new ArrayVector([10, 20, 10]),
       config: {
         color: {
-          mode: FieldColorMode.Fixed,
+          mode: FieldColorModeId.Fixed,
           fixedColor: 'red',
         },
       },
@@ -65,7 +67,7 @@ const series: GraphSeriesXY[] = [
       values: new ArrayVector([20, 30, 40]),
       config: {
         color: {
-          mode: FieldColorMode.Fixed,
+          mode: FieldColorModeId.Fixed,
           fixedColor: 'blue',
         },
       },
@@ -83,10 +85,10 @@ const getStoriesKnobs = () => {
   const legendPlacement = select<LegendPlacement>(
     'Legend placement',
     {
-      under: 'under',
+      bottom: 'under',
       right: 'right',
     },
-    'under'
+    'bottom'
   );
   const renderLegendAsTable = select<any>(
     'Render legend as',
@@ -104,14 +106,14 @@ const getStoriesKnobs = () => {
   };
 };
 
-GraphWithLegendStories.add('default', () => {
+export const graphWithLegend = () => {
   const { legendPlacement, rightAxisSeries, renderLegendAsTable } = getStoriesKnobs();
   const props: GraphWithLegendProps = {
-    series: series.map(s => {
+    series: series.map((s) => {
       if (
         rightAxisSeries
           .split(',')
-          .map(s => s.trim())
+          .map((s) => s.trim())
           .indexOf(s.label.split('-')[0]) > -1
       ) {
         s.yAxis = { index: 2 };
@@ -120,8 +122,7 @@ GraphWithLegendStories.add('default', () => {
       }
       return s;
     }),
-    displayMode: renderLegendAsTable ? LegendDisplayMode.Table : LegendDisplayMode.List,
-    isLegendVisible: true,
+    legendDisplayMode: renderLegendAsTable ? LegendDisplayMode.Table : LegendDisplayMode.List,
     onToggleSort: () => {},
     timeRange: {
       from: dateTime(1546372800000),
@@ -138,4 +139,4 @@ GraphWithLegendStories.add('default', () => {
   };
 
   return <GraphWithLegend {...props} />;
-});
+};

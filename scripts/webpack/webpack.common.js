@@ -1,8 +1,24 @@
 const path = require('path');
 
+const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
+
 // https://github.com/visionmedia/debug/issues/701#issuecomment-505487361
 function shouldExclude(filename) {
-  const packagesToProcessbyBabel = ['debug', 'lru-cache', 'yallist', 'apache-arrow', 'react-hook-form', 'rc-trigger'];
+  // There is external js code inside this which needs to be processed by babel.
+  if (filename.indexOf(`jaeger-ui-components`) > 0) {
+    return false;
+  }
+
+  const packagesToProcessbyBabel = [
+    'debug',
+    'lru-cache',
+    'yallist',
+    'apache-arrow',
+    'react-hook-form',
+    'rc-trigger',
+    '@iconscout/react-unicons',
+    'monaco-editor',
+  ];
   for (const package of packagesToProcessbyBabel) {
     if (filename.indexOf(`node_modules/${package}`) > 0) {
       return false;
@@ -29,8 +45,19 @@ module.exports = {
       // rc-trigger uses babel-runtime which has internal dependency to core-js@2
       // this alias maps that dependency to core-js@t3
       'core-js/library/fn': 'core-js/stable',
+      // storybook v6 bump caused the app to bundle multiple versions of react breaking hooks
+      // make sure to resolve only from the project: https://github.com/facebook/react/issues/13991#issuecomment-435587809
+      react: path.resolve(__dirname, '../../node_modules/react'),
+      // some of data source pluginis use global Prism object to add the language definition
+      // we want to have same Prism object in core and in grafana/ui
+      prismjs: path.resolve(__dirname, '../../node_modules/prismjs'),
     },
-    modules: [path.resolve('public'), path.resolve('node_modules')],
+    modules: [
+      'node_modules',
+      path.resolve('public'),
+      // we need full path to root node_modules for grafana-enterprise symlink to work
+      path.resolve('node_modules'),
+    ],
   },
   stats: {
     children: false,
@@ -40,6 +67,55 @@ module.exports = {
   node: {
     fs: 'empty',
   },
+  plugins: [
+    new MonacoWebpackPlugin({
+      // available options are documented at https://github.com/Microsoft/monaco-editor-webpack-plugin#options
+      filename: 'monaco-[name].worker.js',
+      languages: ['json', 'markdown', 'html', 'sql', 'mysql', 'pgsql', 'javascript'],
+      features: [
+        '!accessibilityHelp',
+        'bracketMatching',
+        'caretOperations',
+        '!clipboard',
+        '!codeAction',
+        '!codelens',
+        '!colorDetector',
+        '!comment',
+        '!contextmenu',
+        '!coreCommands',
+        '!cursorUndo',
+        '!dnd',
+        '!find',
+        'folding',
+        '!fontZoom',
+        '!format',
+        '!gotoError',
+        '!gotoLine',
+        '!gotoSymbol',
+        '!hover',
+        '!iPadShowKeyboard',
+        '!inPlaceReplace',
+        '!inspectTokens',
+        '!linesOperations',
+        '!links',
+        '!multicursor',
+        'parameterHints',
+        '!quickCommand',
+        '!quickOutline',
+        '!referenceSearch',
+        '!rename',
+        '!smartSelect',
+        '!snippets',
+        'suggest',
+        '!toggleHighContrast',
+        '!toggleTabFocusMode',
+        '!transpose',
+        '!wordHighlighter',
+        '!wordOperations',
+        '!wordPartOperations',
+      ],
+    }),
+  ],
   module: {
     rules: [
       /**
@@ -90,6 +166,16 @@ module.exports = {
           },
         ],
       },
+      {
+        test: /\.css$/,
+        // include: MONACO_DIR, // https://github.com/react-monaco-editor/react-monaco-editor
+        use: ['style-loader', 'css-loader'],
+      },
+      {
+        test: /\.(svg|ico|jpg|jpeg|png|gif|eot|otf|webp|ttf|woff|woff2|cur|ani|pdf)(\?.*)?$/,
+        loader: 'file-loader',
+        options: { name: 'static/img/[name].[hash:8].[ext]' },
+      },
     ],
   },
   // https://webpack.js.org/plugins/split-chunks-plugin/#split-chunks-example-3
@@ -100,6 +186,12 @@ module.exports = {
       chunks: 'all',
       minChunks: 1,
       cacheGroups: {
+        unicons: {
+          test: /[\\/]node_modules[\\/]@iconscout[\\/]react-unicons[\\/].*[jt]sx?$/,
+          chunks: 'initial',
+          priority: 20,
+          enforce: true,
+        },
         moment: {
           test: /[\\/]node_modules[\\/]moment[\\/].*[jt]sx?$/,
           chunks: 'initial',

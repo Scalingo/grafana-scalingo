@@ -1,7 +1,6 @@
-import { Unsubscribable } from 'rxjs';
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { PanelModel } from '../../../state/PanelModel';
-import { DefaultTimeRange, LoadingState, PanelData } from '@grafana/data';
+import { getDefaultTimeRange, LoadingState, PanelData } from '@grafana/data';
 import { DisplayMode } from '../types';
 import store from '../../../../../core/store';
 
@@ -9,8 +8,8 @@ export const PANEL_EDITOR_UI_STATE_STORAGE_KEY = 'grafana.dashboard.editor.ui';
 
 export const DEFAULT_PANEL_EDITOR_UI_STATE: PanelEditorUIState = {
   isPanelOptionsVisible: true,
-  rightPaneSize: 350,
-  topPaneSize: '45%',
+  rightPaneSize: 400,
+  topPaneSize: 0.45,
   mode: DisplayMode.Fill,
 };
 
@@ -18,41 +17,48 @@ export interface PanelEditorUIState {
   /* Visualization options pane visibility */
   isPanelOptionsVisible: boolean;
   /* Pixels or percentage */
-  rightPaneSize: number | string;
+  rightPaneSize: number;
   /* Pixels or percentage */
-  topPaneSize: number | string;
+  topPaneSize: number;
   /* Visualization size mode */
   mode: DisplayMode;
 }
 
-export interface PanelEditorStateNew {
-  /* These are functions as they are mutaded later on and redux toolkit will Object.freeze state so
+export interface PanelEditorState {
+  /* These are functions as they are mutated later on and redux toolkit will Object.freeze state so
    * we need to store these using functions instead */
   getSourcePanel: () => PanelModel;
   getPanel: () => PanelModel;
   getData: () => PanelData;
-  querySubscription?: Unsubscribable;
   initDone: boolean;
   shouldDiscardChanges: boolean;
   isOpen: boolean;
   ui: PanelEditorUIState;
 }
 
-export const initialState = (): PanelEditorStateNew => {
+export const initialState = (): PanelEditorState => {
+  const storedUiState = store.getObject(PANEL_EDITOR_UI_STATE_STORAGE_KEY, DEFAULT_PANEL_EDITOR_UI_STATE);
+
+  let migratedState = { ...storedUiState };
+
+  if (typeof storedUiState.topPaneSize === 'string') {
+    migratedState = { ...storedUiState, topPaneSize: parseFloat(storedUiState.topPaneSize) / 100 };
+  }
+
   return {
     getPanel: () => new PanelModel({}),
     getSourcePanel: () => new PanelModel({}),
     getData: () => ({
       state: LoadingState.NotStarted,
       series: [],
-      timeRange: DefaultTimeRange,
+      timeRange: getDefaultTimeRange(),
     }),
     initDone: false,
     shouldDiscardChanges: false,
     isOpen: false,
     ui: {
       ...DEFAULT_PANEL_EDITOR_UI_STATE,
-      ...store.getObject(PANEL_EDITOR_UI_STATE_STORAGE_KEY, DEFAULT_PANEL_EDITOR_UI_STATE),
+      ...migratedState,
     },
   };
 };
@@ -60,19 +66,18 @@ export const initialState = (): PanelEditorStateNew => {
 interface InitEditorPayload {
   panel: PanelModel;
   sourcePanel: PanelModel;
-  querySubscription: Unsubscribable;
 }
 
 const pluginsSlice = createSlice({
-  name: 'panelEditorNew',
+  name: 'panelEditor',
   initialState: initialState(),
   reducers: {
     updateEditorInitState: (state, action: PayloadAction<InitEditorPayload>) => {
       state.getPanel = () => action.payload.panel;
       state.getSourcePanel = () => action.payload.sourcePanel;
-      state.querySubscription = action.payload.querySubscription;
       state.initDone = true;
       state.isOpen = true;
+      state.shouldDiscardChanges = false;
     },
     setEditorPanelData: (state, action: PayloadAction<PanelData>) => {
       state.getData = () => action.payload;
@@ -83,7 +88,7 @@ const pluginsSlice = createSlice({
     setPanelEditorUIState: (state, action: PayloadAction<Partial<PanelEditorUIState>>) => {
       state.ui = { ...state.ui, ...action.payload };
     },
-    closeCompleted: state => {
+    closeCompleted: (state) => {
       state.isOpen = false;
       state.initDone = false;
     },
@@ -98,4 +103,4 @@ export const {
   setPanelEditorUIState,
 } = pluginsSlice.actions;
 
-export const panelEditorReducerNew = pluginsSlice.reducer;
+export const panelEditorReducer = pluginsSlice.reducer;

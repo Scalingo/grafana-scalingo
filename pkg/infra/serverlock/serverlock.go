@@ -16,7 +16,7 @@ func init() {
 // ServerLockService allows servers in HA mode to claim a lock
 // and execute an function if the server was granted the lock
 type ServerLockService struct {
-	SQLStore *sqlstore.SqlStore `inject:""`
+	SQLStore *sqlstore.SQLStore `inject:""`
 	log      log.Logger
 }
 
@@ -38,8 +38,8 @@ func (sl *ServerLockService) LockAndExecute(ctx context.Context, actionName stri
 
 	// avoid execution if last lock happened less than `maxInterval` ago
 	if rowLock.LastExecution != 0 {
-		lastExeuctionTime := time.Unix(rowLock.LastExecution, 0)
-		if lastExeuctionTime.Unix() > time.Now().Add(-maxInterval).Unix() {
+		lastExecutionTime := time.Unix(rowLock.LastExecution, 0)
+		if lastExecutionTime.Unix() > time.Now().Add(-maxInterval).Unix() {
 			return nil
 		}
 	}
@@ -98,7 +98,7 @@ func (sl *ServerLockService) getOrCreate(ctx context.Context, actionName string)
 		}
 
 		lockRow := &serverLock{
-			OperationUid:  actionName,
+			OperationUID:  actionName,
 			LastExecution: 0,
 		}
 

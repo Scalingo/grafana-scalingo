@@ -14,6 +14,15 @@ const getStyles = stylesFactory((theme: GrafanaTheme) => ({
   collapseBody: css`
     label: collapse__body;
     padding: ${theme.panelPadding}px;
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  `,
+  bodyContentWrapper: css`
+    label: bodyContentWrapper;
+    flex: 1;
+    overflow: hidden;
   `,
   loader: css`
     label: collapse__loader;
@@ -36,7 +45,7 @@ const getStyles = stylesFactory((theme: GrafanaTheme) => ({
       animation: loader 2s cubic-bezier(0.17, 0.67, 0.83, 0.67) 500ms;
       animation-iteration-count: 100;
       left: -25%;
-      background: ${theme.colors.blue};
+      background: ${theme.palette.blue85};
     }
     @keyframes loader {
       from {
@@ -65,6 +74,7 @@ const getStyles = stylesFactory((theme: GrafanaTheme) => ({
   headerButtons: css`
     label: collapse__header-buttons;
     margin-right: ${theme.spacing.sm};
+    margin-top: ${theme.spacing.xxs};
     font-size: ${theme.typography.size.lg};
     line-height: ${theme.typography.heading.h6};
     display: inherit;
@@ -81,11 +91,16 @@ const getStyles = stylesFactory((theme: GrafanaTheme) => ({
   `,
 }));
 
-interface Props {
+export interface Props {
+  /** Expand or collapse te content */
   isOpen?: boolean;
-  label: string;
+  /** Element or text for the Collapse header */
+  label: React.ReactNode;
+  /** Indicates loading state of the content */
   loading?: boolean;
+  /** Toggle collapsed header icon */
   collapsible?: boolean;
+  /** Callback for the toggle functionality */
   onToggle?: (isOpen: boolean) => void;
 }
 
@@ -123,14 +138,14 @@ export const Collapse: FunctionComponent<Props> = ({ isOpen, label, loading, col
     <div className={panelClass}>
       <div className={headerClass} onClick={onClickToggle}>
         <div className={headerButtonsClass}>
-          <Icon name={isOpen ? 'caret-up' : 'caret-down'} />
+          <Icon name={isOpen ? 'angle-up' : 'angle-down'} />
         </div>
         <div className={cx([style.headerLabel])}>{label}</div>
       </div>
       {isOpen && (
         <div className={cx([style.collapseBody])}>
           <div className={loaderClass} />
-          {children}
+          <div className={style.bodyContentWrapper}>{children}</div>
         </div>
       )}
     </div>

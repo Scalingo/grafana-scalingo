@@ -1,5 +1,5 @@
-import resolve from 'rollup-plugin-node-resolve';
-import commonjs from 'rollup-plugin-commonjs';
+import resolve from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
 import copy from 'rollup-plugin-copy';
 import sourceMaps from 'rollup-plugin-sourcemaps';
 import { terser } from 'rollup-plugin-terser';
@@ -16,6 +16,7 @@ const buildCjsPackage = ({ env }) => ({
     exports: 'named',
     globals: {},
   },
+  external: ['@grafana/e2e-selectors'],
   plugins: [
     copy({
       flatten: false,

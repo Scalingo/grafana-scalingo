@@ -1,10 +1,13 @@
+// +build integration
+
 package sqlstore
 
 import (
-	"github.com/grafana/grafana/pkg/models"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/grafana/grafana/pkg/models"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestApiKeyDataAccess(t *testing.T) {
@@ -26,7 +29,6 @@ func TestApiKeyDataAccess(t *testing.T) {
 				assert.Nil(t, err)
 				assert.NotNil(t, query.Result)
 			})
-
 		})
 
 		t.Run("Add non expiring key", func(t *testing.T) {
@@ -42,7 +44,7 @@ func TestApiKeyDataAccess(t *testing.T) {
 		})
 
 		t.Run("Add an expiring key", func(t *testing.T) {
-			//expires in one hour
+			// expires in one hour
 			cmd := models.AddApiKeyCommand{OrgId: 1, Name: "expiring-in-an-hour", Key: "asd2", SecondsToLive: 3600}
 			err := AddApiKey(&cmd)
 			assert.Nil(t, err)
@@ -54,7 +56,7 @@ func TestApiKeyDataAccess(t *testing.T) {
 			assert.True(t, *query.Result.Expires >= timeNow().Unix())
 
 			// timeNow() has been called twice since creation; once by AddApiKey and once by GetApiKeyByName
-			// therefore two seconds should be subtracted by next value retuned by timeNow()
+			// therefore two seconds should be subtracted by next value returned by timeNow()
 			// that equals the number by which timeSeed has been advanced
 			then := timeNow().Add(-2 * time.Second)
 			expected := then.Add(1 * time.Hour).UTC().Unix()
@@ -62,28 +64,28 @@ func TestApiKeyDataAccess(t *testing.T) {
 		})
 
 		t.Run("Add a key with negative lifespan", func(t *testing.T) {
-			//expires in one day
+			// expires in one day
 			cmd := models.AddApiKeyCommand{OrgId: 1, Name: "key-with-negative-lifespan", Key: "asd3", SecondsToLive: -3600}
 			err := AddApiKey(&cmd)
 			assert.EqualError(t, err, models.ErrInvalidApiKeyExpiration.Error())
 
 			query := models.GetApiKeyByNameQuery{KeyName: "key-with-negative-lifespan", OrgId: 1}
 			err = GetApiKeyByName(&query)
-			assert.EqualError(t, err, "Invalid API Key")
+			assert.EqualError(t, err, "invalid API key")
 		})
 
 		t.Run("Add keys", func(t *testing.T) {
-			//never expires
+			// never expires
 			cmd := models.AddApiKeyCommand{OrgId: 1, Name: "key1", Key: "key1", SecondsToLive: 0}
 			err := AddApiKey(&cmd)
 			assert.Nil(t, err)
 
-			//expires in 1s
+			// expires in 1s
 			cmd = models.AddApiKeyCommand{OrgId: 1, Name: "key2", Key: "key2", SecondsToLive: 1}
 			err = AddApiKey(&cmd)
 			assert.Nil(t, err)
 
-			//expires in one hour
+			// expires in one hour
 			cmd = models.AddApiKeyCommand{OrgId: 1, Name: "key3", Key: "key3", SecondsToLive: 3600}
 			err = AddApiKey(&cmd)
 			assert.Nil(t, err)

@@ -1,32 +1,28 @@
 import React, { useContext } from 'react';
 import { css, cx } from 'emotion';
 
-import { CompletionItem, selectThemeVariant, ThemeContext } from '../..';
-import { GrafanaTheme } from '@grafana/data';
+import { CompletionItem, ThemeContext } from '../..';
+import { GrafanaTheme, renderMarkdown } from '@grafana/data';
 
 const getStyles = (theme: GrafanaTheme, height: number, visible: boolean) => {
   return {
     typeaheadItem: css`
       label: type-ahead-item;
+      z-index: 11;
       padding: ${theme.spacing.sm} ${theme.spacing.sm} ${theme.spacing.sm} ${theme.spacing.md};
       border-radius: ${theme.border.radius.md};
-      border: ${selectThemeVariant(
-        { light: `solid 1px ${theme.colors.gray5}`, dark: `solid 1px ${theme.colors.dark1}` },
-        theme.type
-      )};
+      border: ${theme.colors.border2};
       overflow-y: scroll;
       overflow-x: hidden;
       outline: none;
-      background: ${selectThemeVariant({ light: theme.colors.white, dark: theme.colors.dark4 }, theme.type)};
+      background: ${theme.colors.bg2};
       color: ${theme.colors.text};
-      box-shadow: ${selectThemeVariant(
-        { light: `0 5px 10px 0 ${theme.colors.gray5}`, dark: `0 5px 10px 0 ${theme.colors.black}` },
-        theme.type
-      )};
+      box-shadow: 0 0 20px ${theme.colors.dropdownShadow};
       visibility: ${visible === true ? 'visible' : 'hidden'};
       width: 250px;
       height: ${height + parseInt(theme.spacing.xxs, 10)}px;
       position: relative;
+      word-break: break-word;
     `,
   };
 };
@@ -39,7 +35,7 @@ interface Props {
 export const TypeaheadInfo: React.FC<Props> = ({ item, height }) => {
   const visible = item && !!item.documentation;
   const label = item ? item.label : '';
-  const documentation = item && item.documentation ? item.documentation : '';
+  const documentation = renderMarkdown(item?.documentation);
   const theme = useContext(ThemeContext);
   const styles = getStyles(theme, height, visible);
 
@@ -47,7 +43,7 @@ export const TypeaheadInfo: React.FC<Props> = ({ item, height }) => {
     <div className={cx([styles.typeaheadItem])}>
       <b>{label}</b>
       <hr />
-      <span>{documentation}</span>
+      <div dangerouslySetInnerHTML={{ __html: documentation }} />
     </div>
   );
 };

@@ -16,7 +16,6 @@ var (
 
 func (query *Query) Build(queryContext *tsdb.TsdbQuery) (string, error) {
 	var res string
-
 	if query.UseRawQuery && query.RawQuery != "" {
 		res = query.RawQuery
 	} else {
@@ -31,10 +30,10 @@ func (query *Query) Build(queryContext *tsdb.TsdbQuery) (string, error) {
 	calculator := tsdb.NewIntervalCalculator(&tsdb.IntervalOptions{})
 	interval := calculator.Calculate(queryContext.TimeRange, query.Interval)
 
-	res = strings.Replace(res, "$timeFilter", query.renderTimeFilter(queryContext), -1)
-	res = strings.Replace(res, "$interval", interval.Text, -1)
-	res = strings.Replace(res, "$__interval_ms", strconv.FormatInt(interval.Milliseconds(), 10), -1)
-	res = strings.Replace(res, "$__interval", interval.Text, -1)
+	res = strings.ReplaceAll(res, "$timeFilter", query.renderTimeFilter(queryContext))
+	res = strings.ReplaceAll(res, "$interval", interval.Text)
+	res = strings.ReplaceAll(res, "$__interval_ms", strconv.FormatInt(interval.Milliseconds(), 10))
+	res = strings.ReplaceAll(res, "$__interval", interval.Text)
 	return res, nil
 }
 
@@ -52,7 +51,7 @@ func (query *Query) renderTags() []string {
 			str += " "
 		}
 
-		//If the operator is missing we fall back to sensible defaults
+		// If the operator is missing we fall back to sensible defaults
 		if tag.Operator == "" {
 			if regexpOperatorPattern.Match([]byte(tag.Value)) {
 				tag.Operator = "=~"
@@ -63,12 +62,13 @@ func (query *Query) renderTags() []string {
 
 		// quote value unless regex or number
 		var textValue string
-		if tag.Operator == "=~" || tag.Operator == "!~" {
+		switch tag.Operator {
+		case "=~", "!~":
 			textValue = tag.Value
-		} else if tag.Operator == "<" || tag.Operator == ">" {
+		case "<", ">":
 			textValue = tag.Value
-		} else {
-			textValue = fmt.Sprintf("'%s'", strings.Replace(tag.Value, `\`, `\\`, -1))
+		default:
+			textValue = fmt.Sprintf("'%s'", strings.ReplaceAll(tag.Value, `\`, `\\`))
 		}
 
 		res = append(res, fmt.Sprintf(`%s"%s" %s %s`, str, tag.Key, tag.Operator, textValue))
@@ -77,7 +77,29 @@ func (query *Query) renderTags() []string {
 	return res
 }
 
+func isTimeRangeNumeric(tr *tsdb.TimeRange) bool {
+	if _, err := strconv.ParseInt(tr.From, 10, 64); err != nil {
+		return false
+	}
+	if _, err := strconv.ParseInt(tr.To, 10, 64); err != nil {
+		return false
+	}
+	return true
+}
+
 func (query *Query) renderTimeFilter(queryContext *tsdb.TsdbQuery) string {
+	// If from expressions
+	if isTimeRangeNumeric(queryContext.TimeRange) {
+		from, to, err := epochMStoInfluxTime(queryContext.TimeRange)
+		if err == nil {
+			return fmt.Sprintf(" time > %s and time < %s ", from, to)
+		}
+
+		// on error fallback to original time range processing.
+		glog.Warn("failed to parse expected time range in query, falling back to non-expression time range processing", "error", err)
+	}
+
+	// else from dashboard alerting
 	from := "now() - " + queryContext.TimeRange.From
 	to := ""
 
@@ -93,7 +115,6 @@ func (query *Query) renderSelectors(queryContext *tsdb.TsdbQuery) string {
 
 	var selectors []string
 	for _, sel := range query.Selects {
-
 		stk := ""
 		for _, s := range *sel {
 			stk = s.Render(query, queryContext, stk)
@@ -144,7 +165,7 @@ func (query *Query) renderGroupBy(queryContext *tsdb.TsdbQuery) string {
 		}
 
 		if i > 0 && group.Type != "fill" {
-			groupBy += ", " //fill is so very special. fill is a creep, fill is a weirdo
+			groupBy += ", " // fill is so very special. fill is a creep, fill is a weirdo
 		} else {
 			groupBy += " "
 		}
@@ -161,4 +182,18 @@ func (query *Query) renderTz() string {
 		return ""
 	}
 	return fmt.Sprintf(" tz('%s')", tz)
+}
+
+func epochMStoInfluxTime(tr *tsdb.TimeRange) (string, string, error) {
+	from, err := strconv.ParseInt(tr.From, 10, 64)
+	if err != nil {
+		return "", "", err
+	}
+
+	to, err := strconv.ParseInt(tr.To, 10, 64)
+	if err != nil {
+		return "", "", err
+	}
+
+	return fmt.Sprintf("%dms", from), fmt.Sprintf("%dms", to), nil
 }

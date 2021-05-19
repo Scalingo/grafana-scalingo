@@ -1,6 +1,6 @@
 // @ts-ignore
 import * as _ from 'lodash';
-import { Task, TaskRunner } from './task';
+import { Task } from './task';
 import GithubClient from '../utils/githubClient';
 import difference from 'lodash/difference';
 import chalk from 'chalk';
@@ -46,9 +46,8 @@ const getPackageChangelog = (packageName: string, issues: any[]) => {
   return markdown;
 };
 
-const changelogTaskRunner: TaskRunner<ChangelogOptions> = useSpinner<ChangelogOptions>(
-  'Generating changelog',
-  async ({ milestone }) => {
+const changelogTaskRunner = ({ milestone }: ChangelogOptions) =>
+  useSpinner('Generating changelog', async () => {
     const githubClient = new GithubClient();
     const client = githubClient.client;
 
@@ -57,7 +56,7 @@ const changelogTaskRunner: TaskRunner<ChangelogOptions> = useSpinner<ChangelogOp
       return;
     }
 
-    const res = await client.get('/issues', {
+    let res = await client.get('/issues', {
       params: {
         state: 'closed',
         per_page: 100,
@@ -66,8 +65,20 @@ const changelogTaskRunner: TaskRunner<ChangelogOptions> = useSpinner<ChangelogOp
       },
     });
 
+    const data: any[] = res.data;
+
+    while (res.headers.link) {
+      const links = parseLink(res.headers.link);
+      if (links.next) {
+        res = await client.get(links.next);
+        data.push(...res.data);
+      } else {
+        break;
+      }
+    }
+
     const mergedIssues = [];
-    for (const item of res.data) {
+    for (const item of data) {
       if (!item.pull_request) {
         // it's an issue, not pull request
         mergedIssues.push(item);
@@ -94,23 +105,44 @@ const changelogTaskRunner: TaskRunner<ChangelogOptions> = useSpinner<ChangelogOp
     markdown += getPackageChangelog('grafana-ui', grafanaUiIssues);
 
     console.log(markdown);
-  }
-);
+  });
 
 function getMarkdownLineForIssue(item: any) {
   const githubGrafanaUrl = 'https://github.com/grafana/grafana';
   let markdown = '';
-  const title = item.title.replace(/^([^:]*)/, (_match: any, g1: any) => {
+  let title: string = item.title.replace(/^([^:]*)/, (_match: any, g1: any) => {
     return `**${g1}**`;
   });
+  title = title.trim();
+  if (title[title.length - 1] === '.') {
+    title = title.slice(0, -1);
+  }
 
-  markdown += '* ' + title + '.';
-  markdown += ` [#${item.number}](${githubGrafanaUrl}/pull/${item.number})`;
-  markdown += `, [@${item.user.login}](${item.user.html_url})`;
+  if (!item.pull_request) {
+    markdown += '* ' + title + '.';
+    markdown += ` [#${item.number}](${githubGrafanaUrl}/issues/${item.number})`;
+  } else {
+    markdown += '* ' + title + '.';
+    markdown += ` [#${item.number}](${githubGrafanaUrl}/pull/${item.number})`;
+    markdown += `, [@${item.user.login}](${item.user.html_url})`;
+  }
 
   markdown += '\n';
 
   return markdown;
+}
+
+function parseLink(s: any) {
+  const output: any = {};
+  const regex = /<([^>]+)>; rel="([^"]+)"/g;
+
+  let m;
+  while ((m = regex.exec(s))) {
+    const [, v, k] = m;
+    output[k] = v;
+  }
+
+  return output;
 }
 
 export const changelogTask = new Task<ChangelogOptions>('Changelog generator task', changelogTaskRunner);

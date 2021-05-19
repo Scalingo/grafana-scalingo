@@ -1,10 +1,10 @@
 package api
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/services/rendering"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/util"
@@ -15,12 +15,11 @@ import (
 	"github.com/grafana/grafana/pkg/setting"
 )
 
-// getFrontendSettingsMap returns a json object with all the settings needed for front end initialisation.
-func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]interface{}, error) {
+func (hs *HTTPServer) getFSDataSources(c *models.ReqContext, enabledPlugins *plugins.EnabledPlugins) (map[string]interface{}, error) {
 	orgDataSources := make([]*models.DataSource, 0)
 
 	if c.OrgId != 0 {
-		query := models.GetDataSourcesQuery{OrgId: c.OrgId}
+		query := models.GetDataSourcesQuery{OrgId: c.OrgId, DataSourceLimit: hs.Cfg.DataSourceLimit}
 		err := bus.Dispatch(&query)
 
 		if err != nil {
@@ -33,7 +32,7 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 		}
 
 		if err := bus.Dispatch(&dsFilterQuery); err != nil {
-			if err != bus.ErrHandlerNotFound {
+			if !errors.Is(err, bus.ErrHandlerNotFound) {
 				return nil, err
 			}
 
@@ -43,21 +42,7 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 		}
 	}
 
-	datasources := make(map[string]interface{})
-	var defaultDatasource string
-
-	enabledPlugins, err := plugins.GetEnabledPlugins(c.OrgId)
-	if err != nil {
-		return nil, err
-	}
-
-	pluginsToPreload := []string{}
-
-	for _, app := range enabledPlugins.Apps {
-		if app.Preload {
-			pluginsToPreload = append(pluginsToPreload, app.Module)
-		}
-	}
+	dataSources := make(map[string]interface{})
 
 	for _, ds := range orgDataSources {
 		url := ds.Url
@@ -66,28 +51,21 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 			url = "/api/datasources/proxy/" + strconv.FormatInt(ds.Id, 10)
 		}
 
-		var dsMap = map[string]interface{}{
-			"id":   ds.Id,
-			"type": ds.Type,
-			"name": ds.Name,
-			"url":  url,
+		dsMap := map[string]interface{}{
+			"id":        ds.Id,
+			"uid":       ds.Uid,
+			"type":      ds.Type,
+			"name":      ds.Name,
+			"url":       url,
+			"isDefault": ds.IsDefault,
 		}
 
 		meta, exists := enabledPlugins.DataSources[ds.Type]
 		if !exists {
-			log.Error(3, "Could not find plugin definition for data source: %v", ds.Type)
+			log.Errorf(3, "Could not find plugin definition for data source: %v", ds.Type)
 			continue
 		}
-
-		if meta.Preload {
-			pluginsToPreload = append(pluginsToPreload, meta.Module)
-		}
-
 		dsMap["meta"] = meta
-
-		if ds.IsDefault {
-			defaultDatasource = ds.Name
-		}
 
 		jsonData := ds.JsonData
 		if jsonData == nil {
@@ -126,13 +104,14 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 			jsonData.Set("directUrl", ds.Url)
 		}
 
-		datasources[ds.Name] = dsMap
+		dataSources[ds.Name] = dsMap
 	}
 
-	// add datasources that are built in (meaning they are not added via data sources page, nor have any entry in datasource table)
+	// add data sources that are built in (meaning they are not added via data sources page, nor have any entry in
+	// the datasource table)
 	for _, ds := range plugins.DataSources {
 		if ds.BuiltIn {
-			datasources[ds.Name] = map[string]interface{}{
+			dataSources[ds.Name] = map[string]interface{}{
 				"type": ds.Type,
 				"name": ds.Name,
 				"meta": plugins.DataSources[ds.Id],
@@ -140,8 +119,39 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 		}
 	}
 
-	if defaultDatasource == "" {
-		defaultDatasource = "-- Grafana --"
+	return dataSources, nil
+}
+
+// getFrontendSettingsMap returns a json object with all the settings needed for front end initialisation.
+func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]interface{}, error) {
+	enabledPlugins, err := plugins.GetEnabledPlugins(c.OrgId)
+	if err != nil {
+		return nil, err
+	}
+
+	pluginsToPreload := []string{}
+	for _, app := range enabledPlugins.Apps {
+		if app.Preload {
+			pluginsToPreload = append(pluginsToPreload, app.Module)
+		}
+	}
+
+	dataSources, err := hs.getFSDataSources(c, enabledPlugins)
+	if err != nil {
+		return nil, err
+	}
+
+	defaultDS := "-- Grafana --"
+	for n, ds := range dataSources {
+		dsM := ds.(map[string]interface{})
+		if isDefault, _ := dsM["isDefault"].(bool); isDefault {
+			defaultDS = n
+		}
+
+		meta := dsM["meta"].(*plugins.DataSourcePlugin)
+		if meta.Preload {
+			pluginsToPreload = append(pluginsToPreload, meta.Module)
+		}
 	}
 
 	panels := map[string]interface{}{}
@@ -164,24 +174,38 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 			"sort":          getPanelSort(panel.Id),
 			"skipDataQuery": panel.SkipDataQuery,
 			"state":         panel.State,
+			"signature":     panel.Signature,
 		}
 	}
 
+	hideVersion := hs.Cfg.AnonymousHideVersion && !c.IsSignedIn
+	version := setting.BuildVersion
+	commit := setting.BuildCommit
+	buildstamp := setting.BuildStamp
+
+	if hideVersion {
+		version = ""
+		commit = ""
+		buildstamp = 0
+	}
+
 	jsonObj := map[string]interface{}{
-		"defaultDatasource":          defaultDatasource,
-		"datasources":                datasources,
+		"defaultDatasource":          defaultDS,
+		"datasources":                dataSources,
 		"minRefreshInterval":         setting.MinRefreshInterval,
 		"panels":                     panels,
-		"appSubUrl":                  setting.AppSubUrl,
+		"appUrl":                     hs.Cfg.AppURL,
+		"appSubUrl":                  hs.Cfg.AppSubURL,
 		"allowOrgCreate":             (setting.AllowUserOrgCreate && c.IsSignedIn) || c.IsGrafanaAdmin,
 		"authProxyEnabled":           setting.AuthProxyEnabled,
-		"ldapEnabled":                setting.LDAPEnabled,
+		"ldapEnabled":                hs.Cfg.LDAPEnabled,
 		"alertingEnabled":            setting.AlertingEnabled,
 		"alertingErrorOrTimeout":     setting.AlertingErrorOrTimeout,
 		"alertingNoDataOrNullValues": setting.AlertingNoDataOrNullValues,
 		"alertingMinInterval":        setting.AlertingMinInterval,
 		"autoAssignOrg":              setting.AutoAssignOrg,
-		"verfiyEmailEnabled":         setting.VerifyEmailEnabled,
+		"verifyEmailEnabled":         setting.VerifyEmailEnabled,
+		"sigV4AuthEnabled":           setting.SigV4AuthEnabled,
 		"exploreEnabled":             setting.ExploreEnabled,
 		"googleAnalyticsId":          setting.GoogleAnalyticsId,
 		"disableLoginForm":           setting.DisableLoginForm,
@@ -196,23 +220,32 @@ func (hs *HTTPServer) getFrontendSettingsMap(c *models.ReqContext) (map[string]i
 		"disableSanitizeHtml":        hs.Cfg.DisableSanitizeHtml,
 		"pluginsToPreload":           pluginsToPreload,
 		"buildInfo": map[string]interface{}{
-			"version":       setting.BuildVersion,
-			"commit":        setting.BuildCommit,
-			"buildstamp":    setting.BuildStamp,
+			"hideVersion":   hideVersion,
+			"version":       version,
+			"commit":        commit,
+			"buildstamp":    buildstamp,
 			"edition":       hs.License.Edition(),
-			"latestVersion": plugins.GrafanaLatestVersion,
-			"hasUpdate":     plugins.GrafanaHasUpdate,
+			"latestVersion": hs.PluginManager.GrafanaLatestVersion,
+			"hasUpdate":     hs.PluginManager.GrafanaHasUpdate,
 			"env":           setting.Env,
 			"isEnterprise":  hs.License.HasValidLicense(),
 		},
 		"licenseInfo": map[string]interface{}{
-			"hasLicense": hs.License.HasLicense(),
-			"expiry":     hs.License.Expiry(),
-			"stateInfo":  hs.License.StateInfo(),
-			"licenseUrl": hs.License.LicenseURL(c.SignedInUser),
+			"hasLicense":      hs.License.HasLicense(),
+			"hasValidLicense": hs.License.HasValidLicense(),
+			"expiry":          hs.License.Expiry(),
+			"stateInfo":       hs.License.StateInfo(),
+			"licenseUrl":      hs.License.LicenseURL(c.SignedInUser),
+			"edition":         hs.License.Edition(),
 		},
-		"featureToggles":    hs.Cfg.FeatureToggles,
-		"phantomJSRenderer": rendering.IsPhantomJSEnabled,
+		"featureToggles":          hs.Cfg.FeatureToggles,
+		"rendererAvailable":       hs.RenderService.IsAvailable(),
+		"http2Enabled":            hs.Cfg.Protocol == setting.HTTP2Scheme,
+		"sentry":                  hs.Cfg.Sentry,
+		"marketplaceUrl":          hs.Cfg.MarketplaceURL,
+		"expressionsEnabled":      hs.Cfg.ExpressionsEnabled,
+		"awsAllowedAuthProviders": hs.Cfg.AWSAllowedAuthProviders,
+		"awsAssumeRoleEnabled":    hs.Cfg.AWSAssumeRoleEnabled,
 	}
 
 	return jsonObj, nil
@@ -223,26 +256,28 @@ func getPanelSort(id string) int {
 	switch id {
 	case "graph":
 		sort = 1
-	case "stat":
+	case "timeseries":
 		sort = 2
-	case "gauge":
+	case "stat":
 		sort = 3
-	case "bargauge":
+	case "gauge":
 		sort = 4
-	case "table":
+	case "bargauge":
 		sort = 5
-	case "singlestat":
+	case "table":
 		sort = 6
-	case "text":
+	case "singlestat":
 		sort = 7
-	case "heatmap":
+	case "text":
 		sort = 8
-	case "alertlist":
+	case "heatmap":
 		sort = 9
+	case "alertlist":
+		sort = 10
 	case "dashlist":
-		sort = 10
+		sort = 11
 	case "news":
-		sort = 10
+		sort = 12
 	}
 	return sort
 }

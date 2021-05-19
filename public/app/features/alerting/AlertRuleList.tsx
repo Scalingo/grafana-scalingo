@@ -1,39 +1,54 @@
 import React, { PureComponent } from 'react';
 import { hot } from 'react-hot-loader';
-import { connect } from 'react-redux';
+import { connect, ConnectedProps } from 'react-redux';
 import Page from 'app/core/components/Page/Page';
 import AlertRuleItem from './AlertRuleItem';
 import appEvents from 'app/core/app_events';
 import { updateLocation } from 'app/core/actions';
 import { getNavModel } from 'app/core/selectors/navModel';
-import { AlertRule, CoreEvents, StoreState } from 'app/types';
+import { AlertDefinition, AlertRule, CoreEvents, StoreState } from 'app/types';
 import { getAlertRulesAsync, togglePauseAlertRule } from './state/actions';
 import { getAlertRuleItems, getSearchQuery } from './state/selectors';
 import { FilterInput } from 'app/core/components/FilterInput/FilterInput';
-import { NavModel } from '@grafana/data';
+import { SelectableValue } from '@grafana/data';
+import { config } from '@grafana/runtime';
 import { setSearchQuery } from './state/reducers';
+import { Button, LinkButton, Select, VerticalGroup } from '@grafana/ui';
+import { AlertDefinitionItem } from './components/AlertDefinitionItem';
 
-export interface Props {
-  navModel: NavModel;
-  alertRules: AlertRule[];
-  updateLocation: typeof updateLocation;
-  getAlertRulesAsync: typeof getAlertRulesAsync;
-  setSearchQuery: typeof setSearchQuery;
-  togglePauseAlertRule: typeof togglePauseAlertRule;
-  stateFilter: string;
-  search: string;
-  isLoading: boolean;
+function mapStateToProps(state: StoreState) {
+  return {
+    navModel: getNavModel(state.navIndex, 'alert-list'),
+    alertRules: getAlertRuleItems(state),
+    stateFilter: state.location.query.state,
+    search: getSearchQuery(state.alertRules),
+    isLoading: state.alertRules.isLoading,
+    ngAlertDefinitions: state.alertDefinition.alertDefinitions,
+  };
 }
 
-export class AlertRuleList extends PureComponent<Props, any> {
+const mapDispatchToProps = {
+  updateLocation,
+  getAlertRulesAsync,
+  setSearchQuery,
+  togglePauseAlertRule,
+};
+
+const connector = connect(mapStateToProps, mapDispatchToProps);
+
+interface OwnProps {}
+
+export type Props = OwnProps & ConnectedProps<typeof connector>;
+
+export class AlertRuleListUnconnected extends PureComponent<Props, any> {
   stateFilters = [
-    { text: 'All', value: 'all' },
-    { text: 'OK', value: 'ok' },
-    { text: 'Not OK', value: 'not_ok' },
-    { text: 'Alerting', value: 'alerting' },
-    { text: 'No Data', value: 'no_data' },
-    { text: 'Paused', value: 'paused' },
-    { text: 'Pending', value: 'pending' },
+    { label: 'All', value: 'all' },
+    { label: 'OK', value: 'ok' },
+    { label: 'Not OK', value: 'not_ok' },
+    { label: 'Alerting', value: 'alerting' },
+    { label: 'No Data', value: 'no_data' },
+    { label: 'Paused', value: 'paused' },
+    { label: 'Pending', value: 'pending' },
   ];
 
   componentDidMount() {
@@ -58,9 +73,9 @@ export class AlertRuleList extends PureComponent<Props, any> {
     return 'all';
   }
 
-  onStateFilterChanged = (evt: React.ChangeEvent<HTMLSelectElement>) => {
+  onStateFilterChanged = (option: SelectableValue) => {
     this.props.updateLocation({
-      query: { state: evt.target.value },
+      query: { state: option.value },
     });
   };
 
@@ -107,48 +122,50 @@ export class AlertRuleList extends PureComponent<Props, any> {
             <div className="gf-form">
               <label className="gf-form-label">States</label>
 
-              <div className="gf-form-select-wrapper width-13">
-                <select className="gf-form-input" onChange={this.onStateFilterChanged} value={this.getStateFilter()}>
-                  {this.stateFilters.map(this.alertStateFilterOption)}
-                </select>
+              <div className="width-13">
+                <Select
+                  options={this.stateFilters}
+                  onChange={this.onStateFilterChanged}
+                  value={this.getStateFilter()}
+                />
               </div>
             </div>
             <div className="page-action-bar__spacer" />
-            <a className="btn btn-secondary" onClick={this.onOpenHowTo}>
+            {config.featureToggles.ngalert && (
+              <LinkButton variant="primary" href="alerting/new">
+                Add NG Alert
+              </LinkButton>
+            )}
+            <Button variant="secondary" onClick={this.onOpenHowTo}>
               How to add an alert
-            </a>
+            </Button>
           </div>
-          <section>
-            <ol className="alert-rule-list">
-              {alertRules.map(rule => (
-                <AlertRuleItem
-                  rule={rule}
-                  key={rule.id}
+          <VerticalGroup spacing="none">
+            {alertRules.map((rule, index) => {
+              // Alert definition has "title" as name property.
+              if (rule.hasOwnProperty('name')) {
+                return (
+                  <AlertRuleItem
+                    rule={rule as AlertRule}
+                    key={rule.id}
+                    search={search}
+                    onTogglePause={() => this.onTogglePause(rule as AlertRule)}
+                  />
+                );
+              }
+              return (
+                <AlertDefinitionItem
+                  key={`${rule.id}-${index}`}
+                  alertDefinition={rule as AlertDefinition}
                   search={search}
-                  onTogglePause={() => this.onTogglePause(rule)}
                 />
-              ))}
-            </ol>
-          </section>
+              );
+            })}
+          </VerticalGroup>
         </Page.Contents>
       </Page>
     );
   }
 }
 
-const mapStateToProps = (state: StoreState) => ({
-  navModel: getNavModel(state.navIndex, 'alert-list'),
-  alertRules: getAlertRuleItems(state.alertRules),
-  stateFilter: state.location.query.state,
-  search: getSearchQuery(state.alertRules),
-  isLoading: state.alertRules.isLoading,
-});
-
-const mapDispatchToProps = {
-  updateLocation,
-  getAlertRulesAsync,
-  setSearchQuery,
-  togglePauseAlertRule,
-};
-
-export default hot(module)(connect(mapStateToProps, mapDispatchToProps)(AlertRuleList));
+export default hot(module)(connector(AlertRuleListUnconnected));

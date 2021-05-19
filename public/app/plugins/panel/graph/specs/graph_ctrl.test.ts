@@ -30,6 +30,9 @@ describe('GraphCtrl', () => {
     gridPos: {
       w: 100,
     },
+    fieldConfig: {
+      defaults: {},
+    },
   };
 
   const ctx = {} as any;
@@ -39,6 +42,7 @@ describe('GraphCtrl', () => {
     ctx.ctrl.events = {
       emit: () => {},
     };
+    ctx.ctrl.panelData = {};
     ctx.ctrl.annotationsSrv = {
       getAnnotations: () => Promise.resolve({}),
     };
@@ -70,9 +74,7 @@ describe('GraphCtrl', () => {
   describe('when time series are inside range', () => {
     beforeEach(() => {
       const range = {
-        from: dateTime()
-          .subtract(1, 'days')
-          .valueOf(),
+        from: dateTime().subtract(1, 'days').valueOf(),
         to: dateTime().valueOf(),
       };
 
@@ -91,7 +93,7 @@ describe('GraphCtrl', () => {
     });
 
     it('should set datapointsOutside', () => {
-      expect(ctx.ctrl.dataWarning).toBe(null);
+      expect(ctx.ctrl.dataWarning).toBeUndefined();
     });
   });
 
@@ -142,50 +144,6 @@ describe('GraphCtrl', () => {
       ctx.ctrl.onDataSnapshotLoad(data);
       // allIsNull / allIsZero are set by getFlotPairs
       ctx.ctrl.seriesList.forEach((series: TimeSeries) => series.getFlotPairs(''));
-    });
-
-    const thenExportYieldedNSeries = (n: number) => {
-      expect(appEventMock.mock.calls.length).toBe(1);
-      const eventPayload = appEventMock.mock.calls[0][1];
-      expect(eventPayload.scope.seriesList).toHaveLength(n);
-    };
-
-    const thenExportDidNotYieldSeriesName = (unexpectedName: string) => {
-      expect(appEventMock.mock.calls.length).toBe(1);
-      const eventPayload = appEventMock.mock.calls[0][1];
-      expect(
-        eventPayload.scope.seriesList.filter((series: TimeSeries) => series.label === unexpectedName)
-      ).toHaveLength(0);
-    };
-
-    it('should not ignore anything if not asked to', () => {
-      ctx.ctrl.exportCsv();
-      thenExportYieldedNSeries(3);
-    });
-
-    it('should ignore all-null series when asked to', () => {
-      ctx.ctrl.panel.legend.hideEmpty = true;
-      ctx.ctrl.exportCsv();
-      thenExportYieldedNSeries(2);
-      thenExportDidNotYieldSeriesName('test.nulls');
-    });
-
-    it('should ignore all-zero series when asked to', () => {
-      ctx.ctrl.panel.legend.hideZero = true;
-      ctx.ctrl.exportCsv();
-      // impl treats all-null series as all-zero as well
-      thenExportYieldedNSeries(1);
-      thenExportDidNotYieldSeriesName('test.zeros');
-      thenExportDidNotYieldSeriesName('test.empty');
-    });
-
-    it('should ignore both when asked to', () => {
-      ctx.ctrl.panel.legend.hideZero = true;
-      ctx.ctrl.panel.legend.hideEmpty = true;
-      ctx.ctrl.exportCsv();
-      thenExportYieldedNSeries(1);
-      thenExportDidNotYieldSeriesName('test.zeros');
-      thenExportDidNotYieldSeriesName('test.empty');
     });
   });
 });

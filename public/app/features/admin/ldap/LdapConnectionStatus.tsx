@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { Alert } from '@grafana/ui';
+import { Alert, Icon } from '@grafana/ui';
 import { AppNotificationSeverity, LdapConnectionInfo, LdapServerInfo } from 'app/types';
 
 interface Props {
@@ -27,9 +27,9 @@ export const LdapConnectionStatus: FC<Props> = ({ ldapConnectionInfo }) => {
                     <td>{serverInfo.port}</td>
                     <td>
                       {serverInfo.available ? (
-                        <i className="fa fa-fw fa-check pull-right" />
+                        <Icon name="check" className="pull-right" />
                       ) : (
-                        <i className="fa fa-fw fa-exclamation-triangle pull-right" />
+                        <Icon name="exclamation-triangle" className="pull-right" />
                       )}
                     </td>
                   </tr>
@@ -50,13 +50,13 @@ interface LdapConnectionErrorProps {
 }
 
 export const LdapErrorBox: FC<LdapConnectionErrorProps> = ({ ldapConnectionInfo }) => {
-  const hasError = ldapConnectionInfo.some(info => info.error);
+  const hasError = ldapConnectionInfo.some((info) => info.error);
   if (!hasError) {
     return null;
   }
 
   const connectionErrors: LdapServerInfo[] = [];
-  ldapConnectionInfo.forEach(info => {
+  ldapConnectionInfo.forEach((info) => {
     if (info.error) {
       connectionErrors.push(info);
     }
@@ -78,5 +78,9 @@ export const LdapErrorBox: FC<LdapConnectionErrorProps> = ({ ldapConnectionInfo 
     </div>
   ));
 
-  return <Alert title="Connection error" severity={AppNotificationSeverity.Error} children={errorElements} />;
+  return (
+    <Alert title="Connection error" severity={AppNotificationSeverity.Error}>
+      {errorElements}
+    </Alert>
+  );
 };

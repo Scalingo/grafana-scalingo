@@ -48,6 +48,10 @@ func (ns *NotificationService) sendWebRequestSync(ctx context.Context, webhook *
 		webhook.HttpMethod = http.MethodPost
 	}
 
+	if webhook.HttpMethod != http.MethodPost && webhook.HttpMethod != http.MethodPut {
+		return fmt.Errorf("webhook only supports HTTP methods PUT or POST")
+	}
+
 	request, err := http.NewRequest(webhook.HttpMethod, webhook.Url, bytes.NewReader([]byte(webhook.Body)))
 	if err != nil {
 		return err
@@ -57,11 +61,11 @@ func (ns *NotificationService) sendWebRequestSync(ctx context.Context, webhook *
 		webhook.ContentType = "application/json"
 	}
 
-	request.Header.Add("Content-Type", webhook.ContentType)
-	request.Header.Add("User-Agent", "Grafana")
+	request.Header.Set("Content-Type", webhook.ContentType)
+	request.Header.Set("User-Agent", "Grafana")
 
 	if webhook.User != "" && webhook.Password != "" {
-		request.Header.Add("Authorization", util.GetBasicAuthHeader(webhook.User, webhook.Password))
+		request.Header.Set("Authorization", util.GetBasicAuthHeader(webhook.User, webhook.Password))
 	}
 
 	for k, v := range webhook.HttpHeader {
@@ -72,10 +76,14 @@ func (ns *NotificationService) sendWebRequestSync(ctx context.Context, webhook *
 	if err != nil {
 		return err
 	}
-
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			ns.log.Warn("Failed to close response body", "err", err)
+		}
+	}()
 
 	if resp.StatusCode/100 == 2 {
+		ns.log.Debug("Webhook succeeded", "url", webhook.Url, "statuscode", resp.Status)
 		// flushing the body enables the transport to reuse the same connection
 		if _, err := io.Copy(ioutil.Discard, resp.Body); err != nil {
 			ns.log.Error("Failed to copy resp.Body to ioutil.Discard", "err", err)
@@ -88,6 +96,6 @@ func (ns *NotificationService) sendWebRequestSync(ctx context.Context, webhook *
 		return err
 	}
 
-	ns.log.Debug("Webhook failed", "statuscode", resp.Status, "body", string(body))
+	ns.log.Debug("Webhook failed", "url", webhook.Url, "statuscode", resp.Status, "body", string(body))
 	return fmt.Errorf("Webhook response status %v", resp.Status)
 }

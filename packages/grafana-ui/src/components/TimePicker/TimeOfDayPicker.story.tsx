@@ -1,17 +1,18 @@
 import React from 'react';
-import { storiesOf } from '@storybook/react';
 import { action } from '@storybook/addon-actions';
 
-import { TimeOfDayPicker } from './TimeOfDayPicker';
+import { TimeOfDayPicker } from '@grafana/ui';
 import { UseState } from '../../utils/storybook/UseState';
 import { withCenteredStory } from '../../utils/storybook/withCenteredStory';
 import { dateTime } from '@grafana/data';
 
-const TimeOfDayPickerStories = storiesOf('General/TimeOfDayPicker', module);
+export default {
+  title: 'Pickers and Editors/TimePickers/TimeOfDayPicker',
+  component: TimeOfDayPicker,
+  decorators: [withCenteredStory],
+};
 
-TimeOfDayPickerStories.addDecorator(withCenteredStory);
-
-TimeOfDayPickerStories.add('default', () => {
+export const basic = () => {
   return (
     <UseState
       initialState={{
@@ -21,7 +22,7 @@ TimeOfDayPickerStories.add('default', () => {
       {(value, updateValue) => {
         return (
           <TimeOfDayPicker
-            onChange={newValue => {
+            onChange={(newValue) => {
               action('on selected')(newValue);
               updateValue({ value: newValue });
             }}
@@ -31,15 +32,15 @@ TimeOfDayPickerStories.add('default', () => {
       }}
     </UseState>
   );
-});
+};
 
-TimeOfDayPickerStories.add('only minutes', () => {
+export const onlyMinutes = () => {
   return (
     <UseState initialState={{ value: dateTime(Date.now()) }}>
       {(value, updateValue) => {
         return (
           <TimeOfDayPicker
-            onChange={newValue => {
+            onChange={(newValue) => {
               action('on selected')(newValue);
               updateValue({ value: newValue });
             }}
@@ -50,4 +51,4 @@ TimeOfDayPickerStories.add('only minutes', () => {
       }}
     </UseState>
   );
-});
+};

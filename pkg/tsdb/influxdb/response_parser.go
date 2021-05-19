@@ -18,7 +18,7 @@ var (
 )
 
 func init() {
-	legendFormat = regexp.MustCompile(`\[\[(\w+)(\.\w+)*\]\]*|\$\s*(\w+?)*`)
+	legendFormat = regexp.MustCompile(`\[\[([\@\/\w-]+)(\.[\@\/\w-]+)*\]\]*|\$\s*([\@\/\w-]+?)*`)
 }
 
 func (rp *ResponseParser) Parse(response *Response, query *Query) *tsdb.QueryResult {
@@ -26,6 +26,9 @@ func (rp *ResponseParser) Parse(response *Response, query *Query) *tsdb.QueryRes
 
 	for _, result := range response.Results {
 		queryRes.Series = append(queryRes.Series, rp.transformRows(result.Series, queryRes, query)...)
+		if result.Err != nil {
+			queryRes.Error = result.Err
+		}
 	}
 
 	return queryRes
@@ -33,7 +36,6 @@ func (rp *ResponseParser) Parse(response *Response, query *Query) *tsdb.QueryRes
 
 func (rp *ResponseParser) transformRows(rows []Row, queryResult *tsdb.QueryResult, query *Query) tsdb.TimeSeriesSlice {
 	var result tsdb.TimeSeriesSlice
-
 	for _, row := range rows {
 		for columnIndex, column := range row.Columns {
 			if column == "time" {
@@ -48,7 +50,7 @@ func (rp *ResponseParser) transformRows(rows []Row, queryResult *tsdb.QueryResul
 				}
 			}
 			result = append(result, &tsdb.TimeSeries{
-				Name:   rp.formatSerieName(row, column, query),
+				Name:   rp.formatSeriesName(row, column, query),
 				Points: points,
 				Tags:   row.Tags,
 			})
@@ -58,11 +60,10 @@ func (rp *ResponseParser) transformRows(rows []Row, queryResult *tsdb.QueryResul
 	return result
 }
 
-func (rp *ResponseParser) formatSerieName(row Row, column string, query *Query) string {
+func (rp *ResponseParser) formatSeriesName(row Row, column string, query *Query) string {
 	if query.Alias == "" {
-		return rp.buildSerieNameFromQuery(row, column)
+		return rp.buildSeriesNameFromQuery(row, column)
 	}
-
 	nameSegment := strings.Split(row.Name, ".")
 
 	result := legendFormat.ReplaceAllFunc([]byte(query.Alias), func(in []byte) []byte {
@@ -99,9 +100,8 @@ func (rp *ResponseParser) formatSerieName(row Row, column string, query *Query) 
 	return string(result)
 }
 
-func (rp *ResponseParser) buildSerieNameFromQuery(row Row, column string) string {
+func (rp *ResponseParser) buildSeriesNameFromQuery(row Row, column string) string {
 	var tags []string
-
 	for k, v := range row.Tags {
 		tags = append(tags, fmt.Sprintf("%s: %s", k, v))
 	}
@@ -115,15 +115,18 @@ func (rp *ResponseParser) buildSerieNameFromQuery(row Row, column string) string
 }
 
 func (rp *ResponseParser) parseTimepoint(valuePair []interface{}, valuePosition int) (tsdb.TimePoint, error) {
-	var value null.Float = rp.parseValue(valuePair[valuePosition])
+	value := rp.parseValue(valuePair[valuePosition])
 
-	timestampNumber, _ := valuePair[0].(json.Number)
+	timestampNumber, ok := valuePair[0].(json.Number)
+	if !ok {
+		return tsdb.TimePoint{}, fmt.Errorf("valuePair[0] has invalid type: %#v", valuePair[0])
+	}
 	timestamp, err := timestampNumber.Float64()
 	if err != nil {
 		return tsdb.TimePoint{}, err
 	}
 
-	return tsdb.NewTimePoint(value, timestamp), nil
+	return tsdb.NewTimePoint(value, timestamp*1000), nil
 }
 
 func (rp *ResponseParser) parseValue(value interface{}) null.Float {

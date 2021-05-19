@@ -6,7 +6,7 @@ import { RenderFunction } from '../../types';
 import { useDarkMode } from 'storybook-dark-mode';
 
 type SassThemeChangeHandler = (theme: GrafanaThemeType) => void;
-const ThemableStory: React.FunctionComponent<{ handleSassThemeChange: SassThemeChangeHandler }> = ({
+const ThemeableStory: React.FunctionComponent<{ handleSassThemeChange: SassThemeChangeHandler }> = ({
   children,
   handleSassThemeChange,
 }) => {
@@ -22,7 +22,7 @@ const ThemableStory: React.FunctionComponent<{ handleSassThemeChange: SassThemeC
 export const renderComponentWithTheme = (component: React.ComponentType<any>, props: any) => {
   return (
     <ThemeContext.Consumer>
-      {theme => {
+      {(theme) => {
         return React.createElement(component, {
           ...props,
           theme,
@@ -32,6 +32,7 @@ export const renderComponentWithTheme = (component: React.ComponentType<any>, pr
   );
 };
 
+// eslint-disable-next-line react/display-name
 export const withTheme = (handleSassThemeChange: SassThemeChangeHandler) => (story: RenderFunction) => (
-  <ThemableStory handleSassThemeChange={handleSassThemeChange}>{story()}</ThemableStory>
+  <ThemeableStory handleSassThemeChange={handleSassThemeChange}>{story()}</ThemeableStory>
 );

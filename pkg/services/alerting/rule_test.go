@@ -7,6 +7,8 @@ import (
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type FakeCondition struct{}
@@ -34,22 +36,21 @@ func TestAlertRuleFrequencyParsing(t *testing.T) {
 	}
 
 	for _, tc := range tcs {
-		r, err := getTimeDurationStringToSeconds(tc.input)
-		if err != tc.err {
-			t.Errorf("expected error: '%v' got: '%v'", tc.err, err)
-			return
-		}
-
-		if r != tc.result {
-			t.Errorf("expected result: %d got %d", tc.result, r)
-		}
+		t.Run(tc.input, func(t *testing.T) {
+			r, err := getTimeDurationStringToSeconds(tc.input)
+			if tc.err == nil {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tc.err.Error())
+			}
+			assert.Equal(t, tc.result, r)
+		})
 	}
 }
 
 func TestAlertRuleModel(t *testing.T) {
 	sqlstore.InitTestDB(t)
 	Convey("Testing alert rule", t, func() {
-
 		RegisterCondition("test", func(model *simplejson.Json, index int) (Condition, error) {
 			return &FakeCondition{}, nil
 		})
@@ -60,7 +61,7 @@ func TestAlertRuleModel(t *testing.T) {
 		})
 
 		Convey("can construct alert rule model", func() {
-			firstNotification := models.CreateAlertNotificationCommand{OrgId: 1, Name: "1"}
+			firstNotification := models.CreateAlertNotificationCommand{Uid: "notifier1", OrgId: 1, Name: "1"}
 			err := sqlstore.CreateAlertNotificationCommand(&firstNotification)
 			So(err, ShouldBeNil)
 			secondNotification := models.CreateAlertNotificationCommand{Uid: "notifier2", OrgId: 1, Name: "2"}
@@ -101,16 +102,53 @@ func TestAlertRuleModel(t *testing.T) {
 					Settings: alertJSON,
 				}
 
-				alertRule, err := NewRuleFromDBAlert(alert)
+				alertRule, err := NewRuleFromDBAlert(alert, false)
 				So(err, ShouldBeNil)
 
 				So(len(alertRule.Conditions), ShouldEqual, 1)
+				So(len(alertRule.Notifications), ShouldEqual, 2)
 
-				Convey("Can read notifications", func() {
-					So(len(alertRule.Notifications), ShouldEqual, 2)
-					So(alertRule.Notifications, ShouldContain, "000000001")
+				Convey("Can read Id and Uid notifications (translate Id to Uid)", func() {
 					So(alertRule.Notifications, ShouldContain, "notifier2")
+					So(alertRule.Notifications, ShouldContain, "notifier1")
 				})
+			})
+		})
+
+		Convey("with non existing notification id", func() {
+			json := `
+				{
+					"name": "name3",
+					"description": "desc3",
+					"handler": 0,
+					"noDataMode": "critical",
+					"enabled": true,
+					"frequency": "60s",
+					"conditions": [{"type": "test", "prop": 123 }],
+					"notifications": [
+						{"id": 999},
+						{"uid": "notifier2"}
+					]
+				}
+				`
+
+			alertJSON, jsonErr := simplejson.NewJson([]byte(json))
+			So(jsonErr, ShouldBeNil)
+
+			alert := &models.Alert{
+				Id:          1,
+				OrgId:       1,
+				DashboardId: 1,
+				PanelId:     1,
+
+				Settings: alertJSON,
+			}
+
+			alertRule, err := NewRuleFromDBAlert(alert, false)
+			Convey("swallows the error", func() {
+				So(err, ShouldBeNil)
+				So(alertRule.Notifications, ShouldNotContain, "999")
+				So(alertRule.Notifications, ShouldContain, "notifier2")
 			})
 		})
 
@@ -139,7 +177,7 @@ func TestAlertRuleModel(t *testing.T) {
 				Settings: alertJSON,
 			}
 
-			alertRule, err := NewRuleFromDBAlert(alert)
+			alertRule, err := NewRuleFromDBAlert(alert, false)
 			So(err, ShouldBeNil)
 			So(alertRule.Frequency, ShouldEqual, 60)
 		})
@@ -177,9 +215,9 @@ func TestAlertRuleModel(t *testing.T) {
 				Settings: alertJSON,
 			}
 
-			_, err := NewRuleFromDBAlert(alert)
+			_, err := NewRuleFromDBAlert(alert, false)
 			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldEqual, "Alert validation error: Neither id nor uid is specified in 'notifications' block, type assertion to string failed AlertId: 1 PanelId: 1 DashboardId: 1")
+			So(err.Error(), ShouldEqual, "alert validation error: Neither id nor uid is specified in 'notifications' block, type assertion to string failed AlertId: 1 PanelId: 1 DashboardId: 1")
 		})
 	})
 }

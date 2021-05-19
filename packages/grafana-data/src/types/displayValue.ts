@@ -3,10 +3,30 @@ import { FormattedValue } from '../valueFormats';
 export type DisplayProcessor = (value: any) => DisplayValue;
 
 export interface DisplayValue extends FormattedValue {
-  numeric: number; // Use isNaN to check if it is a real number
-  percent?: number; // 0-1 between min & max
-  color?: string; // color based on configs or Threshold
+  /**
+   *  Use isNaN to check if it is a real number
+   */
+  numeric: number;
+  /**
+   *  0-1 between min & max
+   */
+  percent?: number;
+  /**
+   *  Color based on configs or Threshold
+   */
+  color?: string;
   title?: string;
+}
+
+/**
+ * Explicit control for text settings
+ */
+export interface TextDisplayOptions {
+  /* Explicit text size */
+  titleSize?: number;
+
+  /* Explicit text size */
+  valueSize?: number;
 }
 
 /**

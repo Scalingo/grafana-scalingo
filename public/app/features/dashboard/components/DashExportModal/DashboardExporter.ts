@@ -5,6 +5,8 @@ import { DashboardModel } from '../../state/DashboardModel';
 import { PanelModel } from 'app/features/dashboard/state';
 import { PanelPluginMeta } from '@grafana/data';
 import { getDataSourceSrv } from '@grafana/runtime';
+import { VariableOption, VariableRefresh } from '../../../variables/types';
+import { isConstant, isQuery } from '../../../variables/guard';
 
 interface Input {
   name: string;
@@ -73,7 +75,7 @@ export class DashboardExporter {
       promises.push(
         getDataSourceSrv()
           .get(datasource)
-          .then(ds => {
+          .then((ds) => {
             if (ds.meta?.builtIn) {
               return;
             }
@@ -81,9 +83,9 @@ export class DashboardExporter {
             // add data source type to require list
             requires['datasource' + ds.meta?.id] = {
               type: 'datasource',
-              id: ds.meta?.id,
-              name: ds.meta?.name,
-              version: ds.meta?.info.version || '1.0.0',
+              id: ds.meta.id,
+              name: ds.meta.name,
+              version: ds.meta.info.version || '1.0.0',
             };
 
             // if used via variable we can skip templatizing usage
@@ -107,7 +109,7 @@ export class DashboardExporter {
     };
 
     const processPanel = (panel: PanelModel) => {
-      if (panel.datasource !== undefined) {
+      if (panel.datasource !== undefined && panel.datasource !== null) {
         templateizeDatasourceUsage(panel);
       }
 
@@ -144,11 +146,12 @@ export class DashboardExporter {
 
     // templatize template vars
     for (const variable of saveModel.getVariables()) {
-      if (variable.type === 'query') {
+      if (isQuery(variable)) {
         templateizeDatasourceUsage(variable);
         variable.options = [];
-        variable.current = {};
-        variable.refresh = variable.refresh > 0 ? variable.refresh : 1;
+        variable.current = ({} as unknown) as VariableOption;
+        variable.refresh =
+          variable.refresh !== VariableRefresh.never ? variable.refresh : VariableRefresh.onDashboardLoad;
       }
     }
 
@@ -173,21 +176,23 @@ export class DashboardExporter {
 
         // templatize constants
         for (const variable of saveModel.getVariables()) {
-          if (variable.type === 'constant') {
+          if (isConstant(variable)) {
             const refName = 'VAR_' + variable.name.replace(' ', '_').toUpperCase();
             inputs.push({
               name: refName,
               type: 'constant',
               label: variable.label || variable.name,
-              value: variable.current.value,
+              value: variable.query,
               description: '',
             });
             // update current and option
             variable.query = '${' + refName + '}';
-            variable.options[0] = variable.current = {
+            variable.current = {
               value: variable.query,
               text: variable.query,
+              selected: false,
             };
+            variable.options = [variable.current];
           }
         }
 
@@ -199,8 +204,8 @@ export class DashboardExporter {
         _.defaults(newObj, saveModel);
         return newObj;
       })
-      .catch(err => {
-        console.log('Export failed:', err);
+      .catch((err) => {
+        console.error('Export failed:', err);
         return {
           error: err,
         };

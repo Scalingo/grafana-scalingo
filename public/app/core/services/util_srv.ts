@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { e2e } from '@grafana/e2e';
+import { selectors } from '@grafana/e2e-selectors';
 
 import coreModule from 'app/core/core_module';
 import appEvents from 'app/core/app_events';
@@ -39,7 +39,7 @@ export class UtilSrv {
 
     const elem = React.createElement(provideTheme(AngularModalProxy), modalProps);
     this.reactModalRoot.appendChild(this.reactModalNode);
-    return ReactDOM.render(elem, this.reactModalNode);
+    ReactDOM.render(elem, this.reactModalNode);
   }
 
   onReactModalDismiss = () => {
@@ -78,7 +78,7 @@ export class UtilSrv {
       backdrop: options.backdrop,
     });
 
-    Promise.resolve(modal).then(modalEl => {
+    Promise.resolve(modal).then((modalEl) => {
       modalEl.modal('show');
     });
   }
@@ -99,11 +99,11 @@ export class UtilSrv {
     scope.onConfirm = payload.onConfirm;
     scope.onAltAction = payload.onAltAction;
     scope.altActionText = payload.altActionText;
-    scope.icon = payload.icon || 'fa-check';
+    scope.icon = payload.icon || 'check';
     scope.yesText = payload.yesText || 'Yes';
     scope.noText = payload.noText || 'Cancel';
     scope.confirmTextValid = scope.confirmText ? false : true;
-    scope.selectors = e2e.pages.ConfirmModal.selectors;
+    scope.selectors = selectors.pages.ConfirmModal;
 
     appEvents.emit(CoreEvents.showModal, {
       src: 'public/app/partials/confirm_modal.html',

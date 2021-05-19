@@ -1,27 +1,31 @@
 import _ from 'lodash';
 import TableModel from 'app/core/table_model';
-import { FieldType } from '@grafana/data';
+import { FieldType, QueryResultMeta, TimeSeries, TableData } from '@grafana/data';
 
 export default class InfluxSeries {
+  refId?: string;
   series: any;
   alias: any;
   annotation: any;
+  meta?: QueryResultMeta;
 
-  constructor(options: { series: any; alias?: any; annotation?: any }) {
+  constructor(options: { series: any; alias?: any; annotation?: any; meta?: QueryResultMeta; refId?: string }) {
     this.series = options.series;
     this.alias = options.alias;
     this.annotation = options.annotation;
+    this.meta = options.meta;
+    this.refId = options.refId;
   }
 
-  getTimeSeries() {
-    const output: any[] = [];
+  getTimeSeries(): TimeSeries[] {
+    const output: TimeSeries[] = [];
     let i, j;
 
     if (this.series.length === 0) {
       return output;
     }
 
-    _.each(this.series, series => {
+    _.each(this.series, (series) => {
       const columns = series.columns.length;
       const tags = _.map(series.tags, (value, key) => {
         return key + ': ' + value;
@@ -47,7 +51,7 @@ export default class InfluxSeries {
           }
         }
 
-        output.push({ target: seriesName, datapoints: datapoints });
+        output.push({ target: seriesName, datapoints: datapoints, meta: this.meta, refId: this.refId });
       }
     });
 
@@ -86,7 +90,7 @@ export default class InfluxSeries {
   getAnnotations() {
     const list: any[] = [];
 
-    _.each(this.series, series => {
+    _.each(this.series, (series) => {
       let titleCol: any = null;
       let timeCol: any = null;
       const tagsCol: any = [];
@@ -118,7 +122,7 @@ export default class InfluxSeries {
         }
       });
 
-      _.each(series.values, value => {
+      _.each(series.values, (value) => {
         const data = {
           annotation: this.annotation,
           time: +new Date(value[timeCol]),
@@ -143,9 +147,12 @@ export default class InfluxSeries {
     return list;
   }
 
-  getTable() {
+  getTable(): TableData {
     const table = new TableModel();
     let i, j;
+
+    table.refId = this.refId;
+    table.meta = this.meta;
 
     if (this.series.length === 0) {
       return table;
@@ -160,7 +167,7 @@ export default class InfluxSeries {
           table.columns.push({ text: 'Time', type: FieldType.time });
           j++;
         }
-        _.each(_.keys(series.tags), key => {
+        _.each(_.keys(series.tags), (key) => {
           table.columns.push({ text: key });
         });
         for (; j < series.columns.length; j++) {

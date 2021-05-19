@@ -1,10 +1,11 @@
 package dashboards
 
 import (
-	"github.com/grafana/grafana/pkg/components/gtime"
-	"github.com/grafana/grafana/pkg/setting"
 	"strings"
 	"time"
+
+	"github.com/grafana/grafana/pkg/components/gtime"
+	"github.com/grafana/grafana/pkg/setting"
 
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/infra/log"
@@ -26,7 +27,7 @@ type DashboardProvisioningService interface {
 	SaveProvisionedDashboard(dto *SaveDashboardDTO, provisioning *models.DashboardProvisioning) (*models.Dashboard, error)
 	SaveFolderForProvisionedDashboards(*SaveDashboardDTO) (*models.Dashboard, error)
 	GetProvisionedDashboardData(name string) ([]*models.DashboardProvisioning, error)
-	GetProvisionedDashboardDataByDashboardId(dashboardId int64) (*models.DashboardProvisioning, error)
+	GetProvisionedDashboardDataByDashboardID(DashboardId int64) (*models.DashboardProvisioning, error)
 	UnprovisionDashboard(dashboardId int64) error
 	DeleteProvisionedDashboard(dashboardId int64, orgId int64) error
 }
@@ -70,7 +71,7 @@ func (dr *dashboardServiceImpl) GetProvisionedDashboardData(name string) ([]*mod
 	return cmd.Result, nil
 }
 
-func (dr *dashboardServiceImpl) GetProvisionedDashboardDataByDashboardId(dashboardId int64) (*models.DashboardProvisioning, error) {
+func (dr *dashboardServiceImpl) GetProvisionedDashboardDataByDashboardID(dashboardId int64) (*models.DashboardProvisioning, error) {
 	cmd := &models.GetProvisionedDashboardDataByIdQuery{DashboardId: dashboardId}
 	err := bus.Dispatch(cmd)
 	if err != nil {
@@ -80,7 +81,8 @@ func (dr *dashboardServiceImpl) GetProvisionedDashboardDataByDashboardId(dashboa
 	return cmd.Result, nil
 }
 
-func (dr *dashboardServiceImpl) buildSaveDashboardCommand(dto *SaveDashboardDTO, validateAlerts bool, validateProvisionedDashboard bool) (*models.SaveDashboardCommand, error) {
+func (dr *dashboardServiceImpl) buildSaveDashboardCommand(dto *SaveDashboardDTO, validateAlerts bool,
+	validateProvisionedDashboard bool) (*models.SaveDashboardCommand, error) {
 	dash := dto.Dashboard
 
 	dash.Title = strings.TrimSpace(dash.Title)
@@ -102,7 +104,7 @@ func (dr *dashboardServiceImpl) buildSaveDashboardCommand(dto *SaveDashboardDTO,
 	if !util.IsValidShortUID(dash.Uid) {
 		return nil, models.ErrDashboardInvalidUid
 	} else if len(dash.Uid) > 40 {
-		return nil, models.ErrDashboardUidToLong
+		return nil, models.ErrDashboardUidTooLong
 	}
 
 	if err := validateDashboardRefreshInterval(dash); err != nil {
@@ -142,7 +144,7 @@ func (dr *dashboardServiceImpl) buildSaveDashboardCommand(dto *SaveDashboardDTO,
 	}
 
 	if validateProvisionedDashboard {
-		provisionedData, err := dr.GetProvisionedDashboardDataByDashboardId(dash.Id)
+		provisionedData, err := dr.GetProvisionedDashboardDataByDashboardID(dash.Id)
 		if err != nil {
 			return nil, err
 		}
@@ -189,11 +191,11 @@ func validateDashboardRefreshInterval(dash *models.Dashboard) error {
 		return nil
 	}
 
-	minRefreshInterval, err := gtime.ParseInterval(setting.MinRefreshInterval)
+	minRefreshInterval, err := gtime.ParseDuration(setting.MinRefreshInterval)
 	if err != nil {
 		return err
 	}
-	d, err := gtime.ParseInterval(refresh)
+	d, err := gtime.ParseDuration(refresh)
 	if err != nil {
 		return err
 	}
@@ -215,9 +217,11 @@ func (dr *dashboardServiceImpl) updateAlerting(cmd *models.SaveDashboardCommand,
 	return bus.Dispatch(&alertCmd)
 }
 
-func (dr *dashboardServiceImpl) SaveProvisionedDashboard(dto *SaveDashboardDTO, provisioning *models.DashboardProvisioning) (*models.Dashboard, error) {
+func (dr *dashboardServiceImpl) SaveProvisionedDashboard(dto *SaveDashboardDTO,
+	provisioning *models.DashboardProvisioning) (*models.Dashboard, error) {
 	if err := validateDashboardRefreshInterval(dto.Dashboard); err != nil {
-		dr.log.Warn("Changing refresh interval for provisioned dashboard to minimum refresh interval", "dashboardUid", dto.Dashboard.Uid, "dashboardTitle", dto.Dashboard.Title, "minRefreshInterval", setting.MinRefreshInterval)
+		dr.log.Warn("Changing refresh interval for provisioned dashboard to minimum refresh interval", "dashboardUid",
+			dto.Dashboard.Uid, "dashboardTitle", dto.Dashboard.Title, "minRefreshInterval", setting.MinRefreshInterval)
 		dto.Dashboard.Data.Set("refresh", setting.MinRefreshInterval)
 	}
 
@@ -243,7 +247,7 @@ func (dr *dashboardServiceImpl) SaveProvisionedDashboard(dto *SaveDashboardDTO, 
 		return nil, err
 	}
 
-	//alerts
+	// alerts
 	err = dr.updateAlerting(cmd, dto)
 	if err != nil {
 		return nil, err
@@ -276,6 +280,10 @@ func (dr *dashboardServiceImpl) SaveFolderForProvisionedDashboards(dto *SaveDash
 }
 
 func (dr *dashboardServiceImpl) SaveDashboard(dto *SaveDashboardDTO, allowUiUpdate bool) (*models.Dashboard, error) {
+	if err := validateDashboardRefreshInterval(dto.Dashboard); err != nil {
+		dr.log.Warn("Changing refresh interval for imported dashboard to minimum refresh interval", "dashboardUid", dto.Dashboard.Uid, "dashboardTitle", dto.Dashboard.Title, "minRefreshInterval", setting.MinRefreshInterval)
+		dto.Dashboard.Data.Set("refresh", setting.MinRefreshInterval)
+	}
 
 	cmd, err := dr.buildSaveDashboardCommand(dto, true, !allowUiUpdate)
 	if err != nil {
@@ -308,7 +316,7 @@ func (dr *dashboardServiceImpl) DeleteProvisionedDashboard(dashboardId int64, or
 
 func (dr *dashboardServiceImpl) deleteDashboard(dashboardId int64, orgId int64, validateProvisionedDashboard bool) error {
 	if validateProvisionedDashboard {
-		provisionedData, err := dr.GetProvisionedDashboardDataByDashboardId(dashboardId)
+		provisionedData, err := dr.GetProvisionedDashboardDataByDashboardID(dashboardId)
 		if err != nil {
 			return errutil.Wrap("failed to check if dashboard is provisioned", err)
 		}
@@ -322,6 +330,11 @@ func (dr *dashboardServiceImpl) deleteDashboard(dashboardId int64, orgId int64, 
 }
 
 func (dr *dashboardServiceImpl) ImportDashboard(dto *SaveDashboardDTO) (*models.Dashboard, error) {
+	if err := validateDashboardRefreshInterval(dto.Dashboard); err != nil {
+		dr.log.Warn("Changing refresh interval for imported dashboard to minimum refresh interval", "dashboardUid", dto.Dashboard.Uid, "dashboardTitle", dto.Dashboard.Title, "minRefreshInterval", setting.MinRefreshInterval)
+		dto.Dashboard.Data.Set("refresh", setting.MinRefreshInterval)
+	}
+
 	cmd, err := dr.buildSaveDashboardCommand(dto, false, true)
 	if err != nil {
 		return nil, err

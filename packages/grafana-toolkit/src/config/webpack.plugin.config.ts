@@ -7,6 +7,7 @@ const TerserPlugin = require('terser-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const OptimizeCssAssetsPlugin = require('optimize-css-assets-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 
 const readdirPromise = util.promisify(fs.readdir);
 const accessPromise = util.promisify(fs.access);
@@ -17,8 +18,11 @@ import { getStyleLoaders, getStylesheetEntries, getFileLoaders } from './webpack
 export interface WebpackConfigurationOptions {
   watch?: boolean;
   production?: boolean;
+  preserveConsole?: boolean;
 }
+
 type WebpackConfigurationGetter = (options: WebpackConfigurationOptions) => Promise<webpack.Configuration>;
+
 export type CustomWebpackConfigurationGetter = (
   originalConfig: webpack.Configuration,
   options: WebpackConfigurationOptions
@@ -30,7 +34,7 @@ export const findModuleFiles = async (base: string, files?: string[], result?: s
 
   if (files) {
     await Promise.all(
-      files.map(async file => {
+      files.map(async (file) => {
         const newbase = path.join(base, file);
         if (fs.statSync(newbase).isDirectory()) {
           result = await findModuleFiles(newbase, await readdirPromise(newbase), result);
@@ -70,7 +74,7 @@ const getEntries = async () => {
   const entries: { [key: string]: string } = {};
   const modules = await getModuleFiles();
 
-  modules.forEach(modFile => {
+  modules.forEach((modFile) => {
     const mod = getManualChunk(modFile);
     // @ts-ignore
     entries[mod.name] = mod.module;
@@ -82,6 +86,7 @@ const getEntries = async () => {
 };
 
 const getCommonPlugins = (options: WebpackConfigurationOptions) => {
+  const hasREADME = fs.existsSync(path.resolve(process.cwd(), 'src', 'README.md'));
   const packageJson = require(path.resolve(process.cwd(), 'package.json'));
   return [
     new MiniCssExtractPlugin({
@@ -91,9 +96,11 @@ const getCommonPlugins = (options: WebpackConfigurationOptions) => {
     new webpack.optimize.OccurrenceOrderPlugin(true),
     new CopyWebpackPlugin(
       [
+        // If src/README.md exists use it; otherwise the root README
+        { from: hasREADME ? 'README.md' : '../README.md', to: '.', force: true },
         { from: 'plugin.json', to: '.' },
-        { from: '../README.md', to: '.' },
         { from: '../LICENSE', to: '.' },
+        { from: '../CHANGELOG.md', to: '.', force: true },
         { from: '**/*.json', to: '.' },
         { from: '**/*.svg', to: '.' },
         { from: '**/*.png', to: '.' },
@@ -121,15 +128,24 @@ const getCommonPlugins = (options: WebpackConfigurationOptions) => {
         ],
       },
     ]),
+    new ForkTsCheckerWebpackPlugin({
+      tsconfig: path.join(process.cwd(), 'tsconfig.json'),
+      // Only report problems in detected in plugin's code
+      reportFiles: ['**/*.{ts,tsx}'],
+    }),
   ];
 };
 
-const getBaseWebpackConfig: WebpackConfigurationGetter = async options => {
+const getBaseWebpackConfig: WebpackConfigurationGetter = async (options) => {
   const plugins = getCommonPlugins(options);
   const optimization: { [key: string]: any } = {};
 
   if (options.production) {
-    optimization.minimizer = [new TerserPlugin({ sourceMap: true }), new OptimizeCssAssetsPlugin()];
+    const compressOptions = { drop_console: !options.preserveConsole, drop_debugger: true };
+    optimization.minimizer = [
+      new TerserPlugin({ sourceMap: true, terserOptions: { compress: compressOptions } }),
+      new OptimizeCssAssetsPlugin(),
+    ];
   } else if (options.watch) {
     plugins.push(new HtmlWebpackPlugin());
   }
@@ -172,6 +188,8 @@ const getBaseWebpackConfig: WebpackConfigurationGetter = async options => {
       '@grafana/ui',
       '@grafana/runtime',
       '@grafana/data',
+      'monaco-editor',
+      'react-monaco-editor',
       // @ts-ignore
       (context, request, callback) => {
         const prefix = 'grafana/';
@@ -203,7 +221,10 @@ const getBaseWebpackConfig: WebpackConfigurationGetter = async options => {
             },
             {
               loader: 'ts-loader',
-              options: { onlyCompileBundledFiles: true },
+              options: {
+                onlyCompileBundledFiles: true,
+                transpileOnly: true,
+              },
             },
           ],
           exclude: /(node_modules)/,
@@ -237,7 +258,7 @@ const getBaseWebpackConfig: WebpackConfigurationGetter = async options => {
   };
 };
 
-export const loadWebpackConfig: WebpackConfigurationGetter = async options => {
+export const loadWebpackConfig: WebpackConfigurationGetter = async (options) => {
   const baseConfig = await getBaseWebpackConfig(options);
   const customWebpackPath = path.resolve(process.cwd(), 'webpack.config.js');
 

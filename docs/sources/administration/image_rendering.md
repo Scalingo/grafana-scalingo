@@ -2,19 +2,18 @@
 title = "Image rendering"
 description = ""
 keywords = ["grafana", "image", "rendering", "plugin"]
-type = "docs"
-[menu.docs]
-parent = "features"
-weight = 8
+weight = 300
 +++
 
 # Image rendering
 
-Grafana supports automatic rendering of panels and dashboards as PNG images. This allows Grafana to automatically generate images of your panels to include in [alert notifications]({{< relref "../alerting/notifications.md" >}}).
+Grafana supports automatic rendering of panels as PNG images. This allows Grafana to automatically generate images of your panels to include in [alert notifications]({{< relref "../alerting/notifications.md" >}}).
 
-When an image is being rendered the PNG-image is temporarily written to the file system. When an image is rendered, the PNG image is temporary written to the `png` folder in the Grafana `data` folder.
+>**Note:** Image rendering of dashboards is not supported at this time.
 
-A background job runs every 10 minutes and removes temporary images. You can configure how long an image should be stored before being removed by configuring the [temp-data-lifetime]({{< relref "../installation/configuration/#temp-data-lifetime" >}}) setting.
+While an image is being rendered, the PNG image is temporarily written to the file system. When the image is rendered, the PNG image is temporarily written to the `png` folder in the Grafana `data` folder.
+
+A background job runs every 10 minutes and removes temporary images. You can configure how long an image should be stored before being removed by configuring the [temp-data-lifetime]({{< relref "../administration/configuration/#temp-data-lifetime" >}}) setting.
 
 You can also render a PNG by clicking the dropdown arrow next to a panel title, then clicking **Share > Direct link rendered image**.
 
@@ -26,13 +25,13 @@ Rendering images can require a lot of memory, mainly because Grafana creates bro
 
 ## Alerting and render limits
 
-Alert notifications can include images, but rendering many images at the same time can overload the server where the renderer is running. For instructions of how to configure this, see [concurrent_render_limit]({{< relref "../installation/configuration/#concurrent_render_limit" >}}).
+Alert notifications can include images, but rendering many images at the same time can overload the server where the renderer is running. For instructions of how to configure this, see [concurrent_render_limit]({{< relref "../administration/configuration/#concurrent_render_limit" >}}).
 
 ## Install Grafana Image Renderer plugin
 
 The [Grafana image renderer plugin](https://grafana.com/grafana/plugins/grafana-image-renderer) is a plugin that runs on the backend and handles rendering panels and dashboards as PNG images using headless Chrome.
 
-To install the plugin, refer to the [Grafana Image Renderer Installation instructions](https://grafana.com/grafana/plugins/grafana-image-renderer/installation).
+To install the plugin, refer to the [Grafana Image Renderer Installation instructions](https://grafana.com/grafana/plugins/grafana-image-renderer/?tab=installation).
 
 ## Run in custom Grafana Docker image
 
@@ -83,20 +82,20 @@ docker-compose up
 The following example describes how to build and run the remote HTTP rendering service as a standalone Node.js application and configure Grafana appropriately.
 
 1. Clone the [Grafana image renderer plugin](https://grafana.com/grafana/plugins/grafana-image-renderer) Git repository.
-2. Install dependencies and build:
+1. Install dependencies and build:
 
     ```bash
     yarn install --pure-lockfile
     yarn run build
     ```
 
-3. Run the server:
+1. Run the server:
 
     ```bash
     node build/app.js server --port=8081
     ```
 
-4. Update Grafana configuration:
+1. Update Grafana configuration:
 
     ```
     [rendering]
@@ -104,11 +103,11 @@ The following example describes how to build and run the remote HTTP rendering s
     callback_url = http://localhost:3000/
     ```
 
-5. Restart Grafana.
+1. Restart Grafana.
 
 ## PhantomJS
 
-> PhantomJS is deprecated since Grafana v6.4 and will be removed in a future release. Please migrate to the Grafana Image Renderer plugin or remote rendering service.
+> Starting from Grafana v7.0.0, all PhantomJS support has been removed. Please use the Grafana Image Renderer plugin or remote rendering service.
 
 ## Troubleshoot image rendering
 
@@ -154,9 +153,23 @@ On Ubuntu 18.10 the following dependencies have been confirmed as needed for the
 libx11-6 libx11-xcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrender1 libxtst6 libglib2.0-0 libnss3 libcups2  libdbus-1-3 libxss1 libxrandr2 libgtk-3-0 libgtk-3-0 libasound2
 ```
 
+**Debian:**
+
+On Debian 9 (Stretch) the following dependencies have been confirmed as needed for the image rendering to function.
+
+```bash
+libx11 libcairo bcairo2 libcairo2 libxtst6 libxcomposite1 libx11-xcb1 libxcursor1 libxdamage1 libnss3 libcups libcups2 libXss libXss1 libxss1 libxrandr2 libasound2 libatk1.0-0 libatk-bridge2.0-0 libpangocairo-1.0-0 libgtk-3-0
+```
+
+On Debian 10 (Buster) the following dependencies have been confirmed as needed for the image rendering to function.
+
+```bash
+libxdamage1 libxext6 libxi6 libxtst6 libnss3 libnss3 libcups2 libxss1 libxrandr2 libasound2 libatk1.0-0 libatk-bridge2.0-0 libpangocairo-1.0-0 libpango-1.0-0 libcairo2 libatspi2.0-0 libgtk3.0-cil libgdk3.0-cil libx11-xcb-dev
+```
+
 **Centos:**
 
-On a minimal Centos install the following dependencies have been confirmed as needed for the image rendering to function:
+On a minimal Centos installation, the following dependencies have been confirmed as needed for the image rendering to function:
 
 ```bash
 libXcomposite libXdamage libXtst cups libXScrnSaver pango atk adwaita-cursor-theme adwaita-icon-theme at at-spi2-atk at-spi2-core cairo-gobject colord-libs dconf desktop-file-utils ed emacs-filesystem gdk-pixbuf2 glib-networking gnutls gsettings-desktop-schemas gtk-update-icon-cache gtk3 hicolor-icon-theme jasper-libs json-glib libappindicator-gtk3 libdbusmenu libdbusmenu-gtk3 libepoxy liberation-fonts liberation-narrow-fonts liberation-sans-fonts liberation-serif-fonts libgusb libindicator-gtk3 libmodman libproxy libsoup libwayland-cursor libwayland-egl libxkbcommon m4 mailx nettle patch psmisc redhat-lsb-core redhat-lsb-submod-security rest spax time trousers xdg-utils xkeyboard-config
@@ -164,7 +177,7 @@ libXcomposite libXdamage libXtst cups libXScrnSaver pango atk adwaita-cursor-the
 
 ### Certificate signed by internal certificate authorities
 
-In many cases Grafana, runs on internal servers and uses certificates that have not been signed by a CA ([Certificate Authority](https://en.wikipedia.org/wiki/Certificate_authority)) known to Chrome, and therefore cannot be validated. Chrome internally uses NSS ([Network Security Services](https://en.wikipedia.org/wiki/Network_Security_Services)) for cryptogtraphic operations such as the validation of certificates.
+In many cases, Grafana runs on internal servers and uses certificates that have not been signed by a CA ([Certificate Authority](https://en.wikipedia.org/wiki/Certificate_authority)) known to Chrome, and therefore cannot be validated. Chrome internally uses NSS ([Network Security Services](https://en.wikipedia.org/wiki/Network_Security_Services)) for cryptographic operations such as the validation of certificates.
 
 If you are using the Grafana Image Renderer with a Grafana server that uses a certificate signed by such a custom CA (for example a company-internal CA), rendering images will fail and you will see messages like this in the Grafana log:
 

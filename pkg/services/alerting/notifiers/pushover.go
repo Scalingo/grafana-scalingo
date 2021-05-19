@@ -17,90 +17,192 @@ import (
 const pushoverEndpoint = "https://api.pushover.net/1/messages.json"
 
 func init() {
-	sounds := ` 
-          'default',
-          'pushover',
-          'bike',
-          'bugle',
-          'cashregister',
-          'classical',
-          'cosmic',
-          'falling',
-          'gamelan',
-          'incoming',
-          'intermission',
-          'magic',
-          'mechanical',
-          'pianobar',
-          'siren',
-          'spacealarm',
-          'tugboat',
-          'alien',
-          'climb',
-          'persistent',
-          'echo',
-          'updown',
-          'none'`
+	soundOptions := []alerting.SelectOption{
+		{
+			Value: "default",
+			Label: "Default",
+		},
+		{
+			Value: "pushover",
+			Label: "Pushover",
+		}, {
+			Value: "bike",
+			Label: "Bike",
+		}, {
+			Value: "bugle",
+			Label: "Bugle",
+		}, {
+			Value: "cashregister",
+			Label: "Cashregister",
+		}, {
+			Value: "classical",
+			Label: "Classical",
+		}, {
+			Value: "cosmic",
+			Label: "Cosmic",
+		}, {
+			Value: "falling",
+			Label: "Falling",
+		}, {
+			Value: "gamelan",
+			Label: "Gamelan",
+		}, {
+			Value: "incoming",
+			Label: "Incoming",
+		}, {
+			Value: "intermission",
+			Label: "Intermission",
+		}, {
+			Value: "magic",
+			Label: "Magic",
+		}, {
+			Value: "mechanical",
+			Label: "Mechanical",
+		}, {
+			Value: "pianobar",
+			Label: "Pianobar",
+		}, {
+			Value: "siren",
+			Label: "Siren",
+		}, {
+			Value: "spacealarm",
+			Label: "Spacealarm",
+		}, {
+			Value: "tugboat",
+			Label: "Tugboat",
+		}, {
+			Value: "alien",
+			Label: "Alien",
+		}, {
+			Value: "climb",
+			Label: "Climb",
+		}, {
+			Value: "persistent",
+			Label: "Persistent",
+		}, {
+			Value: "echo",
+			Label: "Echo",
+		}, {
+			Value: "updown",
+			Label: "Updown",
+		}, {
+			Value: "none",
+			Label: "None",
+		},
+	}
+
+	priorityOptions := []alerting.SelectOption{
+		{
+			Value: "2",
+			Label: "Emergency",
+		},
+		{
+			Value: "1",
+			Label: "High",
+		},
+		{
+			Value: "0",
+			Label: "Normal",
+		},
+		{
+			Value: "-1",
+			Label: "Low",
+		},
+		{
+			Value: "-2",
+			Label: "Lowest",
+		},
+	}
 
 	alerting.RegisterNotifier(&alerting.NotifierPlugin{
 		Type:        "pushover",
 		Name:        "Pushover",
 		Description: "Sends HTTP POST request to the Pushover API",
+		Heading:     "Pushover settings",
 		Factory:     NewPushoverNotifier,
-		OptionsTemplate: `
-      <h3 class="page-heading">Pushover settings</h3>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">API Token</span>
-        <input type="text" class="gf-form-input" required placeholder="Application token" ng-model="ctrl.model.settings.apiToken"></input>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">User key(s)</span>
-        <input type="text" class="gf-form-input" required placeholder="comma-separated list" ng-model="ctrl.model.settings.userKey"></input>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">Device(s) (optional)</span>
-        <input type="text" class="gf-form-input" placeholder="comma-separated list; leave empty to send to all devices" ng-model="ctrl.model.settings.device"></input>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">Priority</span>
-        <select class="gf-form-input max-width-14" ng-model="ctrl.model.settings.priority" ng-options="v as k for (k, v) in {
-          Emergency: '2',
-          High:      '1',
-          Normal:    '0',
-          Low:      '-1',
-          Lowest:   '-2'
-        }" ng-init="ctrl.model.settings.priority=ctrl.model.settings.priority||'0'"></select>
-      </div>
-      <div class="gf-form" ng-show="ctrl.model.settings.priority == '2'">
-        <span class="gf-form-label width-10">Retry</span>
-        <input type="text" class="gf-form-input max-width-14" ng-required="ctrl.model.settings.priority == '2'" placeholder="minimum 30 seconds" ng-model="ctrl.model.settings.retry" ng-init="ctrl.model.settings.retry=ctrl.model.settings.retry||'60'></input>
-      </div>
-      <div class="gf-form" ng-show="ctrl.model.settings.priority == '2'">
-        <span class="gf-form-label width-10">Expire</span>
-        <input type="text" class="gf-form-input max-width-14" ng-required="ctrl.model.settings.priority == '2'" placeholder="maximum 86400 seconds" ng-model="ctrl.model.settings.expire" ng-init="ctrl.model.settings.expire=ctrl.model.settings.expire||'3600'"></input>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">Alerting sound</span>
-        <select class="gf-form-input max-width-14" ng-model="ctrl.model.settings.sound" ng-options="s for s in [
-          ` + sounds + `
-        ]" ng-init="ctrl.model.settings.sound=ctrl.model.settings.sound||'default'"></select>
-      </div>
-      <div class="gf-form">
-        <span class="gf-form-label width-10">OK sound</span>
-        <select class="gf-form-input max-width-14" ng-model="ctrl.model.settings.okSound" ng-options="s for s in [
-         ` + sounds + `
-        ]" ng-init="ctrl.model.settings.okSound=ctrl.model.settings.okSound||'default'"></select>
-      </div>
-    `,
+		Options: []alerting.NotifierOption{
+			{
+				Label:        "API Token",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				Placeholder:  "Application token",
+				PropertyName: "apiToken",
+				Required:     true,
+				Secure:       true,
+			},
+			{
+				Label:        "User key(s)",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				Placeholder:  "comma-separated list",
+				PropertyName: "userKey",
+				Required:     true,
+				Secure:       true,
+			},
+			{
+				Label:        "Device(s) (optional)",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				Placeholder:  "comma-separated list; leave empty to send to all devices",
+				PropertyName: "device",
+			},
+			{
+				Label:         "Alerting priority",
+				Element:       alerting.ElementTypeSelect,
+				SelectOptions: priorityOptions,
+				PropertyName:  "priority",
+			},
+			{
+				Label:         "OK priority",
+				Element:       alerting.ElementTypeSelect,
+				SelectOptions: priorityOptions,
+				PropertyName:  "okPriority",
+			},
+			{
+				Description:  "How often (in seconds) the Pushover servers will send the same alerting or OK notification to the user.",
+				Label:        "Retry (Only used for Emergency Priority)",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				Placeholder:  "minimum 30 seconds",
+				PropertyName: "retry",
+			},
+			{
+				Description:  "How many seconds the alerting or OK notification will continue to be retried.",
+				Label:        "Expire (Only used for Emergency Priority)",
+				Element:      alerting.ElementTypeInput,
+				InputType:    alerting.InputTypeText,
+				Placeholder:  "maximum 86400 seconds",
+				PropertyName: "expire",
+			},
+			{
+				Label:         "Alerting sound",
+				Element:       alerting.ElementTypeSelect,
+				SelectOptions: soundOptions,
+				PropertyName:  "sound",
+			},
+			{
+				Label:         "OK sound",
+				Element:       alerting.ElementTypeSelect,
+				SelectOptions: soundOptions,
+				PropertyName:  "okSound",
+			},
+		},
 	})
 }
 
 // NewPushoverNotifier is the constructor for the Pushover Notifier
 func NewPushoverNotifier(model *models.AlertNotification) (alerting.Notifier, error) {
-	userKey := model.Settings.Get("userKey").MustString()
-	APIToken := model.Settings.Get("apiToken").MustString()
+	userKey := model.DecryptedValue("userKey", model.Settings.Get("userKey").MustString())
+	APIToken := model.DecryptedValue("apiToken", model.Settings.Get("apiToken").MustString())
 	device := model.Settings.Get("device").MustString()
-	priority, _ := strconv.Atoi(model.Settings.Get("priority").MustString())
+	alertingPriority, err := strconv.Atoi(model.Settings.Get("priority").MustString("0")) // default Normal
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert alerting priority to integer: %w", err)
+	}
+	okPriority, err := strconv.Atoi(model.Settings.Get("okPriority").MustString("0")) // default Normal
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert OK priority to integer: %w", err)
+	}
 	retry, _ := strconv.Atoi(model.Settings.Get("retry").MustString())
 	expire, _ := strconv.Atoi(model.Settings.Get("expire").MustString())
 	alertingSound := model.Settings.Get("sound").MustString()
@@ -114,17 +216,18 @@ func NewPushoverNotifier(model *models.AlertNotification) (alerting.Notifier, er
 		return nil, alerting.ValidationError{Reason: "API token not given"}
 	}
 	return &PushoverNotifier{
-		NotifierBase:  NewNotifierBase(model),
-		UserKey:       userKey,
-		APIToken:      APIToken,
-		Priority:      priority,
-		Retry:         retry,
-		Expire:        expire,
-		Device:        device,
-		AlertingSound: alertingSound,
-		OkSound:       okSound,
-		Upload:        uploadImage,
-		log:           log.New("alerting.notifier.pushover"),
+		NotifierBase:     NewNotifierBase(model),
+		UserKey:          userKey,
+		APIToken:         APIToken,
+		AlertingPriority: alertingPriority,
+		OKPriority:       okPriority,
+		Retry:            retry,
+		Expire:           expire,
+		Device:           device,
+		AlertingSound:    alertingSound,
+		OKSound:          okSound,
+		Upload:           uploadImage,
+		log:              log.New("alerting.notifier.pushover"),
 	}, nil
 }
 
@@ -132,16 +235,17 @@ func NewPushoverNotifier(model *models.AlertNotification) (alerting.Notifier, er
 // alert notifications to Pushover
 type PushoverNotifier struct {
 	NotifierBase
-	UserKey       string
-	APIToken      string
-	Priority      int
-	Retry         int
-	Expire        int
-	Device        string
-	AlertingSound string
-	OkSound       string
-	Upload        bool
-	log           log.Logger
+	UserKey          string
+	APIToken         string
+	AlertingPriority int
+	OKPriority       int
+	Retry            int
+	Expire           int
+	Device           string
+	AlertingSound    string
+	OKSound          string
+	Upload           bool
+	log              log.Logger
 }
 
 // Notify sends a alert notification to Pushover
@@ -199,7 +303,11 @@ func (pn *PushoverNotifier) genPushoverBody(evalContext *alerting.EvalContext, m
 		if err != nil {
 			return nil, b, err
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				pn.log.Warn("Failed to close file", "path", evalContext.ImageOnDiskPath, "err", err)
+			}
+		}()
 
 		fw, err := w.CreateFormFile("attachment", evalContext.ImageOnDiskPath)
 		if err != nil {
@@ -225,12 +333,16 @@ func (pn *PushoverNotifier) genPushoverBody(evalContext *alerting.EvalContext, m
 	}
 
 	// Add priority
-	err = w.WriteField("priority", strconv.Itoa(pn.Priority))
+	priority := pn.AlertingPriority
+	if evalContext.Rule.State == models.AlertStateOK {
+		priority = pn.OKPriority
+	}
+	err = w.WriteField("priority", strconv.Itoa(priority))
 	if err != nil {
 		return nil, b, err
 	}
 
-	if pn.Priority == 2 {
+	if priority == 2 {
 		err = w.WriteField("retry", strconv.Itoa(pn.Retry))
 		if err != nil {
 			return nil, b, err
@@ -253,7 +365,7 @@ func (pn *PushoverNotifier) genPushoverBody(evalContext *alerting.EvalContext, m
 	// Add sound
 	sound := pn.AlertingSound
 	if evalContext.Rule.State == models.AlertStateOK {
-		sound = pn.OkSound
+		sound = pn.OKSound
 	}
 	if sound != "default" {
 		err = w.WriteField("sound", sound)
@@ -290,8 +402,10 @@ func (pn *PushoverNotifier) genPushoverBody(evalContext *alerting.EvalContext, m
 	if err != nil {
 		return nil, b, err
 	}
+	if err := w.Close(); err != nil {
+		return nil, b, err
+	}
 
-	w.Close()
 	headers := map[string]string{
 		"Content-Type": w.FormDataContentType(),
 	}

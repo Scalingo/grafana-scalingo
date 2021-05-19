@@ -3,7 +3,8 @@ import { DashboardModel } from '../state/DashboardModel';
 import { PanelModel } from '../state/PanelModel';
 import { GRID_CELL_HEIGHT, GRID_CELL_VMARGIN } from 'app/core/constants';
 import { expect } from 'test/lib/common';
-import { DataLinkBuiltInVars } from '@grafana/ui';
+import { DataLinkBuiltInVars } from '@grafana/data';
+import { VariableHide } from '../../variables/types';
 
 jest.mock('app/core/services/context_srv', () => ({}));
 
@@ -111,6 +112,10 @@ describe('DashboardModel', () => {
       expect(table.styles[1].thresholds[1]).toBe('300');
     });
 
+    it('table type should be deprecated', () => {
+      expect(table.type).toBe('table-old');
+    });
+
     it('graph grid to yaxes options', () => {
       expect(graph.yaxes[0].min).toBe(1);
       expect(graph.yaxes[0].max).toBe(10);
@@ -128,7 +133,7 @@ describe('DashboardModel', () => {
     });
 
     it('dashboard schema version should be set to latest', () => {
-      expect(model.schemaVersion).toBe(22);
+      expect(model.schemaVersion).toBe(27);
     });
 
     it('graph thresholds should be migrated', () => {
@@ -575,6 +580,326 @@ describe('DashboardModel', () => {
       });
     });
   });
+
+  describe('when migrating variables with multi support', () => {
+    let model: DashboardModel;
+
+    beforeEach(() => {
+      model = new DashboardModel({
+        templating: {
+          list: [
+            {
+              multi: false,
+              current: {
+                value: ['value'],
+                text: ['text'],
+              },
+            },
+            {
+              multi: true,
+              current: {
+                value: ['value'],
+                text: ['text'],
+              },
+            },
+          ],
+        },
+      });
+    });
+
+    it('should have two variables after migration', () => {
+      expect(model.templating.list.length).toBe(2);
+    });
+
+    it('should be migrated if being out of sync', () => {
+      expect(model.templating.list[0].multi).toBe(false);
+      expect(model.templating.list[0].current).toEqual({
+        text: 'text',
+        value: 'value',
+      });
+    });
+
+    it('should not be migrated if being in sync', () => {
+      expect(model.templating.list[1].multi).toBe(true);
+      expect(model.templating.list[1].current).toEqual({
+        text: ['text'],
+        value: ['value'],
+      });
+    });
+  });
+
+  describe('when migrating variables with old tags format', () => {
+    let model: DashboardModel;
+
+    beforeEach(() => {
+      model = new DashboardModel({
+        templating: {
+          list: [
+            {
+              type: 'query',
+              tags: ['Africa', 'America', 'Asia', 'Europe'],
+            },
+            {
+              type: 'query',
+              current: {
+                tags: [
+                  {
+                    selected: true,
+                    text: 'America',
+                    values: ['server-us-east', 'server-us-central', 'server-us-west'],
+                    valuesText: 'server-us-east + server-us-central + server-us-west',
+                  },
+                  {
+                    selected: true,
+                    text: 'Europe',
+                    values: ['server-eu-east', 'server-eu-west'],
+                    valuesText: 'server-eu-east + server-eu-west',
+                  },
+                ],
+                text: 'server-us-east + server-us-central + server-us-west + server-eu-east + server-eu-west',
+                value: ['server-us-east', 'server-us-central', 'server-us-west', 'server-eu-east', 'server-eu-west'],
+              },
+              tags: ['Africa', 'America', 'Asia', 'Europe'],
+            },
+            {
+              type: 'query',
+              tags: [
+                { text: 'Africa', selected: false },
+                { text: 'America', selected: true },
+                { text: 'Asia', selected: false },
+                { text: 'Europe', selected: false },
+              ],
+            },
+          ],
+        },
+      });
+    });
+
+    it('should have three variables after migration', () => {
+      expect(model.templating.list.length).toBe(3);
+    });
+
+    it('should be migrated with defaults if being out of sync', () => {
+      expect(model.templating.list[0].tags).toEqual([
+        { text: 'Africa', selected: false },
+        { text: 'America', selected: false },
+        { text: 'Asia', selected: false },
+        { text: 'Europe', selected: false },
+      ]);
+    });
+
+    it('should be migrated with current values if being out of sync', () => {
+      expect(model.templating.list[1].tags).toEqual([
+        { text: 'Africa', selected: false },
+        {
+          selected: true,
+          text: 'America',
+          values: ['server-us-east', 'server-us-central', 'server-us-west'],
+          valuesText: 'server-us-east + server-us-central + server-us-west',
+        },
+        { text: 'Asia', selected: false },
+        {
+          selected: true,
+          text: 'Europe',
+          values: ['server-eu-east', 'server-eu-west'],
+          valuesText: 'server-eu-east + server-eu-west',
+        },
+      ]);
+    });
+
+    it('should not be migrated if being in sync', () => {
+      expect(model.templating.list[2].tags).toEqual([
+        { text: 'Africa', selected: false },
+        { text: 'America', selected: true },
+        { text: 'Asia', selected: false },
+        { text: 'Europe', selected: false },
+      ]);
+    });
+  });
+
+  describe('when migrating to new Text Panel', () => {
+    let model: DashboardModel;
+
+    beforeEach(() => {
+      model = new DashboardModel({
+        panels: [
+          {
+            id: 2,
+            type: 'text',
+            title: 'Angular Text Panel',
+            content:
+              '# Angular Text Panel\n# $constant\n\nFor markdown syntax help: [commonmark.org/help](https://commonmark.org/help/)\n\n## $text\n\n',
+            mode: 'markdown',
+          },
+          {
+            id: 3,
+            type: 'text2',
+            title: 'React Text Panel from scratch',
+            options: {
+              mode: 'markdown',
+              content:
+                '# React Text Panel from scratch\n# $constant\n\nFor markdown syntax help: [commonmark.org/help](https://commonmark.org/help/)\n\n## $text',
+            },
+          },
+          {
+            id: 4,
+            type: 'text2',
+            title: 'React Text Panel from Angular Panel',
+            options: {
+              mode: 'markdown',
+              content:
+                '# React Text Panel from Angular Panel\n# $constant\n\nFor markdown syntax help: [commonmark.org/help](https://commonmark.org/help/)\n\n## $text',
+              angular: {
+                content:
+                  '# React Text Panel from Angular Panel\n# $constant\n\nFor markdown syntax help: [commonmark.org/help](https://commonmark.org/help/)\n\n## $text\n',
+                mode: 'markdown',
+                options: {},
+              },
+            },
+          },
+        ],
+      });
+    });
+
+    it('should have 3 panels after migration', () => {
+      expect(model.panels.length).toBe(3);
+    });
+
+    it('should not migrate panel with old Text Panel id', () => {
+      const oldAngularPanel: any = model.panels[0];
+      expect(oldAngularPanel.id).toEqual(2);
+      expect(oldAngularPanel.type).toEqual('text');
+      expect(oldAngularPanel.title).toEqual('Angular Text Panel');
+      expect(oldAngularPanel.content).toEqual(
+        '# Angular Text Panel\n# $constant\n\nFor markdown syntax help: [commonmark.org/help](https://commonmark.org/help/)\n\n## $text\n\n'
+      );
+      expect(oldAngularPanel.mode).toEqual('markdown');
+    });
+
+    it('should migrate panels with new Text Panel id', () => {
+      const reactPanel: any = model.panels[1];
+      expect(reactPanel.id).toEqual(3);
+      expect(reactPanel.type).toEqual('text');
+      expect(reactPanel.title).toEqual('React Text Panel from scratch');
+      expect(reactPanel.options.content).toEqual(
+        '# React Text Panel from scratch\n# $constant\n\nFor markdown syntax help: [commonmark.org/help](https://commonmark.org/help/)\n\n## $text'
+      );
+      expect(reactPanel.options.mode).toEqual('markdown');
+    });
+
+    it('should clean up old angular options for panels with new Text Panel id', () => {
+      const reactPanel: any = model.panels[2];
+      expect(reactPanel.id).toEqual(4);
+      expect(reactPanel.type).toEqual('text');
+      expect(reactPanel.title).toEqual('React Text Panel from Angular Panel');
+      expect(reactPanel.options.content).toEqual(
+        '# React Text Panel from Angular Panel\n# $constant\n\nFor markdown syntax help: [commonmark.org/help](https://commonmark.org/help/)\n\n## $text'
+      );
+      expect(reactPanel.options.mode).toEqual('markdown');
+      expect(reactPanel.options.angular).toBeUndefined();
+    });
+  });
+
+  describe('when migrating constant variables so they are always hidden', () => {
+    let model: DashboardModel;
+
+    beforeEach(() => {
+      model = new DashboardModel({
+        templating: {
+          list: [
+            {
+              type: 'query',
+              hide: VariableHide.dontHide,
+              datasource: null,
+              allFormat: '',
+            },
+            {
+              type: 'query',
+              hide: VariableHide.hideLabel,
+              datasource: null,
+              allFormat: '',
+            },
+            {
+              type: 'query',
+              hide: VariableHide.hideVariable,
+              datasource: null,
+              allFormat: '',
+            },
+            {
+              type: 'constant',
+              hide: VariableHide.dontHide,
+              query: 'default value',
+              current: { selected: true, text: 'A', value: 'B' },
+              options: [{ selected: true, text: 'A', value: 'B' }],
+              datasource: null,
+              allFormat: '',
+            },
+            {
+              type: 'constant',
+              hide: VariableHide.hideLabel,
+              query: 'default value',
+              current: { selected: true, text: 'A', value: 'B' },
+              options: [{ selected: true, text: 'A', value: 'B' }],
+              datasource: null,
+              allFormat: '',
+            },
+            {
+              type: 'constant',
+              hide: VariableHide.hideVariable,
+              query: 'default value',
+              current: { selected: true, text: 'A', value: 'B' },
+              options: [{ selected: true, text: 'A', value: 'B' }],
+              datasource: null,
+              allFormat: '',
+            },
+          ],
+        },
+      });
+    });
+
+    it('should have six variables after migration', () => {
+      expect(model.templating.list.length).toBe(6);
+    });
+
+    it('should not touch other variable types', () => {
+      expect(model.templating.list[0].hide).toEqual(VariableHide.dontHide);
+      expect(model.templating.list[1].hide).toEqual(VariableHide.hideLabel);
+      expect(model.templating.list[2].hide).toEqual(VariableHide.hideVariable);
+    });
+
+    it('should migrate visible constant variables to textbox variables', () => {
+      expect(model.templating.list[3]).toEqual({
+        type: 'textbox',
+        hide: VariableHide.dontHide,
+        query: 'default value',
+        current: { selected: true, text: 'default value', value: 'default value' },
+        options: [{ selected: true, text: 'default value', value: 'default value' }],
+        datasource: null,
+        allFormat: '',
+      });
+      expect(model.templating.list[4]).toEqual({
+        type: 'textbox',
+        hide: VariableHide.hideLabel,
+        query: 'default value',
+        current: { selected: true, text: 'default value', value: 'default value' },
+        options: [{ selected: true, text: 'default value', value: 'default value' }],
+        datasource: null,
+        allFormat: '',
+      });
+    });
+
+    it('should change current and options for hidden constant variables', () => {
+      expect(model.templating.list[5]).toEqual({
+        type: 'constant',
+        hide: VariableHide.hideVariable,
+        query: 'default value',
+        current: { selected: true, text: 'default value', value: 'default value' },
+        options: [{ selected: true, text: 'default value', value: 'default value' }],
+        datasource: null,
+        allFormat: '',
+      });
+    });
+  });
 });
 
 function createRow(options: any, panelDescriptions: any[]) {
@@ -583,7 +908,7 @@ function createRow(options: any, panelDescriptions: any[]) {
   let { height } = options;
   height = height * PANEL_HEIGHT_STEP;
   const panels: any[] = [];
-  _.each(panelDescriptions, panelDesc => {
+  _.each(panelDescriptions, (panelDesc) => {
     const panel = { span: panelDesc[0] };
     if (panelDesc.length > 1) {
       //@ts-ignore

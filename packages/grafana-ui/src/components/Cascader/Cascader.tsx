@@ -1,30 +1,33 @@
 import React from 'react';
 import { Icon } from '../Icon/Icon';
-// @ts-ignore
 import RCCascader from 'rc-cascader';
 
-import { Select } from '../Forms/Select/Select';
-import { FormInputSize } from '../Forms/types';
-import { Input } from '../Forms/Input/Input';
+import { Select } from '../Select/Select';
+import { Input } from '../Input/Input';
 import { SelectableValue } from '@grafana/data';
 import { css } from 'emotion';
+import { onChangeCascader } from './optionMappings';
+import memoizeOne from 'memoize-one';
 
-interface CascaderProps {
-  /** The seperator between levels in the search */
+export interface CascaderProps {
+  /** The separator between levels in the search */
   separator?: string;
   placeholder?: string;
   options: CascaderOption[];
+  /** Changes the value for every selection, including branch nodes. Defaults to true. */
+  changeOnSelect?: boolean;
   onSelect(val: string): void;
-  size?: FormInputSize;
+  /** Sets the width to a multiple of 8px. Should only be used with inline forms. Setting width of the container is preferred in other cases.*/
+  width?: number;
   initialValue?: string;
   allowCustomValue?: boolean;
   /** A function for formatting the message for custom value creation. Only applies when allowCustomValue is set to true*/
   formatCreateLabel?: (val: string) => string;
+  displayAllSelectedLevels?: boolean;
 }
 
 interface CascaderState {
   isSearching: boolean;
-  searchableOptions: Array<SelectableValue<string[]>>;
   focusCascade: boolean;
   //Array for cascade navigation
   rcValue: SelectableValue<string[]>;
@@ -32,11 +35,18 @@ interface CascaderState {
 }
 
 export interface CascaderOption {
+  /**
+   *  The value used under the hood
+   */
   value: any;
+  /**
+   *  The label to display in the UI
+   */
   label: string;
   /** Items will be just flattened into the main list of items recursively. */
   items?: CascaderOption[];
   disabled?: boolean;
+  /** Avoid using */
   title?: string;
   /**  Children will be shown in a submenu. Use 'items' instead, as 'children' exist to ensure backwards compatibility.*/
   children?: CascaderOption[];
@@ -48,19 +58,22 @@ const disableDivFocus = css(`
 }
 `);
 
+const DEFAULT_SEPARATOR = '/';
+
 export class Cascader extends React.PureComponent<CascaderProps, CascaderState> {
   constructor(props: CascaderProps) {
     super(props);
-    const searchableOptions = this.flattenOptions(props.options);
+    const searchableOptions = this.getSearchableOptions(props.options);
     const { rcValue, activeLabel } = this.setInitialValue(searchableOptions, props.initialValue);
     this.state = {
       isSearching: false,
       focusCascade: false,
-      searchableOptions,
       rcValue,
       activeLabel,
     };
   }
+
+  static defaultProps = { changeOnSelect: true };
 
   flattenOptions = (options: CascaderOption[], optionPath: CascaderOption[] = []) => {
     let selectOptions: Array<SelectableValue<string[]>> = [];
@@ -70,8 +83,8 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
       if (!option.items) {
         selectOptions.push({
           singleLabel: cpy[cpy.length - 1].label,
-          label: cpy.map(o => o.label).join(this.props.separator || ' / '),
-          value: cpy.map(o => o.value),
+          label: cpy.map((o) => o.label).join(this.props.separator || ` ${DEFAULT_SEPARATOR} `),
+          value: cpy.map((o) => o.value),
         });
       } else {
         selectOptions = [...selectOptions, ...this.flattenOptions(option.items, cpy)];
@@ -79,6 +92,8 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
     }
     return selectOptions;
   };
+
+  getSearchableOptions = memoizeOne((options: CascaderOption[]) => this.flattenOptions(options));
 
   setInitialValue(searchableOptions: Array<SelectableValue<string[]>>, initValue?: string) {
     if (!initValue) {
@@ -90,7 +105,7 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
       if (optionPath.indexOf(initValue) === optionPath.length - 1) {
         return {
           rcValue: optionPath,
-          activeLabel: option.singleLabel || '',
+          activeLabel: this.props.displayAllSelectedLevels ? option.label : option.singleLabel || '',
         };
       }
     }
@@ -104,7 +119,10 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
   onChange = (value: string[], selectedOptions: CascaderOption[]) => {
     this.setState({
       rcValue: value,
-      activeLabel: selectedOptions[selectedOptions.length - 1].label,
+      focusCascade: true,
+      activeLabel: this.props.displayAllSelectedLevels
+        ? selectedOptions.map((option) => option.label).join(this.props.separator || DEFAULT_SEPARATOR)
+        : selectedOptions[selectedOptions.length - 1].label,
     });
 
     this.props.onSelect(selectedOptions[selectedOptions.length - 1].value);
@@ -114,7 +132,7 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
   onSelect = (obj: SelectableValue<string[]>) => {
     const valueArray = obj.value || [];
     this.setState({
-      activeLabel: obj.singleLabel || '',
+      activeLabel: this.props.displayAllSelectedLevels ? obj.label : obj.singleLabel || '',
       rcValue: valueArray,
       isSearching: false,
     });
@@ -128,12 +146,6 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
       isSearching: false,
     });
     this.props.onSelect(value);
-  };
-
-  onClick = () => {
-    this.setState({
-      focusCascade: true,
-    });
   };
 
   onBlur = () => {
@@ -172,8 +184,10 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
   };
 
   render() {
-    const { size, allowCustomValue, placeholder } = this.props;
-    const { focusCascade, isSearching, searchableOptions, rcValue, activeLabel } = this.state;
+    const { allowCustomValue, placeholder, width, changeOnSelect, options } = this.props;
+    const { focusCascade, isSearching, rcValue, activeLabel } = this.state;
+
+    const searchableOptions = this.getSearchableOptions(options);
 
     return (
       <div>
@@ -185,18 +199,16 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
             onChange={this.onSelect}
             onBlur={this.onBlur}
             options={searchableOptions}
-            size={size}
             onCreateOption={this.onCreateOption}
             formatCreateLabel={this.props.formatCreateLabel}
+            width={width}
           />
         ) : (
           <RCCascader
-            onChange={this.onChange}
-            onClick={this.onClick}
+            onChange={onChangeCascader(this.onChange)}
             options={this.props.options}
-            isFocused={focusCascade}
-            onBlur={this.onBlurCascade}
-            value={rcValue}
+            changeOnSelect={changeOnSelect}
+            value={rcValue.value}
             fieldNames={{ label: 'label', value: 'value', children: 'items' }}
             expandIcon={null}
             // Required, otherwise the portal that the popup is shown in will render under other components
@@ -206,12 +218,19 @@ export class Cascader extends React.PureComponent<CascaderProps, CascaderState> 
           >
             <div className={disableDivFocus}>
               <Input
-                size={size}
+                width={width}
                 placeholder={placeholder}
+                onBlur={this.onBlurCascade}
                 value={activeLabel}
                 onKeyDown={this.onInputKeyDown}
                 onChange={() => {}}
-                suffix={focusCascade ? <Icon name="caret-up" /> : <Icon name="caret-down" />}
+                suffix={
+                  focusCascade ? (
+                    <Icon name="angle-up" />
+                  ) : (
+                    <Icon name="angle-down" style={{ marginBottom: 0, marginLeft: '4px' }} />
+                  )
+                }
               />
             </div>
           </RCCascader>

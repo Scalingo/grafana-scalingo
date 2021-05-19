@@ -1,14 +1,16 @@
 import React from 'react';
-import { storiesOf } from '@storybook/react';
-import { DataSourceHttpSettings } from './DataSourceHttpSettings';
 import { DataSourceSettings } from '@grafana/data';
+
+import { DataSourceHttpSettings } from './DataSourceHttpSettings';
 import { UseState } from '../../utils/storybook/UseState';
+import mdx from './DataSourceHttpSettings.mdx';
 
 const settingsMock: DataSourceSettings<any, any> = {
   id: 4,
   orgId: 1,
   name: 'gdev-influxdb',
   type: 'influxdb',
+  typeName: 'Influxdb',
   typeLogoUrl: '',
   access: 'direct',
   url: 'http://localhost:8086',
@@ -24,16 +26,26 @@ const settingsMock: DataSourceSettings<any, any> = {
     timeInterval: '15s',
     httpMode: 'GET',
     keepCookies: ['cookie1', 'cookie2'],
+    serverName: '',
   },
   secureJsonData: {
     password: true,
   },
+  secureJsonFields: {},
   readOnly: true,
 };
 
-const DataSourceHttpSettingsStories = storiesOf('Panel/DataSource/DataSourceHttpSettings', module);
+export default {
+  title: 'Data Source/DataSourceHttpSettings',
+  component: DataSourceHttpSettings,
+  parameters: {
+    docs: {
+      page: mdx,
+    },
+  },
+};
 
-DataSourceHttpSettingsStories.add('default', () => {
+export const basic = () => {
   return (
     <UseState initialState={settingsMock} logState>
       {(dataSourceSettings, updateDataSourceSettings) => {
@@ -48,4 +60,4 @@ DataSourceHttpSettingsStories.add('default', () => {
       }}
     </UseState>
   );
-});
+};

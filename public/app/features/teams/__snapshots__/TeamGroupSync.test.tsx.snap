@@ -10,23 +10,20 @@ exports[`Render should render component 1`] = `
     >
       External group sync
     </h3>
-    <Component
+    <Tooltip
       content="Sync LDAP or OAuth groups with your Grafana teams."
       placement="auto"
     >
-      <div
-        className="page-sub-heading-icon"
-      >
-        <i
-          className="gicon gicon-question gicon--has-hover"
-        />
-      </div>
-    </Component>
+      <Icon
+        className="icon--has-hover page-sub-heading-icon"
+        name="question-circle"
+      />
+    </Tooltip>
     <div
       className="page-action-bar__spacer"
     />
   </div>
-  <Component
+  <SlideDown
     in={false}
   >
     <div
@@ -36,8 +33,8 @@ exports[`Render should render component 1`] = `
         className="cta-form__close btn btn-transparent"
         onClick={[Function]}
       >
-        <i
-          className="fa fa-close"
+        <Icon
+          name="times"
         />
       </button>
       <h5>
@@ -71,9 +68,9 @@ exports[`Render should render component 1`] = `
         </div>
       </form>
     </div>
-  </Component>
+  </SlideDown>
   <EmptyListCTA
-    buttonIcon="gicon gicon-team"
+    buttonIcon="users-alt"
     buttonTitle="Add Group"
     onClick={[Function]}
     proTip="Sync LDAP or OAuth groups with your Grafana teams."
@@ -95,18 +92,15 @@ exports[`Render should render groups table 1`] = `
     >
       External group sync
     </h3>
-    <Component
+    <Tooltip
       content="Sync LDAP or OAuth groups with your Grafana teams."
       placement="auto"
     >
-      <div
-        className="page-sub-heading-icon"
-      >
-        <i
-          className="gicon gicon-question gicon--has-hover"
-        />
-      </div>
-    </Component>
+      <Icon
+        className="icon--has-hover page-sub-heading-icon"
+        name="question-circle"
+      />
+    </Tooltip>
     <div
       className="page-action-bar__spacer"
     />
@@ -114,13 +108,13 @@ exports[`Render should render groups table 1`] = `
       className="btn btn-primary pull-right"
       onClick={[Function]}
     >
-      <i
-        className="fa fa-plus"
+      <Icon
+        name="plus"
       />
        Add group
     </button>
   </div>
-  <Component
+  <SlideDown
     in={false}
   >
     <div
@@ -130,8 +124,8 @@ exports[`Render should render groups table 1`] = `
         className="cta-form__close btn btn-transparent"
         onClick={[Function]}
       >
-        <i
-          className="fa fa-close"
+        <Icon
+          name="times"
         />
       </button>
       <h5>
@@ -165,7 +159,7 @@ exports[`Render should render groups table 1`] = `
         </div>
       </form>
     </div>
-  </Component>
+  </SlideDown>
   <div
     className="admin-list-table"
   >
@@ -204,8 +198,13 @@ exports[`Render should render groups table 1`] = `
               className="btn btn-danger btn-small"
               onClick={[Function]}
             >
-              <i
-                className="fa fa-remove"
+              <Icon
+                name="times"
+                style={
+                  Object {
+                    "marginBottom": 0,
+                  }
+                }
               />
             </a>
           </td>
@@ -227,8 +226,13 @@ exports[`Render should render groups table 1`] = `
               className="btn btn-danger btn-small"
               onClick={[Function]}
             >
-              <i
-                className="fa fa-remove"
+              <Icon
+                name="times"
+                style={
+                  Object {
+                    "marginBottom": 0,
+                  }
+                }
               />
             </a>
           </td>
@@ -250,8 +254,13 @@ exports[`Render should render groups table 1`] = `
               className="btn btn-danger btn-small"
               onClick={[Function]}
             >
-              <i
-                className="fa fa-remove"
+              <Icon
+                name="times"
+                style={
+                  Object {
+                    "marginBottom": 0,
+                  }
+                }
               />
             </a>
           </td>

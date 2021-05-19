@@ -5,6 +5,7 @@ import { DashboardModel } from 'app/features/dashboard/state';
 import { act } from 'react-dom/test-utils';
 
 jest.mock('@grafana/runtime', () => ({
+  ...((jest.requireActual('@grafana/runtime') as unknown) as object),
   getBackendSrv: () => ({ get: jest.fn().mockResolvedValue([]), search: jest.fn().mockResolvedValue([]) }),
 }));
 
@@ -16,6 +17,9 @@ jest.mock('app/core/services/context_srv', () => ({
 
 jest.mock('app/features/plugins/datasource_srv', () => ({}));
 jest.mock('app/features/expressions/ExpressionDatasource', () => ({}));
+jest.mock('app/features/manage-dashboards/services/ValidationSrv', () => ({
+  validateNewDashboardName: () => true,
+}));
 
 const prepareDashboardMock = (panel: any) => {
   const json = {
@@ -36,13 +40,14 @@ const renderAndSubmitForm = async (dashboard: any, submitSpy: any) => {
       dashboard={dashboard as DashboardModel}
       onCancel={() => {}}
       onSuccess={() => {}}
-      onSubmit={async jsonModel => {
+      onSubmit={async (jsonModel) => {
         submitSpy(jsonModel);
         return {};
       }}
     />
   );
 
+  // @ts-ignore strict null error below
   await act(async () => {
     const button = container.find('button[aria-label="Save dashboard button"]');
     button.simulate('submit');

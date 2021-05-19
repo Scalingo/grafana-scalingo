@@ -6,21 +6,7 @@ import { ShareSnapshot } from './ShareSnapshot';
 import { ShareExport } from './ShareExport';
 import { ShareEmbed } from './ShareEmbed';
 import { ShareModalTabModel } from './types';
-
-const shareCommonTabs: ShareModalTabModel[] = [
-  { label: 'Link', value: 'link', component: ShareLink },
-  { label: 'Snapshot', value: 'snapshot', component: ShareSnapshot },
-];
-
-// prettier-ignore
-const shareDashboardTabs: ShareModalTabModel[] = [
-  { label: 'Export', value: 'export', component: ShareExport },
-];
-
-// prettier-ignore
-const sharePanelTabs: ShareModalTabModel[] = [
-  { label: 'Embed', value: 'embed', component: ShareEmbed },
-];
+import { contextSrv } from 'app/core/core';
 
 const customDashboardTabs: ShareModalTabModel[] = [];
 const customPanelTabs: ShareModalTabModel[] = [];
@@ -43,13 +29,18 @@ function getInitialState(props: Props): State {
 
 function getTabs(props: Props) {
   const { panel } = props;
-  const tabs = [...shareCommonTabs];
+
+  const tabs: ShareModalTabModel[] = [{ label: 'Link', value: 'link', component: ShareLink }];
+
+  if (contextSrv.isSignedIn) {
+    tabs.push({ label: 'Snapshot', value: 'snapshot', component: ShareSnapshot });
+  }
 
   if (panel) {
-    tabs.push(...sharePanelTabs);
+    tabs.push({ label: 'Embed', value: 'embed', component: ShareEmbed });
     tabs.push(...customPanelTabs);
   } else {
-    tabs.push(...shareDashboardTabs);
+    tabs.push({ label: 'Export', value: 'export', component: ShareExport });
     tabs.push(...customDashboardTabs);
   }
 
@@ -89,7 +80,7 @@ export class ShareModal extends React.Component<Props, State> {
 
   getActiveTab() {
     const { tabs, activeTab } = this.state;
-    return tabs.find(t => t.value === activeTab);
+    return tabs.find((t) => t.value === activeTab)!;
   }
 
   renderTitle() {
@@ -101,7 +92,7 @@ export class ShareModal extends React.Component<Props, State> {
     return (
       <ModalTabsHeader
         title={title}
-        icon="share-square-o"
+        icon="share-alt"
         tabs={tabs}
         activeTab={activeTab}
         onChangeTab={this.onSelectTab}
@@ -112,7 +103,7 @@ export class ShareModal extends React.Component<Props, State> {
   render() {
     const { dashboard, panel } = this.props;
     const activeTabModel = this.getActiveTab();
-    const ActiveTab = activeTabModel?.component;
+    const ActiveTab = activeTabModel.component;
 
     return (
       <Modal isOpen={true} title={this.renderTitle()} onDismiss={this.onDismiss}>

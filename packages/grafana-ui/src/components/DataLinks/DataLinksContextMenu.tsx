@@ -1,19 +1,23 @@
 import React from 'react';
-import { WithContextMenu } from '../ContextMenu/WithContextMenu';
-import { LinkModelSupplier } from '@grafana/data';
-import { linkModelToContextMenuItems } from '../../utils/dataLinks';
+import { FieldConfig, LinkModel } from '@grafana/data';
+import { selectors } from '@grafana/e2e-selectors';
 import { css } from 'emotion';
+import { WithContextMenu } from '../ContextMenu/WithContextMenu';
+import { linkModelToContextMenuItems } from '../../utils/dataLinks';
 
 interface DataLinksContextMenuProps {
-  children: (props: { openMenu?: React.MouseEventHandler<HTMLElement>; targetClassName?: string }) => JSX.Element;
-  links?: LinkModelSupplier<any>;
+  children: (props: DataLinksContextMenuApi) => JSX.Element;
+  links: () => LinkModel[];
+  config: FieldConfig;
 }
 
-export const DataLinksContextMenu: React.FC<DataLinksContextMenuProps> = ({ children, links }) => {
-  if (!links) {
-    return children({});
-  }
+export interface DataLinksContextMenuApi {
+  openMenu?: React.MouseEventHandler<HTMLElement>;
+  targetClassName?: string;
+}
 
+export const DataLinksContextMenu: React.FC<DataLinksContextMenuProps> = ({ children, links, config }) => {
+  const linksCounter = config.links!.length;
   const getDataLinksContextMenuItems = () => {
     return [{ items: linkModelToContextMenuItems(links), label: 'Data links' }];
   };
@@ -23,11 +27,27 @@ export const DataLinksContextMenu: React.FC<DataLinksContextMenuProps> = ({ chil
     cursor: context-menu;
   `;
 
-  return (
-    <WithContextMenu getContextMenuItems={getDataLinksContextMenuItems}>
-      {({ openMenu }) => {
-        return children({ openMenu, targetClassName });
-      }}
-    </WithContextMenu>
-  );
+  if (linksCounter > 1) {
+    return (
+      <WithContextMenu getContextMenuItems={getDataLinksContextMenuItems}>
+        {({ openMenu }) => {
+          return children({ openMenu, targetClassName });
+        }}
+      </WithContextMenu>
+    );
+  } else {
+    const linkModel = links()[0];
+    return (
+      <a
+        href={linkModel.href}
+        onClick={linkModel.onClick}
+        target={linkModel.target}
+        title={linkModel.title}
+        style={{ display: 'flex' }}
+        aria-label={selectors.components.DataLinksContextMenu.singleLink}
+      >
+        {children({})}
+      </a>
+    );
+  }
 };

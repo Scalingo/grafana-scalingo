@@ -60,7 +60,7 @@ func FloatFromString(f string, nullString string) (Float, error) {
 // UnmarshalJSON implements json.Unmarshaler.
 // It supports number and null input.
 // 0 will not be considered a null Float.
-// It also supports unmarshalling a sql.NullFloat64.
+// It also supports unmarshaling a sql.NullFloat64.
 func (f *Float) UnmarshalJSON(data []byte) error {
 	var err error
 	var v interface{}
@@ -132,20 +132,6 @@ func (f Float) FullString() string {
 	}
 
 	return fmt.Sprintf("%f", f.Float64)
-}
-
-// SetValid changes this Float's value and also sets it to be non-null.
-func (f *Float) SetValid(n float64) {
-	f.Float64 = n
-	f.Valid = true
-}
-
-// Ptr returns a pointer to this Float's value, or a nil pointer if this Float is null.
-func (f Float) Ptr() *float64 {
-	if !f.Valid {
-		return nil
-	}
-	return &f.Float64
 }
 
 // IsZero returns true for invalid Floats, for future omitempty support (Go 1.4?)

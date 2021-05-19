@@ -1,23 +1,17 @@
 import { css } from 'emotion';
 import { GrafanaTheme } from '@grafana/data';
-import { ButtonSize } from '../Button/types';
-
-export const getFocusCss = (theme: GrafanaTheme) => `
-  outline: 2px dotted transparent;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 2px ${theme.colors.pageBg}, 0 0 0px 4px ${theme.colors.formFocusOutline};
-  transition: all 0.2s cubic-bezier(0.19, 1, 0.22, 1);
-`;
+import { focusCss } from '../../themes/mixins';
+import { ComponentSize } from '../../types/size';
 
 export const getFocusStyle = (theme: GrafanaTheme) => css`
   &:focus {
-    ${getFocusCss(theme)}
+    ${focusCss(theme)}
   }
 `;
 
 export const sharedInputStyle = (theme: GrafanaTheme, invalid = false) => {
   const colors = theme.colors;
-  const borderColor = invalid ? colors.redBase : colors.formInputBorder;
+  const borderColor = invalid ? theme.palette.redBase : colors.formInputBorder;
 
   return css`
     background-color: ${colors.formInputBg};
@@ -31,12 +25,14 @@ export const sharedInputStyle = (theme: GrafanaTheme, invalid = false) => {
     &:-webkit-autofill:hover {
       /* Welcome to 2005. This is a HACK to get rid od Chromes default autofill styling */
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0), inset 0 0 0 100px ${colors.formInputBg}!important;
+      -webkit-text-fill-color: ${colors.formInputText} !important;
     }
 
     &:-webkit-autofill:focus {
       /* Welcome to 2005. This is a HACK to get rid od Chromes default autofill styling */
-      box-shadow: 0 0 0 2px ${theme.colors.pageBg}, 0 0 0px 4px ${theme.colors.formFocusOutline},
+      box-shadow: 0 0 0 2px ${theme.colors.bodyBg}, 0 0 0px 4px ${theme.colors.formFocusOutline},
         inset 0 0 0 1px rgba(255, 255, 255, 0), inset 0 0 0 100px ${colors.formInputBg}!important;
+      -webkit-text-fill-color: ${colors.formInputText} !important;
     }
 
     &:hover {
@@ -90,34 +86,29 @@ export const inputSizesPixels = (size: string) => {
   }
 };
 
-export const getPropertiesForButtonSize = (theme: GrafanaTheme, size: ButtonSize) => {
+export function getPropertiesForButtonSize(size: ComponentSize, theme: GrafanaTheme) {
+  const { typography, height, spacing } = theme;
+
   switch (size) {
     case 'sm':
       return {
-        padding: `0 ${theme.spacing.sm}`,
-        fontSize: theme.typography.size.sm,
-        height: theme.height.sm,
-      };
-
-    case 'md':
-      return {
-        padding: `0 ${theme.spacing.md}`,
-        fontSize: theme.typography.size.md,
-        height: `${theme.spacing.formButtonHeight}px`,
+        padding: spacing.base,
+        fontSize: typography.size.sm,
+        height: height.sm,
       };
 
     case 'lg':
       return {
-        padding: `0 ${theme.spacing.lg}`,
-        fontSize: theme.typography.size.lg,
-        height: theme.height.lg,
+        padding: spacing.base * 3,
+        fontSize: typography.size.lg,
+        height: height.lg,
       };
-
+    case 'md':
     default:
       return {
-        padding: `0 ${theme.spacing.md}`,
-        fontSize: theme.typography.size.base,
-        height: theme.height.md,
+        padding: spacing.base * 2,
+        fontSize: typography.size.md,
+        height: height.md,
       };
   }
-};
+}

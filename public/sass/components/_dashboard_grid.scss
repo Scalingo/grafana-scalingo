@@ -7,6 +7,8 @@
 }
 
 .react-grid-item {
+  touch-action: initial !important;
+
   &:hover {
     .react-resizable-handle {
       visibility: visible;
@@ -16,13 +18,7 @@
 
 .panel-in-fullscreen {
   .react-grid-layout {
-    height: 100% !important;
-  }
-
-  .dashboard-container--has-submenu {
-    .react-grid-layout {
-      height: calc(100% - 50px) !important;
-    }
+    height: 90% !important;
   }
 
   .react-grid-item {

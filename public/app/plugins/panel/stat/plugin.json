@@ -2,12 +2,11 @@
   "type": "panel",
   "name": "Stat",
   "id": "stat",
-  "state": "beta",
 
   "info": {
     "description": "Singlestat Panel for Grafana",
     "author": {
-      "name": "Grafana Project",
+      "name": "Grafana Labs",
       "url": "https://grafana.com"
     },
     "logos": {

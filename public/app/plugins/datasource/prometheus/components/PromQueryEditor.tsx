@@ -2,14 +2,17 @@ import _ from 'lodash';
 import React, { PureComponent } from 'react';
 
 // Types
-import { FormLabel, Select, Switch } from '@grafana/ui';
-import { SelectableValue, QueryEditorProps } from '@grafana/data';
-
+import { InlineFormLabel, LegacyForms, Select } from '@grafana/ui';
+import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { PrometheusDatasource } from '../datasource';
-import { PromQuery, PromOptions } from '../types';
+import { PromOptions, PromQuery } from '../types';
 
 import PromQueryField from './PromQueryField';
 import PromLink from './PromLink';
+import { PromExemplarField } from './PromExemplarField';
+
+const { Switch } = LegacyForms;
+
 export type Props = QueryEditorProps<PrometheusDatasource, PromQuery, PromOptions>;
 
 const FORMAT_OPTIONS: Array<SelectableValue<string>> = [
@@ -24,11 +27,12 @@ const INTERVAL_FACTOR_OPTIONS: Array<SelectableValue<number>> = _.map([1, 2, 3, 
 }));
 
 interface State {
-  legendFormat: string;
+  legendFormat?: string;
   formatOption: SelectableValue<string>;
-  interval: string;
+  interval?: string;
   intervalFactorOption: SelectableValue<number>;
   instant: boolean;
+  exemplar: boolean;
 }
 
 export class PromQueryEditor extends PureComponent<Props, State> {
@@ -38,7 +42,7 @@ export class PromQueryEditor extends PureComponent<Props, State> {
   constructor(props: Props) {
     super(props);
     // Use default query to prevent undefined input values
-    const defaultQuery: Partial<PromQuery> = { expr: '', legendFormat: '', interval: '' };
+    const defaultQuery: Partial<PromQuery> = { expr: '', legendFormat: '', interval: '', exemplar: true };
     const query = Object.assign({}, defaultQuery, props.query);
     this.query = query;
     // Query target properties that are fully controlled inputs
@@ -47,11 +51,12 @@ export class PromQueryEditor extends PureComponent<Props, State> {
       interval: query.interval,
       legendFormat: query.legendFormat,
       // Select options
-      formatOption: FORMAT_OPTIONS.find(option => option.value === query.format) || FORMAT_OPTIONS[0],
+      formatOption: FORMAT_OPTIONS.find((option) => option.value === query.format) || FORMAT_OPTIONS[0],
       intervalFactorOption:
-        INTERVAL_FACTOR_OPTIONS.find(option => option.value === query.intervalFactor) || INTERVAL_FACTOR_OPTIONS[0],
+        INTERVAL_FACTOR_OPTIONS.find((option) => option.value === query.intervalFactor) || INTERVAL_FACTOR_OPTIONS[0],
       // Switch options
       instant: Boolean(query.instant),
+      exemplar: Boolean(query.exemplar),
     };
   }
 
@@ -87,21 +92,29 @@ export class PromQueryEditor extends PureComponent<Props, State> {
     this.setState({ legendFormat });
   };
 
+  onExemplarChange = (isEnabled: boolean) => {
+    this.query.exemplar = isEnabled;
+    this.setState({ exemplar: isEnabled }, this.onRunQuery);
+  };
+
   onRunQuery = () => {
     const { query } = this;
-    this.props.onChange(query);
+    // Change of query.hide happens outside of this component and is just passed as prop. We have to update it when running queries.
+    const { hide } = this.props.query;
+    this.props.onChange({ ...query, hide });
     this.props.onRunQuery();
   };
 
   render() {
-    const { datasource, query, data } = this.props;
-    const { formatOption, instant, interval, intervalFactorOption, legendFormat } = this.state;
+    const { datasource, query, range, data } = this.props;
+    const { formatOption, instant, interval, intervalFactorOption, legendFormat, exemplar } = this.state;
 
     return (
       <div>
         <PromQueryField
           datasource={datasource}
           query={query}
+          range={range}
           onRunQuery={this.onRunQuery}
           onChange={this.onFieldChange}
           history={[]}
@@ -110,13 +123,13 @@ export class PromQueryEditor extends PureComponent<Props, State> {
 
         <div className="gf-form-inline">
           <div className="gf-form">
-            <FormLabel
+            <InlineFormLabel
               width={7}
               tooltip="Controls the name of the time series, using name or pattern. For example
         {{hostname}} will be replaced with label value for the label hostname."
             >
               Legend
-            </FormLabel>
+            </InlineFormLabel>
             <input
               type="text"
               className="gf-form-input"
@@ -128,17 +141,18 @@ export class PromQueryEditor extends PureComponent<Props, State> {
           </div>
 
           <div className="gf-form">
-            <FormLabel
+            <InlineFormLabel
               width={7}
               tooltip={
                 <>
                   An additional lower limit for the step parameter of the Prometheus query and for the{' '}
-                  <code>$__interval</code> variable. The limit is absolute and not modified by the "Resolution" setting.
+                  <code>$__interval</code> and <code>$__rate_interval</code> variables. The limit is absolute and not
+                  modified by the &quot;Resolution&quot; setting.
                 </>
               }
             >
               Min step
-            </FormLabel>
+            </InlineFormLabel>
             <input
               type="text"
               className="gf-form-input width-8"
@@ -160,18 +174,26 @@ export class PromQueryEditor extends PureComponent<Props, State> {
           </div>
 
           <div className="gf-form">
-            <div className="gf-form-label">Format</div>
-            <Select isSearchable={false} options={FORMAT_OPTIONS} onChange={this.onFormatChange} value={formatOption} />
+            <div className="gf-form-label width-7">Format</div>
+            <Select
+              width={16}
+              isSearchable={false}
+              options={FORMAT_OPTIONS}
+              onChange={this.onFormatChange}
+              value={formatOption}
+            />
             <Switch label="Instant" checked={instant} onChange={this.onInstantChange} />
 
-            <FormLabel width={10} tooltip="Link to Graph in Prometheus">
+            <InlineFormLabel width={10} tooltip="Link to Graph in Prometheus">
               <PromLink
                 datasource={datasource}
                 query={this.query} // Use modified query
                 panelData={data}
               />
-            </FormLabel>
+            </InlineFormLabel>
           </div>
+
+          <PromExemplarField isEnabled={exemplar} onChange={this.onExemplarChange} datasource={datasource} />
         </div>
       </div>
     );

@@ -11,12 +11,12 @@ export function graphiteAddFunc($compile: any) {
     '<input type="text"' + ' class="gf-form-input"' + ' spellcheck="false" style="display:none"></input>';
 
   const buttonTemplate =
-    '<a class="gf-form-label query-part dropdown-toggle"' +
+    '<a class="gf-form-label dropdown-toggle"' +
     ' tabindex="1" gf-dropdown="functionMenu" data-toggle="dropdown">' +
-    '<i class="fa fa-plus"></i></a>';
+    '<icon name="\'plus\'" size="\'sm\'"></name></a>';
 
   return {
-    link: function($scope: any, elem: JQuery) {
+    link: function ($scope: any, elem: JQuery) {
       const ctrl = $scope.ctrl;
 
       const $input = $(inputTemplate);
@@ -40,7 +40,7 @@ export function graphiteAddFunc($compile: any) {
             if (!funcDef) {
               // try find close match
               value = value.toLowerCase();
-              funcDef = _.find(allFunctions, funcName => {
+              funcDef = _.find(allFunctions, (funcName) => {
                 return funcName.toLowerCase().indexOf(value) === 0;
               });
 
@@ -138,7 +138,7 @@ coreModule.directive('graphiteAddFunc', graphiteAddFunc);
 function createFunctionDropDownMenu(funcDefs: FuncDef[]) {
   const categories: any = {};
 
-  _.forEach(funcDefs, funcDef => {
+  _.forEach(funcDefs, (funcDef) => {
     if (!funcDef.category) {
       return;
     }

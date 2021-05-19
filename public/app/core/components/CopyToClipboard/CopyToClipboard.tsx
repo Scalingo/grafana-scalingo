@@ -20,6 +20,17 @@ export class CopyToClipboard extends PureComponent<Props> {
   }
 
   componentDidMount() {
+    this.initClipboardJS();
+  }
+
+  componentDidUpdate() {
+    if (this.clipboardjs) {
+      this.clipboardjs.destroy();
+    }
+    this.initClipboardJS();
+  }
+
+  initClipboardJS = () => {
     const { text, onSuccess, onError } = this.props;
 
     this.clipboardjs = new ClipboardJS(this.myRef.current, {
@@ -27,20 +38,20 @@ export class CopyToClipboard extends PureComponent<Props> {
     });
 
     if (onSuccess) {
-      this.clipboardjs.on('success', evt => {
+      this.clipboardjs.on('success', (evt) => {
         evt.clearSelection();
         onSuccess(evt);
       });
     }
 
     if (onError) {
-      this.clipboardjs.on('error', evt => {
+      this.clipboardjs.on('error', (evt) => {
         console.error('Action:', evt.action);
         console.error('Trigger:', evt.trigger);
         onError(evt);
       });
     }
-  }
+  };
 
   componentWillUnmount() {
     if (this.clipboardjs) {

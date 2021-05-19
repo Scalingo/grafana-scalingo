@@ -1,8 +1,14 @@
 export * from './matchers/ids';
 export * from './transformers/ids';
 export * from './matchers';
-export * from './transformers';
+export { standardTransformers } from './transformers';
 export * from './fieldReducer';
-export { FilterFieldsByNameTransformerOptions } from './transformers/filterByName';
-export { FilterFramesByRefIdTransformerOptions } from './transformers/filterByRefId';
-export { ReduceTransformerOptions } from './transformers/reduce';
+export { transformDataFrame } from './transformDataFrame';
+export {
+  TransformerRegistryItem,
+  TransformerUIProps,
+  standardTransformersRegistry,
+} from './standardTransformersRegistry';
+export { RegexpOrNamesMatcherOptions, ByNamesMatcherOptions, ByNamesMatcherMode } from './matchers/nameMatcher';
+export { RenameByRegexTransformerOptions } from './transformers/renameByRegex';
+export { outerJoinDataFrames } from './transformers/joinDataFrames';

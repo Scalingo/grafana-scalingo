@@ -53,12 +53,12 @@ function dashboardGridScenario(description: string, scenarioFn: (ctx: ScenarioCo
     let setupFn: () => void;
 
     const ctx: ScenarioContext = {
-      setup: fn => {
+      setup: (fn) => {
         setupFn = fn;
       },
       props: {
-        isEditing: false,
-        isFullscreen: false,
+        editPanel: null,
+        viewPanel: null,
         scrollTop: 0,
         dashboard: getTestDashboard(),
       },
@@ -80,7 +80,7 @@ function dashboardGridScenario(description: string, scenarioFn: (ctx: ScenarioCo
 }
 
 describe('DashboardGrid', () => {
-  dashboardGridScenario('Can render dashboard grid', ctx => {
+  dashboardGridScenario('Can render dashboard grid', (ctx) => {
     ctx.setup(() => {});
 
     it('Should render', () => {

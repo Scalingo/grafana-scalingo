@@ -16,7 +16,7 @@ import {
 } from '@grafana/data';
 import { Unsubscribable } from 'rxjs';
 import { PanelModel } from 'app/features/dashboard/state';
-import { CoreEvents } from 'app/types';
+import { PanelQueryRunner } from '../query/state/PanelQueryRunner';
 
 class MetricsPanelCtrl extends PanelCtrl {
   scope: any;
@@ -33,8 +33,9 @@ class MetricsPanelCtrl extends PanelCtrl {
   timeInfo?: string;
   skipDataOnInit: boolean;
   dataList: LegacyResponseData[];
-  querySubscription?: Unsubscribable;
+  querySubscription?: Unsubscribable | null;
   useDataFrames = false;
+  panelData?: PanelData;
 
   constructor($scope: any, $injector: any) {
     super($scope, $injector);
@@ -52,8 +53,10 @@ class MetricsPanelCtrl extends PanelCtrl {
   }
 
   private onMetricsPanelMounted() {
-    const queryRunner = this.panel.getQueryRunner();
-    this.querySubscription = queryRunner.getData().subscribe(this.panelDataObserver);
+    const queryRunner = this.panel.getQueryRunner() as PanelQueryRunner;
+    this.querySubscription = queryRunner
+      .getData({ withTransforms: true, withFieldConfig: true })
+      .subscribe(this.panelDataObserver);
   }
 
   private onPanelTearDown() {
@@ -77,6 +80,12 @@ class MetricsPanelCtrl extends PanelCtrl {
       if (!_.isArray(data)) {
         data = data.data;
       }
+
+      this.panelData = {
+        state: LoadingState.Done,
+        series: data,
+        timeRange: this.range,
+      };
 
       // Defer panel rendering till the next digest cycle.
       // For some reason snapshot panels don't init at this time, so this helps to avoid rendering issues.
@@ -128,6 +137,8 @@ class MetricsPanelCtrl extends PanelCtrl {
   // Updates the response with information from the stream
   panelDataObserver = {
     next: (data: PanelData) => {
+      this.panelData = data;
+
       if (data.state === LoadingState.Error) {
         this.loading = false;
         this.processDataError(data.error);
@@ -155,7 +166,7 @@ class MetricsPanelCtrl extends PanelCtrl {
         this.handleDataFrames(data.series);
       } else {
         // Make the results look as if they came directly from a <6.2 datasource request
-        const legacy = data.series.map(v => toLegacyResponseData(v));
+        const legacy = data.series.map((v) => toLegacyResponseData(v));
         this.handleQueryResult({ data: legacy });
       }
 
@@ -185,11 +196,10 @@ class MetricsPanelCtrl extends PanelCtrl {
       queries: panel.targets,
       panelId: panel.id,
       dashboardId: this.dashboard.id,
-      timezone: this.dashboard.timezone,
+      timezone: this.dashboard.getTimezone(),
       timeInfo: this.timeInfo,
       timeRange: this.range,
-      widthPixels: this.width,
-      maxDataPoints: panel.maxDataPoints,
+      maxDataPoints: panel.maxDataPoints || this.width,
       minInterval: panel.interval,
       scopedVars: panel.scopedVars,
       cacheTimeout: panel.cacheTimeout,
@@ -201,11 +211,11 @@ class MetricsPanelCtrl extends PanelCtrl {
     this.loading = false;
 
     if (this.dashboard && this.dashboard.snapshot) {
-      this.panel.snapshotData = data.map(frame => toDataFrameDTO(frame));
+      this.panel.snapshotData = data.map((frame) => toDataFrameDTO(frame));
     }
 
     try {
-      this.events.emit(CoreEvents.dataFramesReceived, data);
+      this.events.emit(PanelEvents.dataFramesReceived, data);
     } catch (err) {
       this.processDataError(err);
     }

@@ -14,7 +14,6 @@ type SocialGrafanaCom struct {
 	*SocialBase
 	url                  string
 	allowedOrganizations []string
-	allowSignup          bool
 }
 
 type OrgRecord struct {
@@ -27,10 +26,6 @@ func (s *SocialGrafanaCom) Type() int {
 
 func (s *SocialGrafanaCom) IsEmailAllowed(email string) bool {
 	return true
-}
-
-func (s *SocialGrafanaCom) IsSignupAllowed() bool {
-	return s.allowSignup
 }
 
 func (s *SocialGrafanaCom) IsOrganizationMember(organizations []OrgRecord) bool {
@@ -59,7 +54,7 @@ func (s *SocialGrafanaCom) UserInfo(client *http.Client, token *oauth2.Token) (*
 		Orgs  []OrgRecord `json:"orgs"`
 	}
 
-	response, err := HttpGet(client, s.url+"/api/oauth2/user")
+	response, err := s.httpGet(client, s.url+"/api/oauth2/user")
 	if err != nil {
 		return nil, fmt.Errorf("Error getting user info: %s", err)
 	}

@@ -59,7 +59,6 @@ func TestMacroEngine(t *testing.T) {
 			})
 
 			Convey("interpolate __timeGroup function pre 5.3 compatibility", func() {
-
 				sql, err := engine.Interpolate(query, timeRange, "SELECT $__timeGroup(time_column,'5m'), value")
 				So(err, ShouldBeNil)
 
@@ -72,7 +71,6 @@ func TestMacroEngine(t *testing.T) {
 			})
 
 			Convey("interpolate __timeGroup function", func() {
-
 				sql, err := engine.Interpolate(query, timeRange, "SELECT $__timeGroup(time_column,'5m')")
 				So(err, ShouldBeNil)
 				sql2, err := engine.Interpolate(query, timeRange, "SELECT $__timeGroupAlias(time_column,'5m')")
@@ -83,7 +81,6 @@ func TestMacroEngine(t *testing.T) {
 			})
 
 			Convey("interpolate __timeGroup function with spaces between args", func() {
-
 				sql, err := engine.Interpolate(query, timeRange, "$__timeGroup(time_column , '5m')")
 				So(err, ShouldBeNil)
 				sql2, err := engine.Interpolate(query, timeRange, "$__timeGroupAlias(time_column , '5m')")
@@ -94,19 +91,31 @@ func TestMacroEngine(t *testing.T) {
 			})
 
 			Convey("interpolate __timeGroup function with TimescaleDB enabled", func() {
-
 				sql, err := engineTS.Interpolate(query, timeRange, "GROUP BY $__timeGroup(time_column,'5m')")
 				So(err, ShouldBeNil)
 
-				So(sql, ShouldEqual, "GROUP BY time_bucket('300s',time_column)")
+				So(sql, ShouldEqual, "GROUP BY time_bucket('300.0s',time_column)")
 			})
 
 			Convey("interpolate __timeGroup function with spaces between args and TimescaleDB enabled", func() {
-
 				sql, err := engineTS.Interpolate(query, timeRange, "GROUP BY $__timeGroup(time_column , '5m')")
 				So(err, ShouldBeNil)
 
-				So(sql, ShouldEqual, "GROUP BY time_bucket('300s',time_column)")
+				So(sql, ShouldEqual, "GROUP BY time_bucket('300.0s',time_column)")
+			})
+
+			Convey("interpolate __timeGroup function with large time range as an argument and TimescaleDB enabled", func() {
+				sql, err := engineTS.Interpolate(query, timeRange, "GROUP BY $__timeGroup(time_column , '12d')")
+				So(err, ShouldBeNil)
+
+				So(sql, ShouldEqual, "GROUP BY time_bucket('1036800.0s',time_column)")
+			})
+
+			Convey("interpolate __timeGroup function with small time range as an argument and TimescaleDB enabled", func() {
+				sql, err := engineTS.Interpolate(query, timeRange, "GROUP BY $__timeGroup(time_column , '200ms')")
+				So(err, ShouldBeNil)
+
+				So(sql, ShouldEqual, "GROUP BY time_bucket('0.2s',time_column)")
 			})
 
 			Convey("interpolate __unixEpochFilter function", func() {
@@ -136,7 +145,6 @@ func TestMacroEngine(t *testing.T) {
 			})
 
 			Convey("interpolate __unixEpochGroup function", func() {
-
 				sql, err := engine.Interpolate(query, timeRange, "SELECT $__unixEpochGroup(time_column,'5m')")
 				So(err, ShouldBeNil)
 				sql2, err := engine.Interpolate(query, timeRange, "SELECT $__unixEpochGroupAlias(time_column,'5m')")
@@ -145,7 +153,6 @@ func TestMacroEngine(t *testing.T) {
 				So(sql, ShouldEqual, "SELECT floor(time_column/300)*300")
 				So(sql2, ShouldEqual, sql+" AS \"time\"")
 			})
-
 		})
 
 		Convey("Given a time range between 1960-02-01 07:00 and 1965-02-03 08:00", func() {
@@ -213,8 +220,6 @@ func TestMacroEngine(t *testing.T) {
 
 				So(sql, ShouldEqual, fmt.Sprintf("WHERE time_column BETWEEN '%s' AND '%s'", from.Format(time.RFC3339Nano), to.Format(time.RFC3339Nano)))
 			})
-
 		})
-
 	})
 }

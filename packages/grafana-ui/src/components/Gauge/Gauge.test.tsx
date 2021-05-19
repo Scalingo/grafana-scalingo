@@ -3,7 +3,7 @@ import { shallow } from 'enzyme';
 
 import { Gauge, Props } from './Gauge';
 import { getTheme } from '../../themes';
-import { ThresholdsMode, FieldConfig } from '@grafana/data';
+import { ThresholdsMode, FieldConfig, FieldColorModeId } from '@grafana/data';
 
 jest.mock('jquery', () => ({
   plot: jest.fn(),
@@ -13,6 +13,9 @@ const setup = (propOverrides?: FieldConfig) => {
   const field: FieldConfig = {
     min: 0,
     max: 100,
+    color: {
+      mode: FieldColorModeId.Thresholds,
+    },
     thresholds: {
       mode: ThresholdsMode.Absolute,
       steps: [{ value: -Infinity, color: '#7EB26D' }],
@@ -48,7 +51,7 @@ describe('Get thresholds formatted', () => {
       thresholds: { mode: ThresholdsMode.Absolute, steps: [{ value: -Infinity, color: '#7EB26D' }] },
     });
 
-    expect(instance.getFormattedThresholds()).toEqual([
+    expect(instance.getFormattedThresholds(2)).toEqual([
       { value: 0, color: '#7EB26D' },
       { value: 100, color: '#7EB26D' },
     ]);
@@ -66,7 +69,7 @@ describe('Get thresholds formatted', () => {
       },
     });
 
-    expect(instance.getFormattedThresholds()).toEqual([
+    expect(instance.getFormattedThresholds(2)).toEqual([
       { value: 0, color: '#7EB26D' },
       { value: 50, color: '#7EB26D' },
       { value: 75, color: '#EAB839' },

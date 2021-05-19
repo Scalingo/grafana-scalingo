@@ -21,15 +21,19 @@ p {
 
 // Ex: 14px base font * 85% = about 12px
 small {
-  font-size: 85%;
+  font-size: $font-size-sm;
 }
+
+b,
 strong {
   font-weight: $font-weight-semi-bold;
 }
+
 em {
   font-style: italic;
   color: $headings-color;
 }
+
 cite {
   font-style: normal;
 }
@@ -310,7 +314,12 @@ address {
 
 a.external-link {
   color: $external-link-color;
-  text-decoration: underline;
+  text-decoration: normal;
+
+  &:hover {
+    color: $external-link-color;
+    text-decoration: underline;
+  }
 }
 
 .link {
@@ -356,10 +365,12 @@ a.external-link {
   }
 
   a {
-    text-decoration: underline;
     color: $external-link-color;
+    text-decoration: none;
+
     &:hover {
-      color: lighten($external-link-color, 10%);
+      color: $external-link-color;
+      text-decoration: underline;
     }
   }
 

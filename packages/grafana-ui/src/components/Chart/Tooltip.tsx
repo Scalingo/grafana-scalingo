@@ -1,16 +1,17 @@
 import React from 'react';
 import { css } from 'emotion';
 import { Portal } from '../Portal/Portal';
-import { Dimensions } from '@grafana/data';
+import { Dimensions, TimeZone } from '@grafana/data';
 import { FlotPosition } from '../Graph/types';
 import { TooltipContainer } from './TooltipContainer';
+import { useStyles } from '../../themes';
 
-export type TooltipMode = 'single' | 'multi';
+export type TooltipMode = 'single' | 'multi' | 'none';
 
 // Describes active dimensions user interacts with
 // It's a key-value pair where:
 // - key is the name of the dimension
-// - value is a tuple addresing which column and row from given dimension is active.
+// - value is a tuple addressing which column and row from given dimension is active.
 //   If row is undefined, it means that we are not hovering over a datapoint
 export type ActiveDimensions<T extends Dimensions = any> = { [key in keyof T]: [number, number | undefined] | null };
 
@@ -21,7 +22,7 @@ export interface TooltipContentProps<T extends Dimensions = any> {
   // TODO: type this better, no good idea how yet
   dimensions: T; // Dimension[]
   activeDimensions?: ActiveDimensions<T>;
-  // timeZone: TimeZone;
+  timeZone?: TimeZone;
   pos: FlotPosition;
   mode: TooltipMode;
 }
@@ -46,18 +47,10 @@ export interface TooltipProps {
 }
 
 export const Tooltip: React.FC<TooltipProps> = ({ content, position, offset }) => {
+  const styles = useStyles(getStyles);
   if (position) {
     return (
-      <Portal
-        className={css`
-          position: absolute;
-          top: 0;
-          left: 0;
-          pointer-events: none;
-          width: 100%;
-          height: 100%;
-        `}
-      >
+      <Portal className={styles.portal}>
         <TooltipContainer position={position} offset={offset || { x: 0, y: 0 }}>
           {content}
         </TooltipContainer>
@@ -68,3 +61,16 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, position, offset }) =
 };
 
 Tooltip.displayName = 'ChartTooltip';
+
+const getStyles = () => {
+  return {
+    portal: css`
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+    `,
+  };
+};

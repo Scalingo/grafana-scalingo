@@ -1,13 +1,16 @@
+import { DataFrame, FieldConfigSource, PanelPlugin } from '@grafana/data';
+
 export interface PanelEditorTab {
   id: string;
   text: string;
   active: boolean;
+  icon: string;
 }
 
 export enum PanelEditorTabId {
-  Queries = 'queries',
+  Query = 'query',
   Transform = 'transform',
-  Visualization = 'visualization',
+  Visualize = 'visualize',
   Alert = 'alert',
 }
 
@@ -18,7 +21,16 @@ export enum DisplayMode {
 }
 
 export const displayModes = [
-  { value: DisplayMode.Fill, label: 'Fill', description: 'Use all avaliable space' },
+  { value: DisplayMode.Fill, label: 'Fill', description: 'Use all available space' },
   { value: DisplayMode.Fit, label: 'Fit', description: 'Fit in the space keeping ratio' },
   { value: DisplayMode.Exact, label: 'Exact', description: 'Same size as the dashboard' },
 ];
+
+/** @internal */
+export interface Props {
+  plugin: PanelPlugin;
+  config: FieldConfigSource;
+  onChange: (config: FieldConfigSource) => void;
+  /* Helpful for IntelliSense */
+  data: DataFrame[];
+}

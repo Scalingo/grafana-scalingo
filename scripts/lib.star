@@ -1,4 +1,4 @@
-grabpl_version = '0.5.43'
+grabpl_version = '0.5.58'
 build_image = 'grafana/build-container:1.4.1'
 publish_image = 'grafana/grafana-ci-deploy:1.3.1'
 grafana_docker_image = 'grafana/drone-grafana-docker:0.3.2'
@@ -116,6 +116,8 @@ def init_steps(edition, platform, ver_mode, is_downstream=False, install_deps=Tr
             'curl -fLO https://github.com/jwilder/dockerize/releases/download/v$${DOCKERIZE_VERSION}/dockerize-linux-amd64-v$${DOCKERIZE_VERSION}.tar.gz',
             'tar -C bin -xzvf dockerize-linux-amd64-v$${DOCKERIZE_VERSION}.tar.gz',
             'rm dockerize-linux-amd64-v$${DOCKERIZE_VERSION}.tar.gz',
+            'mv /etc/apt/sources.list.d/nodesource.list /etc/apt/sources.list.d/nodesource.list.disabled; apt-get update; apt-get -y upgrade; apt-get  install -y ca-certificates libgnutls30',
+            'mv /etc/apt/sources.list.d/nodesource.list.disabled /etc/apt/sources.list.d/nodesource.list',
             'yarn install --frozen-lockfile --no-progress',
         ])
     if edition in ('enterprise', 'enterprise2'):
@@ -124,7 +126,7 @@ def init_steps(edition, platform, ver_mode, is_downstream=False, install_deps=Tr
             committish = '${DRONE_TAG}'
             source_commit = ' ${DRONE_TAG}'
         elif ver_mode == 'test-release':
-            committish = 'master'
+            committish = 'main'
         elif ver_mode == 'release-branch':
             committish = '${DRONE_BRANCH}'
         else:
@@ -765,7 +767,8 @@ def postgres_integration_tests_step():
             'POSTGRES_HOST': 'postgres',
         },
         'commands': [
-            'apt-get update',
+            'mv /etc/apt/sources.list.d/nodesource.list /etc/apt/sources.list.d/nodesource.list.disabled; apt-get update; apt-get -y upgrade; apt-get  install -y ca-certificates libgnutls30',
+            'mv /etc/apt/sources.list.d/nodesource.list.disabled /etc/apt/sources.list.d/nodesource.list',
             'apt-get install -yq postgresql-client',
             './bin/dockerize -wait tcp://postgres:5432 -timeout 120s',
             'psql -p 5432 -h postgres -U grafanatest -d grafanatest -f ' +
@@ -789,7 +792,8 @@ def mysql_integration_tests_step():
             'MYSQL_HOST': 'mysql',
         },
         'commands': [
-            'apt-get update',
+            'mv /etc/apt/sources.list.d/nodesource.list /etc/apt/sources.list.d/nodesource.list.disabled; apt-get update; apt-get -y upgrade; apt-get  install -y ca-certificates libgnutls30',
+            'mv /etc/apt/sources.list.d/nodesource.list.disabled /etc/apt/sources.list.d/nodesource.list',
             'apt-get install -yq default-mysql-client',
             './bin/dockerize -wait tcp://mysql:3306 -timeout 120s',
             'cat devenv/docker/blocks/mysql_tests/setup.sql | mysql -h mysql -P 3306 -u root -prootpass',
@@ -938,7 +942,6 @@ def get_windows_steps(edition, ver_mode, is_downstream=False):
         init_cmds.extend([
             '$$ProgressPreference = "SilentlyContinue"',
             'Invoke-WebRequest https://grafana-downloads.storage.googleapis.com/grafana-build-pipeline/v{}/windows/grabpl.exe -OutFile grabpl.exe'.format(grabpl_version),
-            '.\\grabpl.exe verify-drone',
         ])
     steps = [
         {
@@ -1003,7 +1006,7 @@ def get_windows_steps(edition, ver_mode, is_downstream=False):
         if ver_mode == 'release':
             committish = '${DRONE_TAG}'
         elif ver_mode == 'test-release':
-            committish = 'master'
+            committish = 'main'
         elif ver_mode == 'release-branch':
             committish = '$$env:DRONE_BRANCH'
         else:
@@ -1042,7 +1045,6 @@ def get_windows_steps(edition, ver_mode, is_downstream=False):
             'rm -force grabpl.exe',
             'C:\\App\\grabpl.exe init-enterprise C:\\App\\grafana-enterprise{}'.format(source_commit),
             'cp C:\\App\\grabpl.exe grabpl.exe',
-            '.\\grabpl.exe verify-drone',
         ])
 
     return steps

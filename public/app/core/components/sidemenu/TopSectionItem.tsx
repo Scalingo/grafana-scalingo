@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import SideMenuDropDown from './SideMenuDropDown';
 import { Icon } from '@grafana/ui';
-import { NavModelItem } from '@grafana/data';
+import { NavModelItem, textUtil } from '@grafana/data';
 
 export interface Props {
   link: NavModelItem;
@@ -9,9 +9,10 @@ export interface Props {
 }
 
 const TopSectionItem: FC<Props> = ({ link, onClick }) => {
+  const sanitizedUrl = textUtil.sanitizeAngularInterpolation(link.url ?? '');
   return (
     <div className="sidemenu-item dropdown">
-      <a className="sidemenu-link" href={link.url} target={link.target} onClick={onClick}>
+      <a className="sidemenu-link" href={sanitizedUrl} target={link.target} onClick={onClick}>
         <span className="icon-circle sidemenu-icon">
           {link.icon && <Icon name={link.icon as any} size="xl" />}
           {link.img && <img src={link.img} />}

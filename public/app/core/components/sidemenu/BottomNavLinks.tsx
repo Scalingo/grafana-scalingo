@@ -2,7 +2,7 @@ import React, { PureComponent } from 'react';
 import { css } from 'emotion';
 import appEvents from '../../app_events';
 import { User } from '../../services/context_srv';
-import { NavModelItem } from '@grafana/data';
+import { NavModelItem, textUtil } from '@grafana/data';
 import { Icon, IconName } from '@grafana/ui';
 import { CoreEvents } from 'app/types';
 import { OrgSwitcher } from '../OrgSwitcher';
@@ -47,9 +47,10 @@ export default class BottomNavLinks extends PureComponent<Props, State> {
       children = getFooterLinks();
     }
 
+    const sanitizedUrl = textUtil.sanitizeAngularInterpolation(link.url ?? '');
     return (
       <div className="sidemenu-item dropdown dropup">
-        <a href={link.url} className="sidemenu-link" target={link.target}>
+        <a href={sanitizedUrl} className="sidemenu-link" target={link.target}>
           <span className="icon-circle sidemenu-icon">
             {link.icon && <Icon name={link.icon as IconName} size="xl" />}
             {link.img && <img src={link.img} />}
@@ -79,9 +80,10 @@ export default class BottomNavLinks extends PureComponent<Props, State> {
           {showSwitcherModal && <OrgSwitcher onDismiss={this.toggleSwitcherModal} />}
 
           {children.map((child, index) => {
+            const sanitizedChildrenUrl = textUtil.sanitizeAngularInterpolation(child.url ?? '');
             return (
               <li key={`${child.text}-${index}`}>
-                <a href={child.url} target={child.target} rel="noopener">
+                <a href={sanitizedChildrenUrl} target={child.target} rel="noopener">
                   {child.icon && <Icon name={child.icon as IconName} className={subMenuIconClassName} />}
                   {child.text}
                 </a>

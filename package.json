@@ -316,7 +316,7 @@
     "puppeteer": "node_modules/puppeteer-core"
   },
   "engines": {
-    "node": ">= 14"
+    "node": "16"
   },
   "volta": {
     "node": "14.15.1"

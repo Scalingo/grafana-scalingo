@@ -34,7 +34,7 @@
     "precommit": "yarn run lint-staged",
     "prettier:check": "prettier --list-different \"**/*.{scss,md,mdx}\"",
     "prettier:write": "prettier --list-different \"**/*.{scss,md,mdx}\" --write",
-    "scalingo-postbuild": "npm run build && bash ./install-plugins.sh",
+    "scalingo-postbuild": "env NODE_OPTIONS=--max_old_space_size=8192 yarn run build && bash ./install-plugins.sh",
     "start": "yarn themes:generate && webpack --progress --color --watch --env noTsCheck=0 --config scripts/webpack/webpack.dev.js",
     "start:hot": "yarn themes:generate && webpack serve --progress --color --config scripts/webpack/webpack.hot.js",
     "start:noTsCheck": "yarn themes:generate && webpack --progress --color --watch --env noTsCheck=1 --config scripts/webpack/webpack.dev.js",

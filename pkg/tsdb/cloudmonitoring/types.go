@@ -5,17 +5,17 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/grafana/grafana/pkg/tsdb"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 type (
 	cloudMonitoringQueryExecutor interface {
-		run(ctx context.Context, tsdbQuery *tsdb.TsdbQuery, e *CloudMonitoringExecutor) (*tsdb.QueryResult, cloudMonitoringResponse, string, error)
-		parseResponse(queryRes *tsdb.QueryResult, data cloudMonitoringResponse, executedQueryString string) error
-		parseToAnnotations(queryRes *tsdb.QueryResult, data cloudMonitoringResponse, title string, text string, tags string) error
+		run(ctx context.Context, req *backend.QueryDataRequest, s *Service, dsInfo datasourceInfo) (
+			*backend.DataResponse, cloudMonitoringResponse, string, error)
+		parseResponse(dr *backend.DataResponse, data cloudMonitoringResponse, executedQueryString string) error
+		parseToAnnotations(dr *backend.DataResponse, data cloudMonitoringResponse, title, text string) error
 		buildDeepLink() string
 		getRefID() string
-		getUnit() string
 	}
 
 	// Used to build time series filters
@@ -29,7 +29,6 @@ type (
 		Selector    string
 		Service     string
 		Slo         string
-		Unit        string
 	}
 
 	// Used to build MQL queries
@@ -39,8 +38,7 @@ type (
 		Query       string
 		IntervalMS  int64
 		AliasBy     string
-		timeRange   *tsdb.TimeRange
-		Unit        string
+		timeRange   backend.TimeRange
 	}
 
 	metricQuery struct {
@@ -55,7 +53,8 @@ type (
 		View               string
 		EditorMode         string
 		Query              string
-		Unit               string
+		Preprocessor       string
+		PreprocessorType   preprocessorType
 	}
 
 	sloQuery struct {
@@ -96,6 +95,7 @@ type (
 		TimeSeries           []timeSeries         `json:"timeSeries"`
 		TimeSeriesDescriptor timeSeriesDescriptor `json:"timeSeriesDescriptor"`
 		TimeSeriesData       timeSeriesData       `json:"timeSeriesData"`
+		Unit                 string               `json:"unit"`
 	}
 )
 
@@ -115,7 +115,7 @@ type timeSeriesDescriptor struct {
 type timeSeriesData []struct {
 	LabelValues []struct {
 		BoolValue   bool   `json:"boolValue"`
-		Int64Value  int64  `json:"int64Value"`
+		Int64Value  string `json:"int64Value"`
 		StringValue string `json:"stringValue"`
 	} `json:"labelValues"`
 	PointData []struct {
@@ -188,4 +188,51 @@ type timeSeries struct {
 			} `json:"distributionValue"`
 		} `json:"value"`
 	} `json:"points"`
+}
+
+type metricDescriptorResponse struct {
+	Descriptors []metricDescriptor `json:"metricDescriptors"`
+}
+type metricDescriptor struct {
+	ValueType        string `json:"valueType"`
+	MetricKind       string `json:"metricKind"`
+	Type             string `json:"type"`
+	Unit             string `json:"unit"`
+	Service          string `json:"service"`
+	ServiceShortName string `json:"serviceShortName"`
+	DisplayName      string `json:"displayName"`
+	Description      string `json:"description"`
+}
+
+type projectResponse struct {
+	Projects []projectDescription `json:"projects"`
+}
+
+type projectDescription struct {
+	ProjectID string `json:"projectId"`
+	Name      string `json:"name"`
+}
+
+type serviceResponse struct {
+	Services []serviceDescription `json:"services"`
+}
+type serviceDescription struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+}
+
+type sloResponse struct {
+	SLOs []sloDescription `json:"serviceLevelObjectives"`
+}
+
+type sloDescription struct {
+	Name        string  `json:"name"`
+	DisplayName string  `json:"displayName"`
+	Goal        float64 `json:"goal"`
+}
+
+type selectableValue struct {
+	Value string  `json:"value"`
+	Label string  `json:"label"`
+	Goal  float64 `json:"goal,omitempty"`
 }

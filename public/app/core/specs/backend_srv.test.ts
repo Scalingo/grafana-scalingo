@@ -5,10 +5,9 @@ import { AppEvents, DataQueryErrorType, EventBusExtended } from '@grafana/data';
 
 import { BackendSrv } from '../services/backend_srv';
 import { ContextSrv, User } from '../services/context_srv';
-import { describe, expect } from '../../../test/lib/common';
 import { BackendSrvRequest, FetchError } from '@grafana/runtime';
 import { TokenRevokedModal } from '../../features/users/TokenRevokedModal';
-import { CoreEvents } from '../../types';
+import { ShowModalReactEvent } from '../../types/events';
 
 const getTestContext = (overides?: object) => {
   const defaults = {
@@ -39,6 +38,7 @@ const getTestContext = (overides?: object) => {
 
   const appEventsMock: EventBusExtended = ({
     emit: jest.fn(),
+    publish: jest.fn(),
   } as any) as EventBusExtended;
 
   const user: User = ({
@@ -153,7 +153,7 @@ describe('backendSrv', () => {
 
     describe('when making an unsuccessful call and conditions for retry are favorable and loginPing does not throw', () => {
       it('then it should retry', async () => {
-        jest.useFakeTimers();
+        jest.useFakeTimers('modern');
         const url = '/api/dashboard/';
         const { backendSrv, appEventsMock, logoutMock, expectRequestCallChain } = getTestContext({
           ok: false,
@@ -201,13 +201,15 @@ describe('backendSrv', () => {
         backendSrv.loginPing = jest.fn();
 
         await backendSrv.request({ url, method: 'GET', retry: 0 }).catch(() => {
-          expect(appEventsMock.emit).toHaveBeenCalledTimes(1);
-          expect(appEventsMock.emit).toHaveBeenCalledWith(CoreEvents.showModalReact, {
-            component: TokenRevokedModal,
-            props: {
-              maxConcurrentSessions: 3,
-            },
-          });
+          expect(appEventsMock.publish).toHaveBeenCalledTimes(1);
+          expect(appEventsMock.publish).toHaveBeenCalledWith(
+            new ShowModalReactEvent({
+              component: TokenRevokedModal,
+              props: {
+                maxConcurrentSessions: 3,
+              },
+            })
+          );
           expect(backendSrv.loginPing).not.toHaveBeenCalled();
           expect(logoutMock).not.toHaveBeenCalled();
           expectRequestCallChain({ url, method: 'GET', retry: 0 });
@@ -217,7 +219,7 @@ describe('backendSrv', () => {
 
     describe('when making an unsuccessful call and conditions for retry are favorable and retry throws', () => {
       it('then it throw error', async () => {
-        jest.useFakeTimers();
+        jest.useFakeTimers('modern');
         const { backendSrv, appEventsMock, logoutMock, expectRequestCallChain } = getTestContext({
           ok: false,
           status: 401,
@@ -272,7 +274,7 @@ describe('backendSrv', () => {
 
     describe('when making an unsuccessful 422 call', () => {
       it('then it should emit Validation failed message', async () => {
-        jest.useFakeTimers();
+        jest.useFakeTimers('modern');
         const { backendSrv, appEventsMock, logoutMock, expectRequestCallChain } = getTestContext({
           ok: false,
           status: 422,
@@ -305,7 +307,7 @@ describe('backendSrv', () => {
 
     describe('when making an unsuccessful call and we handle the error', () => {
       it('then it should not emit message', async () => {
-        jest.useFakeTimers();
+        jest.useFakeTimers('modern');
         const { backendSrv, appEventsMock, logoutMock, expectRequestCallChain } = getTestContext({
           ok: false,
           status: 404,
@@ -437,14 +439,16 @@ describe('backendSrv', () => {
 
         const url = '/api/dashboard/';
 
-        await backendSrv.datasourceRequest({ url, method: 'GET', retry: 0 }).catch(() => {
-          expect(appEventsMock.emit).toHaveBeenCalledTimes(1);
-          expect(appEventsMock.emit).toHaveBeenCalledWith(CoreEvents.showModalReact, {
-            component: TokenRevokedModal,
-            props: {
-              maxConcurrentSessions: 3,
-            },
-          });
+        await backendSrv.datasourceRequest({ url, method: 'GET', retry: 0 }).catch((error) => {
+          expect(appEventsMock.publish).toHaveBeenCalledTimes(1);
+          expect(appEventsMock.publish).toHaveBeenCalledWith(
+            new ShowModalReactEvent({
+              component: TokenRevokedModal,
+              props: {
+                maxConcurrentSessions: 3,
+              },
+            })
+          );
           expect(backendSrv.loginPing).not.toHaveBeenCalled();
           expect(logoutMock).not.toHaveBeenCalled();
           expectRequestCallChain({ url, method: 'GET', retry: 0 });

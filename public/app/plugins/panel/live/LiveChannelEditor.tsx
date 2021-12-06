@@ -1,18 +1,15 @@
 import React, { PureComponent } from 'react';
-import { css } from 'emotion';
-import { Select, FeatureInfoBox, Label, stylesFactory } from '@grafana/ui';
+import { css } from '@emotion/css';
+import { Select, Alert, Label, stylesFactory } from '@grafana/ui';
 import {
   LiveChannelScope,
   LiveChannelAddress,
-  LiveChannelSupport,
   SelectableValue,
   StandardEditorProps,
-  FeatureState,
   GrafanaTheme,
 } from '@grafana/data';
 
 import { LivePanelOptions } from './types';
-import { getGrafanaLiveCentrifugeSrv } from 'app/features/live/live';
 import { config } from 'app/core/config';
 
 type Props = StandardEditorProps<LiveChannelAddress, any, LivePanelOptions>;
@@ -26,7 +23,6 @@ const scopes: Array<SelectableValue<LiveChannelScope>> = [
 interface State {
   namespaces: Array<SelectableValue<string>>;
   paths: Array<SelectableValue<string>>;
-  support?: LiveChannelSupport;
 }
 
 export class LiveChannelEditor extends PureComponent<Props, State> {
@@ -46,23 +42,9 @@ export class LiveChannelEditor extends PureComponent<Props, State> {
   }
 
   async updateSelectOptions() {
-    const { value } = this.props;
-    const { scope, namespace } = value;
-    const srv = getGrafanaLiveCentrifugeSrv();
-    const namespaces = await srv.scopes[scope].listNamespaces();
-    const support = namespace ? await srv.scopes[scope].getChannelSupport(namespace) : undefined;
-    const paths = support ? await support.getSupportedPaths() : undefined;
-
     this.setState({
-      namespaces,
-      support,
-      paths: paths
-        ? paths.map((p) => ({
-            label: p.path,
-            value: p.path,
-            description: p.description,
-          }))
-        : [],
+      namespaces: [],
+      paths: [],
     });
   }
 
@@ -107,23 +89,27 @@ export class LiveChannelEditor extends PureComponent<Props, State> {
 
     return (
       <>
-        <FeatureInfoBox title="Grafana Live" featureState={FeatureState.alpha}>
-          <p>
-            This supports real-time event streams in grafana core. This feature is under heavy development. Expect the
-            intefaces and structures to change as this becomes more production ready.
-          </p>
-        </FeatureInfoBox>
+        <Alert title="Grafana Live" severity="info">
+          This supports real-time event streams in grafana core. This feature is under heavy development. Expect the
+          intefaces and structures to change as this becomes more production ready.
+        </Alert>
 
         <div>
           <div className={style.dropWrap}>
             <Label>Scope</Label>
-            <Select options={scopes} value={scopes.find((s) => s.value === scope)} onChange={this.onScopeChanged} />
+            <Select
+              menuShouldPortal
+              options={scopes}
+              value={scopes.find((s) => s.value === scope)}
+              onChange={this.onScopeChanged}
+            />
           </div>
 
           {scope && (
             <div className={style.dropWrap}>
               <Label>Namespace</Label>
               <Select
+                menuShouldPortal
                 options={namespaces}
                 value={
                   namespaces.find((s) => s.value === namespace) ??
@@ -140,6 +126,7 @@ export class LiveChannelEditor extends PureComponent<Props, State> {
             <div className={style.dropWrap}>
               <Label>Path</Label>
               <Select
+                menuShouldPortal
                 options={paths}
                 value={findPathOption(paths, path)}
                 onChange={this.onPathChanged}

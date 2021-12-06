@@ -1,4 +1,4 @@
-import { DataSourcePluginMeta, DataSourceSelectItem } from '@grafana/data';
+import { DataSourceInstanceSettings, DataSourcePluginMeta } from '@grafana/data';
 
 import { variableAdapters } from '../adapters';
 import { createAdHocVariableAdapter } from './adapter';
@@ -17,18 +17,19 @@ import {
 } from './actions';
 import { filterAdded, filterRemoved, filtersRestored, filterUpdated } from './reducer';
 import { addVariable, changeVariableProp } from '../state/sharedReducer';
-import { updateLocation } from 'app/core/actions';
 import { VariableModel } from 'app/features/variables/types';
 import { changeVariableEditorExtended, setIdInEditor } from '../editor/reducer';
 import { adHocBuilder } from '../shared/testing/builders';
+import { locationService } from '@grafana/runtime';
 
-const getMetricSources = jest.fn().mockReturnValue([]);
+const getList = jest.fn().mockReturnValue([]);
 const getDatasource = jest.fn().mockResolvedValue({});
 
+locationService.partial = jest.fn();
 jest.mock('app/features/plugins/datasource_srv', () => ({
   getDatasourceSrv: jest.fn(() => ({
     get: getDatasource,
-    getMetricSources,
+    getList,
   })),
 }));
 
@@ -38,7 +39,7 @@ describe('adhoc actions', () => {
   describe('when applyFilterFromTable is dispatched and filter already exist', () => {
     it('then correct actions are dispatched', async () => {
       const options: AdHocTableOptions = {
-        datasource: 'influxdb',
+        datasource: { uid: 'influxdb' },
         key: 'filter-key',
         value: 'filter-value',
         operator: '=',
@@ -66,17 +67,16 @@ describe('adhoc actions', () => {
       const expectedQuery = { 'var-Filters': ['filter-key|!=|filter-existing', 'filter-key|=|filter-value'] };
       const expectedFilter = { key: 'filter-key', value: 'filter-value', operator: '=', condition: '' };
 
-      tester.thenDispatchedActionsShouldEqual(
-        filterAdded(toVariablePayload(variable, expectedFilter)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filterAdded(toVariablePayload(variable, expectedFilter)));
+
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
   describe('when applyFilterFromTable is dispatched and previously no variable or filter exists', () => {
     it('then correct actions are dispatched', async () => {
       const options: AdHocTableOptions = {
-        datasource: 'influxdb',
+        datasource: { uid: 'influxdb' },
         key: 'filter-key',
         value: 'filter-value',
         operator: '=',
@@ -93,16 +93,17 @@ describe('adhoc actions', () => {
 
       tester.thenDispatchedActionsShouldEqual(
         createAddVariableAction(variable),
-        filterAdded(toVariablePayload(variable, expectedFilter)),
-        updateLocation({ query: expectedQuery })
+        filterAdded(toVariablePayload(variable, expectedFilter))
       );
+
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
   describe('when applyFilterFromTable is dispatched and previously no filter exists', () => {
     it('then correct actions are dispatched', async () => {
       const options: AdHocTableOptions = {
-        datasource: 'influxdb',
+        datasource: { uid: 'influxdb' },
         key: 'filter-key',
         value: 'filter-value',
         operator: '=',
@@ -123,17 +124,15 @@ describe('adhoc actions', () => {
       const expectedFilter = { key: 'filter-key', value: 'filter-value', operator: '=', condition: '' };
       const expectedQuery = { 'var-Filters': ['filter-key|=|filter-value'] };
 
-      tester.thenDispatchedActionsShouldEqual(
-        filterAdded(toVariablePayload(variable, expectedFilter)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filterAdded(toVariablePayload(variable, expectedFilter)));
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
   describe('when applyFilterFromTable is dispatched and adhoc variable with other datasource exists', () => {
     it('then correct actions are dispatched', async () => {
       const options: AdHocTableOptions = {
-        datasource: 'influxdb',
+        datasource: { uid: 'influxdb' },
         key: 'filter-key',
         value: 'filter-value',
         operator: '=',
@@ -142,7 +141,7 @@ describe('adhoc actions', () => {
       const existing = adHocBuilder()
         .withId('elastic-filter')
         .withName('elastic-filter')
-        .withDatasource('elasticsearch')
+        .withDatasource({ uid: 'elasticsearch' })
         .build();
 
       const variable = adHocBuilder().withId('Filters').withName('Filters').withDatasource(options.datasource).build();
@@ -157,9 +156,10 @@ describe('adhoc actions', () => {
 
       tester.thenDispatchedActionsShouldEqual(
         createAddVariableAction(variable, 1),
-        filterAdded(toVariablePayload(variable, expectedFilter)),
-        updateLocation({ query: expectedQuery })
+        filterAdded(toVariablePayload(variable, expectedFilter))
       );
+
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
@@ -181,7 +181,7 @@ describe('adhoc actions', () => {
         .withId('elastic-filter')
         .withName('elastic-filter')
         .withFilters([existing])
-        .withDatasource('elasticsearch')
+        .withDatasource({ uid: 'elasticsearch' })
         .build();
 
       const update = { index: 0, filter: updated };
@@ -194,10 +194,9 @@ describe('adhoc actions', () => {
       const expectedQuery = { 'var-elastic-filter': ['key|!=|value'] };
       const expectedUpdate = { index: 0, filter: updated };
 
-      tester.thenDispatchedActionsShouldEqual(
-        filterUpdated(toVariablePayload(variable, expectedUpdate)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filterUpdated(toVariablePayload(variable, expectedUpdate)));
+
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
@@ -219,7 +218,7 @@ describe('adhoc actions', () => {
         .withId('elastic-filter')
         .withName('elastic-filter')
         .withFilters([existing])
-        .withDatasource('elasticsearch')
+        .withDatasource({ uid: 'elasticsearch' })
         .build();
 
       const tester = await reduxTester<RootReducerType>()
@@ -230,10 +229,8 @@ describe('adhoc actions', () => {
       const expectedQuery = { 'var-elastic-filter': ['key|=|value', 'key|!=|value'] };
       const expectedFilter = { key: 'key', value: 'value', operator: '!=', condition: '' };
 
-      tester.thenDispatchedActionsShouldEqual(
-        filterAdded(toVariablePayload(variable, expectedFilter)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filterAdded(toVariablePayload(variable, expectedFilter)));
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
@@ -250,7 +247,7 @@ describe('adhoc actions', () => {
         .withId('elastic-filter')
         .withName('elastic-filter')
         .withFilters([])
-        .withDatasource('elasticsearch')
+        .withDatasource({ uid: 'elasticsearch' })
         .build();
 
       const tester = await reduxTester<RootReducerType>()
@@ -260,10 +257,8 @@ describe('adhoc actions', () => {
 
       const expectedQuery = { 'var-elastic-filter': ['key|=|value'] };
 
-      tester.thenDispatchedActionsShouldEqual(
-        filterAdded(toVariablePayload(variable, adding)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filterAdded(toVariablePayload(variable, adding)));
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
@@ -273,7 +268,7 @@ describe('adhoc actions', () => {
         .withId('elastic-filter')
         .withName('elastic-filter')
         .withFilters([])
-        .withDatasource('elasticsearch')
+        .withDatasource({ uid: 'elasticsearch' })
         .build();
 
       const tester = await reduxTester<RootReducerType>()
@@ -283,10 +278,8 @@ describe('adhoc actions', () => {
 
       const expectedQuery = { 'var-elastic-filter': [] as string[] };
 
-      tester.thenDispatchedActionsShouldEqual(
-        filterRemoved(toVariablePayload(variable, 0)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filterRemoved(toVariablePayload(variable, 0)));
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
@@ -303,7 +296,7 @@ describe('adhoc actions', () => {
         .withId('elastic-filter')
         .withName('elastic-filter')
         .withFilters([filter])
-        .withDatasource('elasticsearch')
+        .withDatasource({ uid: 'elasticsearch' })
         .build();
 
       const tester = await reduxTester<RootReducerType>()
@@ -313,10 +306,8 @@ describe('adhoc actions', () => {
 
       const expectedQuery = { 'var-elastic-filter': [] as string[] };
 
-      tester.thenDispatchedActionsShouldEqual(
-        filterRemoved(toVariablePayload(variable, 0)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filterRemoved(toVariablePayload(variable, 0)));
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
@@ -333,7 +324,7 @@ describe('adhoc actions', () => {
         .withId('elastic-filter')
         .withName('elastic-filter')
         .withFilters([existing])
-        .withDatasource('elasticsearch')
+        .withDatasource({ uid: 'elasticsearch' })
         .build();
 
       const fromUrl = [
@@ -352,17 +343,15 @@ describe('adhoc actions', () => {
         { key: 'key', value: 'value', operator: '=', condition: '', name: 'value-2' },
       ];
 
-      tester.thenDispatchedActionsShouldEqual(
-        filtersRestored(toVariablePayload(variable, expectedFilters)),
-        updateLocation({ query: expectedQuery })
-      );
+      tester.thenDispatchedActionsShouldEqual(filtersRestored(toVariablePayload(variable, expectedFilters)));
+      expect(locationService.partial).toHaveBeenLastCalledWith(expectedQuery);
     });
   });
 
   describe('when initAdHocVariableEditor is dispatched', () => {
     it('then correct actions are dispatched', async () => {
       const datasources = [
-        { ...createDatasource('default', true), value: null },
+        { ...createDatasource('default', true, true), value: null },
         createDatasource('elasticsearch-v1'),
         createDatasource('loki', false),
         createDatasource('influx'),
@@ -370,19 +359,19 @@ describe('adhoc actions', () => {
         createDatasource('elasticsearch-v7'),
       ];
 
-      getMetricSources.mockRestore();
-      getMetricSources.mockReturnValue(datasources);
+      getList.mockRestore();
+      getList.mockReturnValue(datasources);
 
       const tester = reduxTester<RootReducerType>()
         .givenRootReducer(getRootReducer())
         .whenActionIsDispatched(initAdHocVariableEditor());
 
       const expectedDatasources = [
-        { text: '', value: '' },
-        { text: 'default (default)', value: null },
-        { text: 'elasticsearch-v1', value: 'elasticsearch-v1' },
-        { text: 'influx', value: 'influx' },
-        { text: 'elasticsearch-v7', value: 'elasticsearch-v7' },
+        { text: '', value: {} },
+        { text: 'default (default)', value: { uid: 'default', type: 'default' } },
+        { text: 'elasticsearch-v1', value: { uid: 'elasticsearch-v1', type: 'elasticsearch-v1' } },
+        { text: 'influx', value: { uid: 'influx', type: 'influx' } },
+        { text: 'elasticsearch-v7', value: { uid: 'elasticsearch-v7', type: 'elasticsearch-v7' } },
       ];
 
       tester.thenDispatchedActionsShouldEqual(
@@ -393,9 +382,9 @@ describe('adhoc actions', () => {
 
   describe('when changeVariableDatasource is dispatched with unsupported datasource', () => {
     it('then correct actions are dispatched', async () => {
-      const datasource = 'mysql';
-      const loadingText = 'Adhoc filters are applied automatically to all queries that target this datasource';
-      const variable = adHocBuilder().withId('Filters').withName('Filters').withDatasource('influxdb').build();
+      const datasource = { uid: 'mysql' };
+      const loadingText = 'Ad hoc filters are applied automatically to all queries that target this data source';
+      const variable = adHocBuilder().withId('Filters').withName('Filters').withDatasource({ uid: 'influxdb' }).build();
 
       getDatasource.mockRestore();
       getDatasource.mockResolvedValue(null);
@@ -411,7 +400,7 @@ describe('adhoc actions', () => {
         changeVariableProp(toVariablePayload(variable, { propName: 'datasource', propValue: datasource })),
         changeVariableEditorExtended({
           propName: 'infoText',
-          propValue: 'This datasource does not support adhoc filters yet.',
+          propValue: 'This data source does not support ad hoc filters yet.',
         })
       );
     });
@@ -419,9 +408,9 @@ describe('adhoc actions', () => {
 
   describe('when changeVariableDatasource is dispatched with datasource', () => {
     it('then correct actions are dispatched', async () => {
-      const datasource = 'elasticsearch';
-      const loadingText = 'Adhoc filters are applied automatically to all queries that target this datasource';
-      const variable = adHocBuilder().withId('Filters').withName('Filters').withDatasource('influxdb').build();
+      const datasource = { uid: 'elasticsearch' };
+      const loadingText = 'Ad hoc filters are applied automatically to all queries that target this data source';
+      const variable = adHocBuilder().withId('Filters').withName('Filters').withDatasource({ uid: 'influxdb' }).build();
 
       getDatasource.mockRestore();
       getDatasource.mockResolvedValue({
@@ -449,12 +438,14 @@ function createAddVariableAction(variable: VariableModel, index = 0) {
   return addVariable(toVariablePayload(identifier, data));
 }
 
-function createDatasource(name: string, selectable = true): DataSourceSelectItem {
+function createDatasource(name: string, selectable = true, isDefault = false): DataSourceInstanceSettings {
   return {
     name,
-    value: name,
     meta: {
       mixed: !selectable,
     } as DataSourcePluginMeta,
-  };
+    isDefault,
+    uid: name,
+    type: name,
+  } as DataSourceInstanceSettings;
 }

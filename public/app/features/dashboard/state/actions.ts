@@ -2,19 +2,15 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { createSuccessNotification } from 'app/core/copy/appNotification';
 // Actions
-import { loadPluginDashboards } from '../../plugins/state/actions';
-import {
-  cleanUpDashboard,
-  loadDashboardPermissions,
-  panelModelAndPluginReady,
-  setPanelAngularComponent,
-} from './reducers';
+import { loadPluginDashboards } from '../../plugins/admin/state/actions';
+import { cleanUpDashboard, loadDashboardPermissions } from './reducers';
 import { notifyApp } from 'app/core/actions';
-import { loadPanelPlugin } from 'app/features/plugins/state/actions';
+import { updateTimeZoneForSession, updateWeekStartForSession } from 'app/features/profile/state/reducers';
 // Types
 import { DashboardAcl, DashboardAclUpdateDTO, NewDashboardAclItem, PermissionLevel, ThunkResult } from 'app/types';
-import { PanelModel } from './PanelModel';
 import { cancelVariables } from '../../variables/state/actions';
+import { getTimeSrv } from '../services/TimeSrv';
+import { TimeZone } from '@grafana/data';
 
 export function getDashboardPermissions(id: number): ThunkResult<void> {
   return async (dispatch) => {
@@ -117,50 +113,26 @@ export function removeDashboard(uri: string): ThunkResult<void> {
   };
 }
 
-export function initDashboardPanel(panel: PanelModel): ThunkResult<void> {
-  return async (dispatch, getStore) => {
-    let plugin = getStore().plugins.panels[panel.type];
+export const cleanUpDashboardAndVariables = (): ThunkResult<void> => (dispatch, getStore) => {
+  const store = getStore();
+  const dashboard = store.dashboard.getModel();
 
-    if (!plugin) {
-      plugin = await dispatch(loadPanelPlugin(panel.type));
-    }
+  if (dashboard) {
+    dashboard.destroy();
+  }
 
-    if (!panel.plugin) {
-      panel.pluginLoaded(plugin);
-    }
+  getTimeSrv().stopAutoRefresh();
 
-    dispatch(panelModelAndPluginReady({ panelId: panel.id, plugin }));
-  };
-}
-
-export function changePanelPlugin(panel: PanelModel, pluginId: string): ThunkResult<void> {
-  return async (dispatch, getStore) => {
-    // ignore action is no change
-    if (panel.type === pluginId) {
-      return;
-    }
-
-    const store = getStore();
-    let plugin = store.plugins.panels[pluginId];
-
-    if (!plugin) {
-      plugin = await dispatch(loadPanelPlugin(pluginId));
-    }
-
-    // clean up angular component (scope / ctrl state)
-    const angularComponent = store.dashboard.panels[panel.id].angularComponent;
-    if (angularComponent) {
-      angularComponent.destroy();
-      dispatch(setPanelAngularComponent({ panelId: panel.id, angularComponent: null }));
-    }
-
-    panel.changePlugin(plugin);
-
-    dispatch(panelModelAndPluginReady({ panelId: panel.id, plugin }));
-  };
-}
-
-export const cleanUpDashboardAndVariables = (): ThunkResult<void> => (dispatch) => {
   dispatch(cleanUpDashboard());
   dispatch(cancelVariables());
+};
+
+export const updateTimeZoneDashboard = (timeZone: TimeZone): ThunkResult<void> => (dispatch) => {
+  dispatch(updateTimeZoneForSession(timeZone));
+  getTimeSrv().refreshDashboard();
+};
+
+export const updateWeekStartDashboard = (weekStart: string): ThunkResult<void> => (dispatch) => {
+  dispatch(updateWeekStartForSession(weekStart));
+  getTimeSrv().refreshDashboard();
 };

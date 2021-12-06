@@ -1,15 +1,26 @@
-import { preparePlotConfigBuilder, preparePlotFrame } from './utils';
+import { preparePlotFrame } from './utils';
+import { preparePlotConfigBuilder } from '../TimeSeries/utils';
 import {
+  createTheme,
+  DashboardCursorSync,
   DefaultTimeZone,
+  EventBusSrv,
   FieldConfig,
   FieldMatcherID,
   fieldMatchers,
   FieldType,
   getDefaultTimeRange,
-  GrafanaTheme,
   MutableDataFrame,
 } from '@grafana/data';
-import { BarAlignment, DrawStyle, GraphFieldConfig, GraphGradientMode, LineInterpolation, PointVisibility } from '..';
+import {
+  BarAlignment,
+  GraphDrawStyle,
+  GraphFieldConfig,
+  GraphGradientMode,
+  LineInterpolation,
+  VisibilityMode,
+  StackingMode,
+} from '@grafana/schema';
 
 function mockDataFrame() {
   const df1 = new MutableDataFrame({
@@ -25,7 +36,7 @@ function mockDataFrame() {
     displayName: 'Metric 1',
     decimals: 2,
     custom: {
-      drawStyle: DrawStyle.Line,
+      drawStyle: GraphDrawStyle.Line,
       gradientMode: GraphGradientMode.Opacity,
       lineColor: '#ff0000',
       lineWidth: 2,
@@ -37,7 +48,11 @@ function mockDataFrame() {
       spanNulls: false,
       fillColor: '#ff0000',
       fillOpacity: 0.1,
-      showPoints: PointVisibility.Always,
+      showPoints: VisibilityMode.Always,
+      stacking: {
+        group: 'A',
+        mode: StackingMode.Normal,
+      },
     },
   };
 
@@ -45,7 +60,7 @@ function mockDataFrame() {
     displayName: 'Metric 2',
     decimals: 2,
     custom: {
-      drawStyle: DrawStyle.Bars,
+      drawStyle: GraphDrawStyle.Bars,
       gradientMode: GraphGradientMode.Hue,
       lineColor: '#ff0000',
       lineWidth: 2,
@@ -57,7 +72,81 @@ function mockDataFrame() {
       barAlignment: BarAlignment.Before,
       fillColor: '#ff0000',
       fillOpacity: 0.1,
-      showPoints: PointVisibility.Always,
+      showPoints: VisibilityMode.Always,
+      stacking: {
+        group: 'A',
+        mode: StackingMode.Normal,
+      },
+    },
+  };
+
+  const f3Config: FieldConfig<GraphFieldConfig> = {
+    displayName: 'Metric 3',
+    decimals: 2,
+    custom: {
+      drawStyle: GraphDrawStyle.Line,
+      gradientMode: GraphGradientMode.Opacity,
+      lineColor: '#ff0000',
+      lineWidth: 2,
+      lineInterpolation: LineInterpolation.Linear,
+      lineStyle: {
+        fill: 'dash',
+        dash: [1, 2],
+      },
+      spanNulls: false,
+      fillColor: '#ff0000',
+      fillOpacity: 0.1,
+      showPoints: VisibilityMode.Always,
+      stacking: {
+        group: 'B',
+        mode: StackingMode.Normal,
+      },
+    },
+  };
+  const f4Config: FieldConfig<GraphFieldConfig> = {
+    displayName: 'Metric 4',
+    decimals: 2,
+    custom: {
+      drawStyle: GraphDrawStyle.Bars,
+      gradientMode: GraphGradientMode.Hue,
+      lineColor: '#ff0000',
+      lineWidth: 2,
+      lineInterpolation: LineInterpolation.Linear,
+      lineStyle: {
+        fill: 'dash',
+        dash: [1, 2],
+      },
+      barAlignment: BarAlignment.Before,
+      fillColor: '#ff0000',
+      fillOpacity: 0.1,
+      showPoints: VisibilityMode.Always,
+      stacking: {
+        group: 'B',
+        mode: StackingMode.Normal,
+      },
+    },
+  };
+  const f5Config: FieldConfig<GraphFieldConfig> = {
+    displayName: 'Metric 4',
+    decimals: 2,
+    custom: {
+      drawStyle: GraphDrawStyle.Bars,
+      gradientMode: GraphGradientMode.Hue,
+      lineColor: '#ff0000',
+      lineWidth: 2,
+      lineInterpolation: LineInterpolation.Linear,
+      lineStyle: {
+        fill: 'dash',
+        dash: [1, 2],
+      },
+      barAlignment: BarAlignment.Before,
+      fillColor: '#ff0000',
+      fillOpacity: 0.1,
+      showPoints: VisibilityMode.Always,
+      stacking: {
+        group: 'B',
+        mode: StackingMode.None,
+      },
     },
   };
 
@@ -72,6 +161,21 @@ function mockDataFrame() {
     type: FieldType.number,
     config: f2Config,
   });
+  df2.addField({
+    name: 'metric3',
+    type: FieldType.number,
+    config: f3Config,
+  });
+  df2.addField({
+    name: 'metric4',
+    type: FieldType.number,
+    config: f4Config,
+  });
+  df2.addField({
+    name: 'metric5',
+    type: FieldType.number,
+    config: f5Config,
+  });
 
   return preparePlotFrame([df1, df2], {
     x: fieldMatchers.get(FieldMatcherID.firstTimeField).get({}),
@@ -79,16 +183,23 @@ function mockDataFrame() {
   });
 }
 
+jest.mock('@grafana/data', () => ({
+  ...(jest.requireActual('@grafana/data') as any),
+  DefaultTimeZone: 'utc',
+}));
+
 describe('GraphNG utils', () => {
   test('preparePlotConfigBuilder', () => {
     const frame = mockDataFrame();
-    expect(
-      preparePlotConfigBuilder(
-        frame!,
-        { colors: { panelBg: '#000000' } } as GrafanaTheme,
-        getDefaultTimeRange,
-        () => DefaultTimeZone
-      )
-    ).toMatchSnapshot();
+    const result = preparePlotConfigBuilder({
+      frame: frame!,
+      theme: createTheme(),
+      timeZone: DefaultTimeZone,
+      getTimeRange: getDefaultTimeRange,
+      eventBus: new EventBusSrv(),
+      sync: DashboardCursorSync.Tooltip,
+      allFrames: [frame!],
+    }).getConfig();
+    expect(result).toMatchSnapshot();
   });
 });

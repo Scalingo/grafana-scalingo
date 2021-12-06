@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/services/teamguardian"
 	"github.com/grafana/grafana/pkg/util"
 )
@@ -15,7 +16,7 @@ import (
 func (hs *HTTPServer) GetTeamMembers(c *models.ReqContext) response.Response {
 	query := models.GetTeamMembersQuery{OrgId: c.OrgId, TeamId: c.ParamsInt64(":teamId")}
 
-	if err := bus.Dispatch(&query); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &query); err != nil {
 		return response.Error(500, "Failed to get Team Members", err)
 	}
 
@@ -48,7 +49,8 @@ func (hs *HTTPServer) AddTeamMember(c *models.ReqContext, cmd models.AddTeamMemb
 		return response.Error(403, "Not allowed to add team member", err)
 	}
 
-	if err := hs.Bus.Dispatch(&cmd); err != nil {
+	err := addTeamMember(hs.SQLStore, cmd.UserId, cmd.OrgId, cmd.TeamId, cmd.External, cmd.Permission)
+	if err != nil {
 		if errors.Is(err, models.ErrTeamNotFound) {
 			return response.Error(404, "Team not found", nil)
 		}
@@ -82,7 +84,7 @@ func (hs *HTTPServer) UpdateTeamMember(c *models.ReqContext, cmd models.UpdateTe
 	cmd.UserId = c.ParamsInt64(":userId")
 	cmd.OrgId = orgId
 
-	if err := hs.Bus.Dispatch(&cmd); err != nil {
+	if err := hs.Bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
 		if errors.Is(err, models.ErrTeamMemberNotFound) {
 			return response.Error(404, "Team member not found.", nil)
 		}
@@ -106,7 +108,7 @@ func (hs *HTTPServer) RemoveTeamMember(c *models.ReqContext) response.Response {
 		protectLastAdmin = true
 	}
 
-	if err := hs.Bus.Dispatch(&models.RemoveTeamMemberCommand{OrgId: orgId, TeamId: teamId, UserId: userId, ProtectLastAdmin: protectLastAdmin}); err != nil {
+	if err := hs.Bus.DispatchCtx(c.Req.Context(), &models.RemoveTeamMemberCommand{OrgId: orgId, TeamId: teamId, UserId: userId, ProtectLastAdmin: protectLastAdmin}); err != nil {
 		if errors.Is(err, models.ErrTeamNotFound) {
 			return response.Error(404, "Team not found", nil)
 		}
@@ -118,4 +120,12 @@ func (hs *HTTPServer) RemoveTeamMember(c *models.ReqContext) response.Response {
 		return response.Error(500, "Failed to remove Member from Team", err)
 	}
 	return response.Success("Team Member removed")
+}
+
+// addTeamMember adds a team member.
+//
+// Stubbable by tests.
+var addTeamMember = func(sqlStore *sqlstore.SQLStore, userID, orgID, teamID int64, isExternal bool,
+	permission models.PermissionType) error {
+	return sqlStore.AddTeamMember(userID, orgID, teamID, isExternal, permission)
 }

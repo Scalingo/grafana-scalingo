@@ -1,22 +1,35 @@
-import React, { Component } from 'react';
-import { hot } from 'react-hot-loader';
-import { connect } from 'react-redux';
-
-import { StoreState } from 'app/types';
-import { ExploreId } from 'app/types/explore';
-
-import { CustomScrollbar, ErrorBoundaryAlert } from '@grafana/ui';
+import React, { PureComponent } from 'react';
+import { connect, ConnectedProps } from 'react-redux';
+import { ExploreId, ExploreQueryParams } from 'app/types/explore';
+import { ErrorBoundaryAlert } from '@grafana/ui';
 import { lastSavedUrl, resetExploreAction, richHistoryUpdatedAction } from './state/main';
 import { getRichHistory } from '../../core/utils/richHistory';
 import { ExplorePaneContainer } from './ExplorePaneContainer';
+import { GrafanaRouteComponentProps } from 'app/core/navigation/types';
+import { Branding } from '../../core/components/Branding/Branding';
 
-interface WrapperProps {
-  split: boolean;
-  resetExploreAction: typeof resetExploreAction;
-  richHistoryUpdatedAction: typeof richHistoryUpdatedAction;
-}
+import { getNavModel } from '../../core/selectors/navModel';
+import { StoreState } from 'app/types';
 
-export class Wrapper extends Component<WrapperProps> {
+interface RouteProps extends GrafanaRouteComponentProps<{}, ExploreQueryParams> {}
+interface OwnProps {}
+
+const mapStateToProps = (state: StoreState) => {
+  return {
+    navModel: getNavModel(state.navIndex, 'explore'),
+    exploreState: state.explore,
+  };
+};
+
+const mapDispatchToProps = {
+  resetExploreAction,
+  richHistoryUpdatedAction,
+};
+
+const connector = connect(mapStateToProps, mapDispatchToProps);
+
+type Props = OwnProps & RouteProps & ConnectedProps<typeof connector>;
+class WrapperUnconnected extends PureComponent<Props> {
   componentWillUnmount() {
     this.props.resetExploreAction({});
   }
@@ -29,39 +42,37 @@ export class Wrapper extends Component<WrapperProps> {
     this.props.richHistoryUpdatedAction({ richHistory });
   }
 
+  componentDidUpdate(prevProps: Props) {
+    const { left, right } = this.props.queryParams;
+    const hasSplit = Boolean(left) && Boolean(right);
+    const datasourceTitle = hasSplit
+      ? `${this.props.exploreState.left.datasourceInstance?.name} | ${this.props.exploreState.right?.datasourceInstance?.name}`
+      : `${this.props.exploreState.left.datasourceInstance?.name}`;
+    const documentTitle = `${this.props.navModel.main.text} - ${datasourceTitle} - ${Branding.AppTitle}`;
+    document.title = documentTitle;
+  }
+
   render() {
-    const { split } = this.props;
+    const { left, right } = this.props.queryParams;
+    const hasSplit = Boolean(left) && Boolean(right);
 
     return (
       <div className="page-scrollbar-wrapper">
-        <CustomScrollbar autoHeightMin={'100%'}>
-          <div className="explore-wrapper">
+        <div className="explore-wrapper">
+          <ErrorBoundaryAlert style="page">
+            <ExplorePaneContainer split={hasSplit} exploreId={ExploreId.left} urlQuery={left} />
+          </ErrorBoundaryAlert>
+          {hasSplit && (
             <ErrorBoundaryAlert style="page">
-              <ExplorePaneContainer split={split} exploreId={ExploreId.left} />
+              <ExplorePaneContainer split={hasSplit} exploreId={ExploreId.right} urlQuery={right} />
             </ErrorBoundaryAlert>
-            {split && (
-              <ErrorBoundaryAlert style="page">
-                <ExplorePaneContainer split={split} exploreId={ExploreId.right} />
-              </ErrorBoundaryAlert>
-            )}
-          </div>
-        </CustomScrollbar>
+          )}
+        </div>
       </div>
     );
   }
 }
 
-const mapStateToProps = (state: StoreState) => {
-  // Here we use URL to say if we should split or not which is different than in other places. Reason is if we change
-  // the URL first there is no internal state saying we should split. So this triggers render of ExplorePaneContainer
-  // and initialisation of each pane state.
-  const isUrlSplit = Boolean(state.location.query[ExploreId.left] && state.location.query[ExploreId.right]);
-  return { split: isUrlSplit };
-};
+const Wrapper = connector(WrapperUnconnected);
 
-const mapDispatchToProps = {
-  resetExploreAction,
-  richHistoryUpdatedAction,
-};
-
-export default hot(module)(connect(mapStateToProps, mapDispatchToProps)(Wrapper));
+export default Wrapper;

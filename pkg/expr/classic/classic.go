@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
+	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana/pkg/expr/mathexp"
 )
 
@@ -15,17 +17,17 @@ type ConditionsCmd struct {
 	refID      string
 }
 
-// classicConditionJSON is the JSON model for a single condition.
+// ClassicConditionJSON is the JSON model for a single condition.
 // It is based on services/alerting/conditions/query.go's newQueryCondition().
-type classicConditionJSON struct {
-	Evaluator conditionEvalJSON `json:"evaluator"`
+type ClassicConditionJSON struct {
+	Evaluator ConditionEvalJSON `json:"evaluator"`
 
 	Operator struct {
 		Type string `json:"type"`
 	} `json:"operator"`
 
 	Query struct {
-		Params []string
+		Params []string `json:"params"`
 	} `json:"query"`
 
 	Reducer struct {
@@ -34,10 +36,9 @@ type classicConditionJSON struct {
 	} `json:"reducer"`
 }
 
-type conditionEvalJSON struct {
+type ConditionEvalJSON struct {
 	Params []float64 `json:"params"`
 	Type   string    `json:"type"` // e.g. "gt"
-
 }
 
 // condition is a single condition within the ConditionsCmd.
@@ -60,6 +61,30 @@ func (ccc *ConditionsCmd) NeedsVars() []string {
 	return vars
 }
 
+// EvalMatch represents the series violating the threshold.
+// It goes into the metadata of data frames so it can be extracted.
+type EvalMatch struct {
+	Value  *float64    `json:"value"`
+	Metric string      `json:"metric"`
+	Labels data.Labels `json:"labels"`
+}
+
+func (em EvalMatch) MarshalJSON() ([]byte, error) {
+	fs := ""
+	if em.Value != nil {
+		fs = strconv.FormatFloat(*em.Value, 'f', -1, 64)
+	}
+	return json.Marshal(struct {
+		Value  string      `json:"value"`
+		Metric string      `json:"metric"`
+		Labels data.Labels `json:"labels"`
+	}{
+		fs,
+		em.Metric,
+		em.Labels,
+	})
+}
+
 // Execute runs the command and returns the results or an error if the command
 // failed to execute.
 func (ccc *ConditionsCmd) Execute(ctx context.Context, vars mathexp.Vars) (mathexp.Results, error) {
@@ -67,8 +92,12 @@ func (ccc *ConditionsCmd) Execute(ctx context.Context, vars mathexp.Vars) (mathe
 	newRes := mathexp.Results{}
 	noDataFound := true
 
+	matches := []EvalMatch{}
+
 	for i, c := range ccc.Conditions {
 		querySeriesSet := vars[c.QueryRefID]
+		nilReducedCount := 0
+		firingCount := 0
 		for _, val := range querySeriesSet.Values {
 			series, ok := val.(mathexp.Series)
 			if !ok {
@@ -76,27 +105,59 @@ func (ccc *ConditionsCmd) Execute(ctx context.Context, vars mathexp.Vars) (mathe
 			}
 
 			reducedNum := c.Reducer.Reduce(series)
+
 			// TODO handle error / no data signals
 			thisCondNoDataFound := reducedNum.GetFloat64Value() == nil
 
+			if thisCondNoDataFound {
+				nilReducedCount++
+			}
+
 			evalRes := c.Evaluator.Eval(reducedNum)
 
-			if i == 0 {
-				firing = evalRes
-				noDataFound = thisCondNoDataFound
-			}
-
-			if c.Operator == "or" {
-				firing = firing || evalRes
-				noDataFound = noDataFound || thisCondNoDataFound
-			} else {
-				firing = firing && evalRes
-				noDataFound = noDataFound && thisCondNoDataFound
+			if evalRes {
+				match := EvalMatch{
+					Value:  reducedNum.GetFloat64Value(),
+					Metric: series.GetName(),
+				}
+				if reducedNum.GetLabels() != nil {
+					match.Labels = reducedNum.GetLabels().Copy()
+				}
+				matches = append(matches, match)
+				firingCount++
 			}
 		}
+
+		thisCondFiring := firingCount > 0
+		thisCondNoData := nilReducedCount > 0
+
+		if i == 0 {
+			firing = thisCondFiring
+			noDataFound = thisCondNoData
+		}
+
+		if c.Operator == "or" {
+			firing = firing || thisCondFiring
+			noDataFound = noDataFound || thisCondNoData
+		} else {
+			firing = firing && thisCondFiring
+			noDataFound = noDataFound && thisCondNoData
+		}
+
+		if len(querySeriesSet.Values) == nilReducedCount {
+			matches = append(matches, EvalMatch{
+				Metric: "NoData",
+			})
+			noDataFound = true
+		}
+
+		firingCount = 0
+		nilReducedCount = 0
 	}
 
 	num := mathexp.NewNumber("", nil)
+
+	num.SetMeta(matches)
 
 	var v float64
 	switch {
@@ -120,7 +181,7 @@ func UnmarshalConditionsCmd(rawQuery map[string]interface{}, refID string) (*Con
 	if err != nil {
 		return nil, fmt.Errorf("failed to remarshal classic condition body: %w", err)
 	}
-	var ccj []classicConditionJSON
+	var ccj []ClassicConditionJSON
 	if err = json.Unmarshal(jsonFromM, &ccj); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal remarshaled classic condition body: %w", err)
 	}
@@ -132,7 +193,7 @@ func UnmarshalConditionsCmd(rawQuery map[string]interface{}, refID string) (*Con
 	for i, cj := range ccj {
 		cond := condition{}
 
-		if cj.Operator.Type != "and" && cj.Operator.Type != "or" {
+		if i > 0 && cj.Operator.Type != "and" && cj.Operator.Type != "or" {
 			return nil, fmt.Errorf("classic condition %v operator must be `and` or `or`", i+1)
 		}
 		cond.Operator = cj.Operator.Type

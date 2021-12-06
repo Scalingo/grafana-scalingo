@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package sqlstore
@@ -13,17 +14,19 @@ import (
 )
 
 func TestStatsDataAccess(t *testing.T) {
-	InitTestDB(t)
-	populateDB(t)
+	sqlStore := InitTestDB(t)
+	populateDB(t, sqlStore)
 
 	t.Run("Get system stats should not results in error", func(t *testing.T) {
 		query := models.GetSystemStatsQuery{}
-		err := GetSystemStats(&query)
+		err := GetSystemStats(context.Background(), &query)
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), query.Result.Users)
-		assert.Equal(t, 0, query.Result.Editors)
-		assert.Equal(t, 0, query.Result.Viewers)
-		assert.Equal(t, 3, query.Result.Admins)
+		assert.Equal(t, int64(0), query.Result.Editors)
+		assert.Equal(t, int64(0), query.Result.Viewers)
+		assert.Equal(t, int64(3), query.Result.Admins)
+		assert.Equal(t, int64(0), query.Result.LibraryPanels)
+		assert.Equal(t, int64(0), query.Result.LibraryVariables)
 	})
 
 	t.Run("Get system user count stats should not results in error", func(t *testing.T) {
@@ -34,13 +37,13 @@ func TestStatsDataAccess(t *testing.T) {
 
 	t.Run("Get datasource stats should not results in error", func(t *testing.T) {
 		query := models.GetDataSourceStatsQuery{}
-		err := GetDataSourceStats(&query)
+		err := GetDataSourceStats(context.Background(), &query)
 		assert.NoError(t, err)
 	})
 
 	t.Run("Get datasource access stats should not results in error", func(t *testing.T) {
 		query := models.GetDataSourceAccessStatsQuery{}
-		err := GetDataSourceAccessStats(&query)
+		err := GetDataSourceAccessStats(context.Background(), &query)
 		assert.NoError(t, err)
 	})
 
@@ -52,28 +55,30 @@ func TestStatsDataAccess(t *testing.T) {
 
 	t.Run("Get admin stats should not result in error", func(t *testing.T) {
 		query := models.GetAdminStatsQuery{}
-		err := GetAdminStats(&query)
+		err := GetAdminStats(context.Background(), &query)
 		assert.NoError(t, err)
 	})
 }
 
-func populateDB(t *testing.T) {
+func populateDB(t *testing.T, sqlStore *SQLStore) {
+	t.Helper()
+
 	users := make([]models.User, 3)
 	for i := range users {
-		cmd := &models.CreateUserCommand{
+		cmd := models.CreateUserCommand{
 			Email:   fmt.Sprintf("usertest%v@test.com", i),
 			Name:    fmt.Sprintf("user name %v", i),
 			Login:   fmt.Sprintf("user_test_%v_login", i),
 			OrgName: fmt.Sprintf("Org #%v", i),
 		}
-		err := CreateUser(context.Background(), cmd)
+		user, err := sqlStore.CreateUser(context.Background(), cmd)
 		require.NoError(t, err)
-		users[i] = cmd.Result
+		users[i] = *user
 	}
 
 	// get 1st user's organisation
 	getOrgByIdQuery := &models.GetOrgByIdQuery{Id: users[0].OrgId}
-	err := GetOrgById(getOrgByIdQuery)
+	err := GetOrgById(context.Background(), getOrgByIdQuery)
 	require.NoError(t, err)
 	org := getOrgByIdQuery.Result
 
@@ -83,7 +88,7 @@ func populateDB(t *testing.T) {
 		UserId: users[1].Id,
 		Role:   models.ROLE_EDITOR,
 	}
-	err = AddOrgUser(cmd)
+	err = sqlStore.AddOrgUser(context.Background(), cmd)
 	require.NoError(t, err)
 
 	// add 3rd user as viewer
@@ -92,12 +97,12 @@ func populateDB(t *testing.T) {
 		UserId: users[2].Id,
 		Role:   models.ROLE_VIEWER,
 	}
-	err = AddOrgUser(cmd)
+	err = sqlStore.AddOrgUser(context.Background(), cmd)
 	require.NoError(t, err)
 
 	// get 2nd user's organisation
 	getOrgByIdQuery = &models.GetOrgByIdQuery{Id: users[1].OrgId}
-	err = GetOrgById(getOrgByIdQuery)
+	err = GetOrgById(context.Background(), getOrgByIdQuery)
 	require.NoError(t, err)
 	org = getOrgByIdQuery.Result
 
@@ -107,14 +112,14 @@ func populateDB(t *testing.T) {
 		UserId: users[0].Id,
 		Role:   models.ROLE_ADMIN,
 	}
-	err = AddOrgUser(cmd)
+	err = sqlStore.AddOrgUser(context.Background(), cmd)
 	require.NoError(t, err)
 
 	// update 1st user last seen at
 	updateUserLastSeenAtCmd := &models.UpdateUserLastSeenAtCommand{
 		UserId: users[0].Id,
 	}
-	err = UpdateUserLastSeenAt(updateUserLastSeenAtCmd)
+	err = UpdateUserLastSeenAt(context.Background(), updateUserLastSeenAtCmd)
 	require.NoError(t, err)
 
 	// force renewal of user stats

@@ -20,14 +20,13 @@ We recommend using [Homebrew](https://brew.sh/) for installing any missing depen
 ```
 brew install git
 brew install go
-brew install node@14
-
+brew install node@16
 npm install -g yarn
 ```
 
 ### Windows
 
-If you are running Grafana on Windows 10, we recommend installing the Windows Subsystem for Linux (WSL). For installation instructions, refer to the [Microsoft WSL Installation Guide](https://docs.microsoft.com/en-us/windows/wsl/install-win10).
+If you are running Grafana on Windows 10, we recommend installing the Windows Subsystem for Linux (WSL). For installation instructions, refer to our [Grafana setup guide for Windows environment](https://grafana.com/blog/2021/03/03/how-to-set-up-a-grafana-development-environment-on-a-windows-pc-using-wsl/).
 
 ## Download Grafana
 
@@ -49,7 +48,7 @@ Grafana consists of two components; the _frontend_, and the _backend_.
 Before we can build the frontend assets, we need to install the dependencies:
 
 ```
-yarn install --pure-lockfile
+yarn install --immutable
 ```
 
 After the command has finished, we can start building our source code:
@@ -213,7 +212,7 @@ ulimit -a
 To change the number of open files allowed, run:
 
 ```
-ulimit -S -n 2048
+ulimit -S -n 4096
 ```
 
 The number of files needed may be different on your environment. To determine the number of open files needed by `make run`, run:

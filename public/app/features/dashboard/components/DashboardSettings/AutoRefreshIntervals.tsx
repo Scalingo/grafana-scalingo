@@ -22,7 +22,7 @@ export const AutoRefreshIntervals: FC<Props> = ({
   useEffect(() => {
     const intervals = getIntervalsFunc(refreshIntervals ?? defaultIntervals);
     setIntervals(intervals);
-  }, [refreshIntervals]);
+  }, [getIntervalsFunc, refreshIntervals]);
 
   const intervalsString = useMemo(() => {
     if (!Array.isArray(intervals)) {
@@ -52,17 +52,18 @@ export const AutoRefreshIntervals: FC<Props> = ({
 
       setInvalidIntervalsMessage(invalidMessage);
     },
-    [intervals, onRefreshIntervalChange, setInvalidIntervalsMessage]
+    [getIntervalsFunc, intervals, onRefreshIntervalChange, validateIntervalsFunc]
   );
 
   return (
     <Field
       label="Auto refresh"
-      description="Define the auto refresh intervals that should be available in the auto refresh dropdown"
+      description="Define the auto refresh intervals that should be available in the auto refresh list."
       error={invalidIntervalsMessage}
       invalid={!!invalidIntervalsMessage}
     >
       <Input
+        id="auto-refresh-input"
         invalid={!!invalidIntervalsMessage}
         value={intervalsString}
         onChange={onIntervalsChange}

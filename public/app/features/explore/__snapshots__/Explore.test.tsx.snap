@@ -1,7 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
 exports[`Explore should render component 1`] = `
-<Fragment>
+<CustomScrollbar
+  autoHeightMin="100%"
+>
   <Connect(UnConnectedExploreToolbar)
     exploreId="left"
     onChangeTime={[Function]}
@@ -10,11 +12,10 @@ exports[`Explore should render component 1`] = `
     className="explore-container"
   >
     <div
-      className="panel-container css-kj45dn-queryContainer"
+      className="panel-container css-18dr9jf-queryContainer"
     >
       <QueryRows
         exploreId="left"
-        queryKeys={Array []}
       />
       <SecondaryActions
         addQueryRowButtonDisabled={false}
@@ -25,8 +26,10 @@ exports[`Explore should render component 1`] = `
         queryInspectorButtonActive={false}
         richHistoryButtonActive={false}
       />
+      <ResponseErrorContainer
+        exploreId="left"
+      />
     </div>
-    <ErrorContainer />
     <AutoSizer
       disableHeight={true}
       disableWidth={false}
@@ -36,5 +39,5 @@ exports[`Explore should render component 1`] = `
       <Component />
     </AutoSizer>
   </div>
-</Fragment>
+</CustomScrollbar>
 `;

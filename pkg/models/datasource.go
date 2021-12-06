@@ -4,30 +4,20 @@ import (
 	"errors"
 	"time"
 
-	"github.com/grafana/grafana/pkg/components/securejsondata"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 )
 
 const (
-	DS_GRAPHITE      = "graphite"
-	DS_INFLUXDB      = "influxdb"
-	DS_INFLUXDB_08   = "influxdb_08"
-	DS_ES            = "elasticsearch"
-	DS_OPENTSDB      = "opentsdb"
-	DS_CLOUDWATCH    = "cloudwatch"
-	DS_KAIROSDB      = "kairosdb"
-	DS_PROMETHEUS    = "prometheus"
-	DS_POSTGRES      = "postgres"
-	DS_MYSQL         = "mysql"
-	DS_MSSQL         = "mssql"
-	DS_ACCESS_DIRECT = "direct"
-	DS_ACCESS_PROXY  = "proxy"
-	// Stackdriver was renamed Google Cloud monitoring 2020-05 but we keep
-	// "stackdriver" to avoid breaking changes in reporting.
-	DS_CLOUD_MONITORING = "stackdriver"
-	DS_AZURE_MONITOR    = "grafana-azure-monitor-datasource"
-	DS_LOKI             = "loki"
-	DS_ES_OPEN_DISTRO   = "grafana-es-open-distro-datasource"
+	DS_GRAPHITE       = "graphite"
+	DS_INFLUXDB       = "influxdb"
+	DS_INFLUXDB_08    = "influxdb_08"
+	DS_ES             = "elasticsearch"
+	DS_PROMETHEUS     = "prometheus"
+	DS_MYSQL          = "mysql"
+	DS_ACCESS_DIRECT  = "direct"
+	DS_ACCESS_PROXY   = "proxy"
+	DS_ES_OPEN_DISTRO = "grafana-es-open-distro-datasource"
+	DS_ES_OPENSEARCH  = "grafana-opensearch-datasource"
 )
 
 var (
@@ -48,89 +38,25 @@ type DataSource struct {
 	OrgId   int64 `json:"orgId"`
 	Version int   `json:"version"`
 
-	Name              string                        `json:"name"`
-	Type              string                        `json:"type"`
-	Access            DsAccess                      `json:"access"`
-	Url               string                        `json:"url"`
-	Password          string                        `json:"password"`
-	User              string                        `json:"user"`
-	Database          string                        `json:"database"`
-	BasicAuth         bool                          `json:"basicAuth"`
-	BasicAuthUser     string                        `json:"basicAuthUser"`
-	BasicAuthPassword string                        `json:"basicAuthPassword"`
-	WithCredentials   bool                          `json:"withCredentials"`
-	IsDefault         bool                          `json:"isDefault"`
-	JsonData          *simplejson.Json              `json:"jsonData"`
-	SecureJsonData    securejsondata.SecureJsonData `json:"secureJsonData"`
-	ReadOnly          bool                          `json:"readOnly"`
-	Uid               string                        `json:"uid"`
+	Name              string            `json:"name"`
+	Type              string            `json:"type"`
+	Access            DsAccess          `json:"access"`
+	Url               string            `json:"url"`
+	Password          string            `json:"password"`
+	User              string            `json:"user"`
+	Database          string            `json:"database"`
+	BasicAuth         bool              `json:"basicAuth"`
+	BasicAuthUser     string            `json:"basicAuthUser"`
+	BasicAuthPassword string            `json:"basicAuthPassword"`
+	WithCredentials   bool              `json:"withCredentials"`
+	IsDefault         bool              `json:"isDefault"`
+	JsonData          *simplejson.Json  `json:"jsonData"`
+	SecureJsonData    map[string][]byte `json:"secureJsonData"`
+	ReadOnly          bool              `json:"readOnly"`
+	Uid               string            `json:"uid"`
 
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
-}
-
-// DecryptedBasicAuthPassword returns data source basic auth password in plain text. It uses either deprecated
-// basic_auth_password field or encrypted secure_json_data[basicAuthPassword] variable.
-func (ds *DataSource) DecryptedBasicAuthPassword() string {
-	return ds.decryptedValue("basicAuthPassword", ds.BasicAuthPassword)
-}
-
-// DecryptedPassword returns data source password in plain text. It uses either deprecated password field
-// or encrypted secure_json_data[password] variable.
-func (ds *DataSource) DecryptedPassword() string {
-	return ds.decryptedValue("password", ds.Password)
-}
-
-// decryptedValue returns decrypted value from secureJsonData
-func (ds *DataSource) decryptedValue(field string, fallback string) string {
-	if value, ok := ds.DecryptedValue(field); ok {
-		return value
-	}
-	return fallback
-}
-
-var knownDatasourcePlugins = map[string]bool{
-	DS_ES:                                    true,
-	DS_GRAPHITE:                              true,
-	DS_INFLUXDB:                              true,
-	DS_INFLUXDB_08:                           true,
-	DS_KAIROSDB:                              true,
-	DS_CLOUDWATCH:                            true,
-	DS_PROMETHEUS:                            true,
-	DS_OPENTSDB:                              true,
-	DS_POSTGRES:                              true,
-	DS_MYSQL:                                 true,
-	DS_MSSQL:                                 true,
-	DS_CLOUD_MONITORING:                      true,
-	DS_AZURE_MONITOR:                         true,
-	DS_LOKI:                                  true,
-	"opennms":                                true,
-	"abhisant-druid-datasource":              true,
-	"dalmatinerdb-datasource":                true,
-	"gnocci":                                 true,
-	"zabbix":                                 true,
-	"newrelic-app":                           true,
-	"grafana-datadog-datasource":             true,
-	"grafana-simple-json":                    true,
-	"grafana-splunk-datasource":              true,
-	"udoprog-heroic-datasource":              true,
-	"grafana-openfalcon-datasource":          true,
-	"opennms-datasource":                     true,
-	"rackerlabs-blueflood-datasource":        true,
-	"crate-datasource":                       true,
-	"ayoungprogrammer-finance-datasource":    true,
-	"monasca-datasource":                     true,
-	"vertamedia-clickhouse-datasource":       true,
-	"alexanderzobnin-zabbix-datasource":      true,
-	"grafana-influxdb-flux-datasource":       true,
-	"doitintl-bigquery-datasource":           true,
-	"grafana-azure-data-explorer-datasource": true,
-	"tempo":                                  true,
-}
-
-func IsKnownDataSourcePlugin(dsType string) bool {
-	_, exists := knownDatasourcePlugins[dsType]
-	return exists
 }
 
 // ----------------------
@@ -154,8 +80,9 @@ type AddDataSourceCommand struct {
 	SecureJsonData    map[string]string `json:"secureJsonData"`
 	Uid               string            `json:"uid"`
 
-	OrgId    int64 `json:"-"`
-	ReadOnly bool  `json:"-"`
+	OrgId                   int64             `json:"-"`
+	ReadOnly                bool              `json:"-"`
+	EncryptedSecureJsonData map[string][]byte `json:"-"`
 
 	Result *DataSource
 }
@@ -179,9 +106,10 @@ type UpdateDataSourceCommand struct {
 	Version           int               `json:"version"`
 	Uid               string            `json:"uid"`
 
-	OrgId    int64 `json:"-"`
-	Id       int64 `json:"-"`
-	ReadOnly bool  `json:"-"`
+	OrgId                   int64             `json:"-"`
+	Id                      int64             `json:"-"`
+	ReadOnly                bool              `json:"-"`
+	EncryptedSecureJsonData map[string][]byte `json:"-"`
 
 	Result *DataSource
 }
@@ -240,6 +168,7 @@ type DsPermissionType int
 const (
 	DsPermissionNoAccess DsPermissionType = iota
 	DsPermissionQuery
+	DsPermissionRead
 )
 
 func (p DsPermissionType) String() string {

@@ -1,9 +1,11 @@
 import React from 'react';
 import { FieldConfig, LinkModel } from '@grafana/data';
 import { selectors } from '@grafana/e2e-selectors';
-import { css } from 'emotion';
+import { css } from '@emotion/css';
 import { WithContextMenu } from '../ContextMenu/WithContextMenu';
 import { linkModelToContextMenuItems } from '../../utils/dataLinks';
+import { MenuGroup, MenuItemsGroup } from '../Menu/MenuGroup';
+import { MenuItem } from '../Menu/MenuItem';
 
 interface DataLinksContextMenuProps {
   children: (props: DataLinksContextMenuApi) => JSX.Element;
@@ -12,14 +14,29 @@ interface DataLinksContextMenuProps {
 }
 
 export interface DataLinksContextMenuApi {
-  openMenu?: React.MouseEventHandler<HTMLElement>;
+  openMenu?: React.MouseEventHandler<HTMLOrSVGElement>;
   targetClassName?: string;
 }
 
 export const DataLinksContextMenu: React.FC<DataLinksContextMenuProps> = ({ children, links, config }) => {
   const linksCounter = config.links!.length;
-  const getDataLinksContextMenuItems = () => {
-    return [{ items: linkModelToContextMenuItems(links), label: 'Data links' }];
+  const itemsGroup: MenuItemsGroup[] = [{ items: linkModelToContextMenuItems(links), label: 'Data links' }];
+  const renderMenuGroupItems = () => {
+    return itemsGroup.map((group, index) => (
+      <MenuGroup key={`${group.label}${index}`} label={group.label}>
+        {(group.items || []).map((item) => (
+          <MenuItem
+            key={item.label}
+            url={item.url}
+            label={item.label}
+            target={item.target}
+            icon={item.icon}
+            active={item.active}
+            onClick={item.onClick}
+          />
+        ))}
+      </MenuGroup>
+    ));
   };
 
   // Use this class name (exposed via render prop) to add context menu indicator to the click target of the visualization
@@ -29,7 +46,7 @@ export const DataLinksContextMenu: React.FC<DataLinksContextMenuProps> = ({ chil
 
   if (linksCounter > 1) {
     return (
-      <WithContextMenu getContextMenuItems={getDataLinksContextMenuItems}>
+      <WithContextMenu renderMenuItems={renderMenuGroupItems}>
         {({ openMenu }) => {
           return children({ openMenu, targetClassName });
         }}

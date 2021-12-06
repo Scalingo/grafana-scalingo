@@ -1,54 +1,27 @@
 +++
 title = "Alerts"
-aliases = ["/docs/grafana/latest/alerting/rules/", "/docs/grafana/latest/alerting/metrics/"]
 weight = 110
 +++
 
-# Alerts overview
+# Grafana alerts
 
-Alerts allow you to identify problems in your system moments after they occur. By quickly identifying unintended changes in your system, you can minimize disruptions to your services.
+Alerts allow you to learn about problems in your systems moments after they occur. Robust and actionable alerts help you identify and resolve issues quickly, minimizing disruption to your services.
 
-Alerts consists of two parts:
+Grafana 8.0 has new and improved alerting that centralizes alerting information in a single, searchable view. It allows you to:
 
-- Alert rules - When the alert is triggered. Alert rules are defined by one or more conditions that are regularly evaluated by Grafana.
-- Notification channel - How the alert is delivered. When the conditions of an alert rule are met, the Grafana notifies the channels configured for that alert.
+- Create and manage Grafana alerts
+- Create and manage Cortex and Loki managed alerts
+- View alerting information from Prometheus and Alertmanager compatible data sources
 
-Currently only the graph panel visualization supports alerts.
+Grafana 8 alerting has four key components:
 
-## Alert tasks
+- Alerting rule - Evaluation criteria that determine whether an alert will fire. It consists of one or more queries and expressions, a condition, the frequency of evaluation, and optionally, the duration over which the condition is met.
+- Contact point - Channel for sending notifications when the conditions of an alerting rule are met.
+- Notification policy - Set of matching and grouping criteria used to determine where and how frequently to send notifications.
+- Silences - Date and matching criteria used to silence notifications.
 
-You can perform the following tasks for alerts:
+To learn more, see [What's New with Grafana 8 alerting]({{< relref "../alerting/unified-alerting/difference-old-new.md" >}}).
 
-- [Add or edit an alert notification channel]({{< relref "notifications.md" >}})
-- [Create an alert rule]({{< relref "create-alerts.md" >}})
-- [View existing alert rules and their current state]({{< relref "view-alerts.md" >}})
-- [Test alert rules and troubleshoot]({{< relref "troubleshoot-alerts.md" >}})
+For information on how to create and manage Grafana 8 alerts and notifications, refer to [Overview of Grafana 8.0 alerts]({{< relref "../alerting/unified-alerting/_index.md" >}}) and [Create and manage Grafana 8 alerting rules]({{< relref "./unified-alerting/alerting-rules/_index.md" >}}).
 
-## Clustering
-
-Currently alerting supports a limited form of high availability. Since v4.2.0 of Grafana, alert notifications are deduped when running multiple servers. This means all alerts are executed on every server but no duplicate alert notifications are sent due to the deduping logic. Proper load balancing of alerts will be introduced in the future.
-
-## Notifications
-
-You can also set alert rule notifications along with a detailed message about the alert rule. The message can contain anything: information about how you might solve the issue, link to runbook, and so on.
-
-The actual notifications are configured and shared between multiple alerts.
-
-## Alert execution
-
-Alert rules are evaluated in the Grafana backend in a scheduler and query execution engine that is part
-of core Grafana. Alert rules can query only backend data sources with alerting enabled. Such data sources are:
-- builtin or developed and maintained by grafana, such as: `Graphite`, `Prometheus`, `Loki`, `InfluxDB`, `Elasticsearch`,
-`Google Cloud Monitoring`, `Cloudwatch`, `Azure Monitor`, `MySQL`, `PostgreSQL`, `MSSQL`, `OpenTSDB`, `Oracle`, and `Azure Data Explorer`
-- any community backend data sources with alerting enabled (`backend` and `alerting` properties are set in the [plugin.json]({{< relref "../developers/plugins/metadata.md" >}}))
-
-## Metrics from the alert engine
-
-The alert engine publishes some internal metrics about itself. You can read more about how Grafana publishes [internal metrics]({{< relref "../administration/view-server/internal-metrics.md" >}}).
-
-Description | Type | Metric name
----------- | ----------- | ----------
-Total number of alerts | counter | `alerting.active_alerts`
-Alert execution result | counter | `alerting.result`
-Notifications sent counter | counter | `alerting.notifications_sent`
-Alert execution timer | timer | `alerting.execution_time`
+> **Note:** Grafana 8 alerting is an [opt-in]({{< relref "./unified-alerting/opt-in.md" >}}) feature. Out of the box, Grafana still supports old [legacy dashboard alerts]({{< relref "./old-alerting/_index.md" >}}). We encourage you to create issues in the Grafana GitHub repository for bugs found while testing Grafana 8 alerts.

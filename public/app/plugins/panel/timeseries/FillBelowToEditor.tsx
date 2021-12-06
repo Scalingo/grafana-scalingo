@@ -33,10 +33,11 @@ export const FillBellowToEditor: React.FC<FieldOverrideEditorProps<string, any>>
       };
     }
     return undefined;
-  }, names);
+  }, [names, value]);
 
   return (
     <Select
+      menuShouldPortal
       options={names}
       value={current}
       onChange={(v) => {

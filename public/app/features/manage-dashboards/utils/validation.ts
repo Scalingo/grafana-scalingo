@@ -1,4 +1,4 @@
-import validationSrv from '../services/ValidationSrv';
+import { validationSrv } from '../services/ValidationSrv';
 import { getBackendSrv } from '@grafana/runtime';
 
 export const validateDashboardJson = (json: string) => {
@@ -14,7 +14,7 @@ export const validateGcomDashboard = (gcomDashboard: string) => {
   // From DashboardImportCtrl
   const match = /(^\d+$)|dashboards\/(\d+)/.exec(gcomDashboard);
 
-  return match && (match[1] || match[2]) ? true : 'Could not find a valid Grafana.com id';
+  return match && (match[1] || match[2]) ? true : 'Could not find a valid Grafana.com ID';
 };
 
 export const validateTitle = (newTitle: string, folderId: number) => {
@@ -34,7 +34,7 @@ export const validateUid = (value: string) => {
   return getBackendSrv()
     .get(`/api/dashboards/uid/${value}`)
     .then((existingDashboard) => {
-      return `Dashboard named '${existingDashboard?.dashboard.title}' in folder '${existingDashboard?.meta.folderTitle}' has the same uid`;
+      return `Dashboard named '${existingDashboard?.dashboard.title}' in folder '${existingDashboard?.meta.folderTitle}' has the same UID`;
     })
     .catch((error) => {
       error.isHandled = true;

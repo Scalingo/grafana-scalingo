@@ -2,17 +2,19 @@
 
 exports[`FolderPicker should render 1`] = `
 <div
-  aria-label="Folder picker select container"
+  data-testid="data-testid Folder picker select container"
 >
   <AsyncSelect
     allowCustomValue={false}
+    aria-label="Select a folder"
     defaultOptions={true}
-    defaultValue={Object {}}
+    defaultValue={null}
     loadOptions={[Function]}
     loadingMessage="Loading folders..."
+    menuShouldPortal={true}
     onChange={[Function]}
     onCreateOption={[Function]}
-    value={Object {}}
+    value={null}
   />
 </div>
 `;

@@ -21,18 +21,9 @@ export const FilterByValueFilterEditor: React.FC<Props> = (props) => {
   const { fieldsAsOptions, fieldByDisplayName } = fieldsInfo;
   const fieldName = getFieldName(filter, fieldsAsOptions) ?? '';
   const field = fieldByDisplayName[fieldName];
-
-  if (!field) {
-    return null;
-  }
-
-  const matcherOptions = getMatcherOptions(field);
+  const matcherOptions = field ? getMatcherOptions(field) : [];
   const matcherId = getSelectedMatcherId(filter, matcherOptions);
   const editor = valueMatchersUI.getIfExists(matcherId);
-
-  if (!editor || !editor.component) {
-    return null;
-  }
 
   const onChangeField = useCallback(
     (selectable?: SelectableValue<string>) => {
@@ -77,11 +68,16 @@ export const FilterByValueFilterEditor: React.FC<Props> = (props) => {
     [onChange, filter]
   );
 
+  if (!field || !editor || !editor.component) {
+    return null;
+  }
+
   return (
     <div className="gf-form-inline">
       <div className="gf-form gf-form-spacing">
         <div className="gf-form-label width-7">Field</div>
         <Select
+          menuShouldPortal
           className="min-width-15 max-width-24"
           placeholder="Field Name"
           options={fieldsAsOptions}
@@ -92,6 +88,7 @@ export const FilterByValueFilterEditor: React.FC<Props> = (props) => {
       <div className="gf-form gf-form-spacing">
         <div className="gf-form-label">Match</div>
         <Select
+          menuShouldPortal
           className="width-12"
           placeholder="Select test"
           options={matcherOptions}

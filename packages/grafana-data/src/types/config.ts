@@ -2,6 +2,8 @@ import { DataSourceInstanceSettings } from './datasource';
 import { PanelPluginMeta } from './panel';
 import { GrafanaTheme } from './theme';
 import { SystemDateFormatSettings } from '../datetime';
+import { GrafanaTheme2 } from '../themes';
+import { MapLayerOptions } from '../geo/layer';
 
 /**
  * Describes the build information that will be available via the Grafana configuration.
@@ -41,16 +43,15 @@ export enum GrafanaEdition {
  * @public
  */
 export interface FeatureToggles {
-  live: boolean;
-  ngalert: boolean;
-  panelLibrary: boolean;
+  [name: string]: boolean;
 
-  /**
-   * @remarks
-   * Available only in Grafana Enterprise
-   */
-  meta: boolean;
-  reportVariables: boolean;
+  trimDefaults: boolean;
+  accesscontrol: boolean;
+  tempoServiceGraph: boolean;
+  tempoSearch: boolean;
+  recordedQueries: boolean;
+  newNavigation: boolean;
+  fullRangeLogsVolume: boolean;
 }
 
 /**
@@ -78,6 +79,16 @@ export interface SentryConfig {
   customEndpoint: string;
   sampleRate: number;
 }
+
+/**
+ * Describes the plugins that should be preloaded prior to start Grafana.
+ *
+ * @public
+ */
+export type PreloadPlugin = {
+  path: string;
+  version: string;
+};
 
 /**
  * Describes all the different Grafana configuration values available for an instance.
@@ -119,12 +130,17 @@ export interface GrafanaConfig {
   viewersCanEdit: boolean;
   editorsCanAdmin: boolean;
   disableSanitizeHtml: boolean;
+  liveEnabled: boolean;
   theme: GrafanaTheme;
-  pluginsToPreload: string[];
+  theme2: GrafanaTheme2;
+  pluginsToPreload: PreloadPlugin[];
   featureToggles: FeatureToggles;
   licenseInfo: LicenseInfo;
   http2Enabled: boolean;
   dateFormats?: SystemDateFormatSettings;
   sentry: SentryConfig;
   customTheme?: any;
+  geomapDefaultBaseLayer?: MapLayerOptions;
+  geomapDisableCustomBaseLayer?: boolean;
+  unifiedAlertingEnabled: boolean;
 }

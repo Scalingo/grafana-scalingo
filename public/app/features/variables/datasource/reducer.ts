@@ -2,8 +2,14 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { DataSourceInstanceSettings } from '@grafana/data';
 
 import { DataSourceVariableModel, initialVariableModelState, VariableOption, VariableRefresh } from '../types';
-import { ALL_VARIABLE_TEXT, ALL_VARIABLE_VALUE, getInstanceState, VariablePayload } from '../state/types';
-import { initialVariablesState, VariablesState } from '../state/variablesReducer';
+import {
+  ALL_VARIABLE_TEXT,
+  ALL_VARIABLE_VALUE,
+  getInstanceState,
+  initialVariablesState,
+  VariablePayload,
+  VariablesState,
+} from '../state/types';
 
 export interface DataSourceVariableEditorState {
   dataSourceTypes: Array<{ text: string; value: string }>;
@@ -39,13 +45,11 @@ export const dataSourceVariableSlice = createSlice({
           continue;
         }
 
-        if (regex && !regex.exec(source.name)) {
-          continue;
+        if (isValid(source, regex)) {
+          options.push({ text: source.name, value: source.name, selected: false });
         }
 
-        options.push({ text: source.name, value: source.name, selected: false });
-
-        if (source.isDefault) {
+        if (isDefault(source, regex)) {
           options.push({ text: 'default', value: 'default', selected: false });
         }
       }
@@ -62,6 +66,26 @@ export const dataSourceVariableSlice = createSlice({
     },
   },
 });
+
+function isValid(source: DataSourceInstanceSettings, regex?: RegExp) {
+  if (!regex) {
+    return true;
+  }
+
+  return regex.exec(source.name);
+}
+
+function isDefault(source: DataSourceInstanceSettings, regex?: RegExp) {
+  if (!source.isDefault) {
+    return false;
+  }
+
+  if (!regex) {
+    return true;
+  }
+
+  return regex.exec('default');
+}
 
 export const dataSourceVariableReducer = dataSourceVariableSlice.reducer;
 export const { createDataSourceOptions } = dataSourceVariableSlice.actions;

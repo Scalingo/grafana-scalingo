@@ -5,8 +5,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/grafana/grafana/pkg/tsdb"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana/pkg/tsdb/intervalv2"
 )
 
 var (
@@ -14,7 +16,7 @@ var (
 	regexpMeasurementPattern = regexp.MustCompile(`^\/.*\/$`)
 )
 
-func (query *Query) Build(queryContext *tsdb.TsdbQuery) (string, error) {
+func (query *Query) Build(queryContext *backend.QueryDataRequest) (string, error) {
 	var res string
 	if query.UseRawQuery && query.RawQuery != "" {
 		res = query.RawQuery
@@ -27,13 +29,14 @@ func (query *Query) Build(queryContext *tsdb.TsdbQuery) (string, error) {
 		res += query.renderTz()
 	}
 
-	calculator := tsdb.NewIntervalCalculator(&tsdb.IntervalOptions{})
-	interval := calculator.Calculate(queryContext.TimeRange, query.Interval)
+	intervalText := intervalv2.FormatDuration(query.Interval)
+	intervalMs := int64(query.Interval / time.Millisecond)
 
 	res = strings.ReplaceAll(res, "$timeFilter", query.renderTimeFilter(queryContext))
-	res = strings.ReplaceAll(res, "$interval", interval.Text)
-	res = strings.ReplaceAll(res, "$__interval_ms", strconv.FormatInt(interval.Milliseconds(), 10))
-	res = strings.ReplaceAll(res, "$__interval", interval.Text)
+	res = strings.ReplaceAll(res, "$interval", intervalText)
+	res = strings.ReplaceAll(res, "$__interval_ms", strconv.FormatInt(intervalMs, 10))
+	res = strings.ReplaceAll(res, "$__interval", intervalText)
+
 	return res, nil
 }
 
@@ -77,40 +80,12 @@ func (query *Query) renderTags() []string {
 	return res
 }
 
-func isTimeRangeNumeric(tr *tsdb.TimeRange) bool {
-	if _, err := strconv.ParseInt(tr.From, 10, 64); err != nil {
-		return false
-	}
-	if _, err := strconv.ParseInt(tr.To, 10, 64); err != nil {
-		return false
-	}
-	return true
+func (query *Query) renderTimeFilter(queryContext *backend.QueryDataRequest) string {
+	from, to := epochMStoInfluxTime(&queryContext.Queries[0].TimeRange)
+	return fmt.Sprintf("time > %s and time < %s", from, to)
 }
 
-func (query *Query) renderTimeFilter(queryContext *tsdb.TsdbQuery) string {
-	// If from expressions
-	if isTimeRangeNumeric(queryContext.TimeRange) {
-		from, to, err := epochMStoInfluxTime(queryContext.TimeRange)
-		if err == nil {
-			return fmt.Sprintf(" time > %s and time < %s ", from, to)
-		}
-
-		// on error fallback to original time range processing.
-		glog.Warn("failed to parse expected time range in query, falling back to non-expression time range processing", "error", err)
-	}
-
-	// else from dashboard alerting
-	from := "now() - " + queryContext.TimeRange.From
-	to := ""
-
-	if queryContext.TimeRange.To != "now" && queryContext.TimeRange.To != "" {
-		to = " and time < now() - " + strings.Replace(queryContext.TimeRange.To, "now-", "", 1)
-	}
-
-	return fmt.Sprintf("time > %s%s", from, to)
-}
-
-func (query *Query) renderSelectors(queryContext *tsdb.TsdbQuery) string {
+func (query *Query) renderSelectors(queryContext *backend.QueryDataRequest) string {
 	res := "SELECT "
 
 	var selectors []string
@@ -157,7 +132,7 @@ func (query *Query) renderWhereClause() string {
 	return res
 }
 
-func (query *Query) renderGroupBy(queryContext *tsdb.TsdbQuery) string {
+func (query *Query) renderGroupBy(queryContext *backend.QueryDataRequest) string {
 	groupBy := ""
 	for i, group := range query.GroupBy {
 		if i == 0 {
@@ -184,16 +159,9 @@ func (query *Query) renderTz() string {
 	return fmt.Sprintf(" tz('%s')", tz)
 }
 
-func epochMStoInfluxTime(tr *tsdb.TimeRange) (string, string, error) {
-	from, err := strconv.ParseInt(tr.From, 10, 64)
-	if err != nil {
-		return "", "", err
-	}
+func epochMStoInfluxTime(tr *backend.TimeRange) (string, string) {
+	from := tr.From.UnixNano() / int64(time.Millisecond)
+	to := tr.To.UnixNano() / int64(time.Millisecond)
 
-	to, err := strconv.ParseInt(tr.To, 10, 64)
-	if err != nil {
-		return "", "", err
-	}
-
-	return fmt.Sprintf("%dms", from), fmt.Sprintf("%dms", to), nil
+	return fmt.Sprintf("%dms", from), fmt.Sprintf("%dms", to)
 }

@@ -4,6 +4,7 @@ import { SettingsEditor } from '.';
 import { ElasticsearchProvider } from '../../ElasticsearchQueryContext';
 import { ElasticDatasource } from '../../../../datasource';
 import { ElasticsearchQuery } from '../../../../types';
+import { getDefaultTimeRange } from '@grafana/data';
 
 describe('Settings Editor', () => {
   describe('Raw Data', () => {
@@ -33,6 +34,7 @@ describe('Settings Editor', () => {
           datasource={{} as ElasticDatasource}
           onChange={onChange}
           onRunQuery={() => {}}
+          range={getDefaultTimeRange()}
         >
           <SettingsEditor metric={query.metrics![0]} previousMetrics={[]} />
         </ElasticsearchProvider>
@@ -67,6 +69,7 @@ describe('Settings Editor', () => {
           datasource={{} as ElasticDatasource}
           onChange={onChange}
           onRunQuery={() => {}}
+          range={getDefaultTimeRange()}
         >
           <SettingsEditor metric={onChange.mock.calls[0][0].metrics![0]} previousMetrics={[]} />
         </ElasticsearchProvider>
@@ -77,6 +80,47 @@ describe('Settings Editor', () => {
       });
       expect(settingsButtonEl).toBeInTheDocument();
       expect(settingsButtonEl.textContent).toBe(`Size: ${newSizeValue}`);
+    });
+  });
+
+  describe('Rate aggregation', () => {
+    it('should render correct settings', () => {
+      const metricId = '1';
+      const query: ElasticsearchQuery = {
+        refId: 'A',
+        query: '',
+        metrics: [
+          {
+            id: metricId,
+            type: 'rate',
+            settings: {},
+          },
+        ],
+        bucketAggs: [],
+      };
+
+      const onChange = jest.fn();
+
+      render(
+        <ElasticsearchProvider
+          query={query}
+          datasource={{} as ElasticDatasource}
+          onChange={onChange}
+          onRunQuery={() => {}}
+          range={getDefaultTimeRange()}
+        >
+          <SettingsEditor metric={query.metrics![0]} previousMetrics={[]} />
+        </ElasticsearchProvider>
+      );
+
+      let settingsButtonEl = screen.getByRole('button');
+      fireEvent.click(settingsButtonEl);
+
+      const unitSelectElement = screen.getByTestId('unit-select');
+      const modeSelectElement = screen.getByTestId('mode-select');
+
+      expect(unitSelectElement).toBeInTheDocument();
+      expect(modeSelectElement).toBeInTheDocument();
     });
   });
 });

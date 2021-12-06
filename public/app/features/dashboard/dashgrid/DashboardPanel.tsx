@@ -1,27 +1,23 @@
-// Libraries
 import React, { PureComponent } from 'react';
-import classNames from 'classnames';
-import AutoSizer from 'react-virtualized-auto-sizer';
 import { connect, ConnectedProps } from 'react-redux';
-
-// Components
 import { PanelChrome } from './PanelChrome';
 import { PanelChromeAngular } from './PanelChromeAngular';
-
-// Actions
-import { initDashboardPanel } from '../state/actions';
-
-// Types
 import { DashboardModel, PanelModel } from '../state';
 import { StoreState } from 'app/types';
 import { PanelPlugin } from '@grafana/data';
+import { cleanUpPanelState, setPanelInstanceState } from '../../panel/state/reducers';
+import { initPanelState } from '../../panel/state/actions';
 
 export interface OwnProps {
   panel: PanelModel;
+  stateKey: string;
   dashboard: DashboardModel;
   isEditing: boolean;
   isViewing: boolean;
   isInView: boolean;
+  width: number;
+  height: number;
+  skipStateCleanUp?: boolean;
 }
 
 export interface State {
@@ -29,17 +25,22 @@ export interface State {
 }
 
 const mapStateToProps = (state: StoreState, props: OwnProps) => {
-  const panelState = state.dashboard.panels[props.panel.id];
+  const panelState = state.panels[props.stateKey];
   if (!panelState) {
     return { plugin: null };
   }
 
   return {
     plugin: panelState.plugin,
+    instanceState: panelState.instanceState,
   };
 };
 
-const mapDispatchToProps = { initDashboardPanel };
+const mapDispatchToProps = {
+  initPanelState,
+  cleanUpPanelState,
+  setPanelInstanceState,
+};
 
 const connector = connect(mapStateToProps, mapDispatchToProps);
 
@@ -57,7 +58,16 @@ export class DashboardPanelUnconnected extends PureComponent<Props, State> {
   }
 
   componentDidMount() {
-    this.props.initDashboardPanel(this.props.panel);
+    if (!this.props.plugin) {
+      this.props.initPanelState(this.props.panel);
+    }
+  }
+
+  componentWillUnmount() {
+    // Most of the time an unmount should result in cleanup but in PanelEdit it should not
+    if (!this.props.skipStateCleanUp) {
+      this.props.cleanUpPanelState({ key: this.props.stateKey });
+    }
   }
 
   componentDidUpdate() {
@@ -66,61 +76,48 @@ export class DashboardPanelUnconnected extends PureComponent<Props, State> {
     }
   }
 
-  onMouseEnter = () => {
-    this.props.dashboard.setPanelFocus(this.props.panel.id);
-  };
-
-  onMouseLeave = () => {
-    this.props.dashboard.setPanelFocus(0);
+  onInstanceStateChange = (value: any) => {
+    this.props.setPanelInstanceState({ key: this.props.stateKey, value });
   };
 
   renderPanel(plugin: PanelPlugin) {
-    const { dashboard, panel, isViewing, isInView, isEditing } = this.props;
+    const { dashboard, panel, isViewing, isInView, isEditing, width, height } = this.props;
+
+    if (plugin.angularPanelCtrl) {
+      return (
+        <PanelChromeAngular
+          plugin={plugin}
+          panel={panel}
+          dashboard={dashboard}
+          isViewing={isViewing}
+          isEditing={isEditing}
+          isInView={isInView}
+          width={width}
+          height={height}
+        />
+      );
+    }
 
     return (
-      <AutoSizer>
-        {({ width, height }) => {
-          if (width === 0) {
-            return null;
-          }
-
-          if (plugin.angularPanelCtrl) {
-            return (
-              <PanelChromeAngular
-                plugin={plugin}
-                panel={panel}
-                dashboard={dashboard}
-                isViewing={isViewing}
-                isEditing={isEditing}
-                isInView={isInView}
-                width={width}
-                height={height}
-              />
-            );
-          }
-
-          return (
-            <PanelChrome
-              plugin={plugin}
-              panel={panel}
-              dashboard={dashboard}
-              isViewing={isViewing}
-              isEditing={isEditing}
-              isInView={isInView}
-              width={width}
-              height={height}
-            />
-          );
-        }}
-      </AutoSizer>
+      <PanelChrome
+        plugin={plugin}
+        panel={panel}
+        dashboard={dashboard}
+        isViewing={isViewing}
+        isEditing={isEditing}
+        isInView={isInView}
+        width={width}
+        height={height}
+        onInstanceStateChange={this.onInstanceStateChange}
+      />
     );
   }
 
   render() {
-    const { isViewing, plugin } = this.props;
+    const { plugin } = this.props;
     const { isLazy } = this.state;
 
-    // if we have not loaded plugin exports yet, wait
+    // If we have not loaded plugin exports yet, wait
     if (!plugin) {
       return null;
     }
@@ -130,16 +127,7 @@ export class DashboardPanelUnconnected extends PureComponent<Props, State> {
       return null;
     }
 
-    const panelWrapperClass = classNames({
-      'panel-wrapper': true,
-      'panel-wrapper--view': isViewing,
-    });
-
-    return (
-      <div className={panelWrapperClass} onMouseEnter={this.onMouseEnter} onMouseLeave={this.onMouseLeave}>
-        {this.renderPanel(plugin)}
-      </div>
-    );
+    return this.renderPanel(plugin);
   }
 }
 

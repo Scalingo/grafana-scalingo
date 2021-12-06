@@ -10,6 +10,7 @@ var (
 	ErrUserNotFound      = errors.New("user not found")
 	ErrUserAlreadyExists = errors.New("user already exists")
 	ErrLastGrafanaAdmin  = errors.New("cannot remove last grafana admin")
+	ErrProtectedUser     = errors.New("cannot adopt protected user")
 )
 
 type Password string
@@ -33,8 +34,9 @@ type User struct {
 	HelpFlags1    HelpFlags1
 	IsDisabled    bool
 
-	IsAdmin bool
-	OrgId   int64
+	IsAdmin          bool
+	IsServiceAccount bool
+	OrgId            int64
 
 	Created    time.Time
 	Updated    time.Time
@@ -55,18 +57,19 @@ func (u *User) NameOrFallback() string {
 // COMMANDS
 
 type CreateUserCommand struct {
-	Email          string
-	Login          string
-	Name           string
-	Company        string
-	OrgId          int64
-	OrgName        string
-	Password       string
-	EmailVerified  bool
-	IsAdmin        bool
-	IsDisabled     bool
-	SkipOrgSetup   bool
-	DefaultOrgRole string
+	Email            string
+	Login            string
+	Name             string
+	Company          string
+	OrgId            int64
+	OrgName          string
+	Password         string
+	EmailVerified    bool
+	IsAdmin          bool
+	IsDisabled       bool
+	SkipOrgSetup     bool
+	DefaultOrgRole   string
+	IsServiceAccount bool
 
 	Result User
 }
@@ -85,11 +88,6 @@ type ChangeUserPasswordCommand struct {
 	NewPassword string `json:"newPassword"`
 
 	UserId int64 `json:"-"`
-}
-
-type UpdateUserPermissionsCommand struct {
-	IsGrafanaAdmin bool
-	UserId         int64 `json:"-"`
 }
 
 type DisableUserCommand struct {
@@ -148,6 +146,7 @@ type SearchUsersQuery struct {
 	Page       int
 	Limit      int
 	AuthModule string
+	Filters    []Filter
 
 	IsDisabled *bool
 
@@ -200,6 +199,14 @@ func (u *SignedInUser) NameOrFallback() string {
 	return u.Email
 }
 
+func (u *SignedInUser) ToUserDisplayDTO() *UserDisplayDTO {
+	return &UserDisplayDTO{
+		Id:    u.UserId,
+		Login: u.Login,
+		Name:  u.Name,
+	}
+}
+
 type UpdateUserLastSeenAtCommand struct {
 	UserId int64
 }
@@ -244,6 +251,13 @@ type UserSearchHitDTO struct {
 	LastSeenAtAge string               `json:"lastSeenAtAge"`
 	AuthLabels    []string             `json:"authLabels"`
 	AuthModule    AuthModuleConversion `json:"-"`
+}
+
+type UserDisplayDTO struct {
+	Id        int64  `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Login     string `json:"login,omitempty"`
+	AvatarUrl string `json:"avatarUrl"`
 }
 
 type UserIdDTO struct {

@@ -3,18 +3,16 @@ package expr
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana/pkg/bus"
-	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/tsdb"
+	"github.com/grafana/grafana/pkg/plugins/adapters"
+	"github.com/grafana/grafana/pkg/tsdb/legacydata"
+	"github.com/grafana/grafana/pkg/util/errutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 var (
@@ -35,62 +33,87 @@ func init() {
 }
 
 // WrapTransformData creates and executes transform requests
-func (s *Service) WrapTransformData(ctx context.Context, query *tsdb.TsdbQuery) (*tsdb.Response, error) {
-	sdkReq := &backend.QueryDataRequest{
-		PluginContext: backend.PluginContext{
-			OrgID: query.User.OrgId,
-		},
-		Queries: []backend.DataQuery{},
+func (s *Service) WrapTransformData(ctx context.Context, query legacydata.DataQuery) (*backend.QueryDataResponse, error) {
+	req := Request{
+		OrgId:   query.User.OrgId,
+		Queries: []Query{},
 	}
 
 	for _, q := range query.Queries {
+		if q.DataSource == nil {
+			return nil, fmt.Errorf("mising datasource info: " + q.RefID)
+		}
 		modelJSON, err := q.Model.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
-		sdkReq.Queries = append(sdkReq.Queries, backend.DataQuery{
+		req.Queries = append(req.Queries, Query{
 			JSON:          modelJSON,
-			Interval:      time.Duration(q.IntervalMs) * time.Millisecond,
-			RefID:         q.RefId,
+			Interval:      time.Duration(q.IntervalMS) * time.Millisecond,
+			RefID:         q.RefID,
 			MaxDataPoints: q.MaxDataPoints,
 			QueryType:     q.QueryType,
-			TimeRange: backend.TimeRange{
+			Datasource: DataSourceRef{
+				Type: q.DataSource.Type,
+				UID:  q.DataSource.Uid,
+			},
+			TimeRange: TimeRange{
 				From: query.TimeRange.GetFromAsTimeUTC(),
 				To:   query.TimeRange.GetToAsTimeUTC(),
 			},
 		})
 	}
-	pbRes, err := s.TransformData(ctx, sdkReq)
-	if err != nil {
-		return nil, err
+	return s.TransformData(ctx, &req)
+}
+
+// Request is similar to plugins.DataQuery but with the Time Ranges is per Query.
+type Request struct {
+	Headers map[string]string
+	Debug   bool
+	OrgId   int64
+	Queries []Query
+}
+
+// Query is like plugins.DataSubQuery, but with a a time range, and only the UID
+// for the data source. Also interval is a time.Duration.
+type Query struct {
+	RefID         string
+	TimeRange     TimeRange
+	DatasourceUID string        // deprecated, value -100 when expressions
+	Datasource    DataSourceRef `json:"datasource"`
+	JSON          json.RawMessage
+	Interval      time.Duration
+	QueryType     string
+	MaxDataPoints int64
+}
+
+type DataSourceRef struct {
+	Type string `json:"type"` // value should be __expr__
+	UID  string `json:"uid"`  // value should be __expr__
+}
+
+func (q *Query) GetDatasourceUID() string {
+	if q.DatasourceUID != "" {
+		return q.DatasourceUID // backwards compatibility gets precedence
 	}
 
-	tR := &tsdb.Response{
-		Results: make(map[string]*tsdb.QueryResult, len(pbRes.Responses)),
+	if q.Datasource.UID != "" {
+		return q.Datasource.UID
 	}
-	for refID, res := range pbRes.Responses {
-		tRes := &tsdb.QueryResult{
-			RefId:      refID,
-			Dataframes: tsdb.NewDecodedDataFrames(res.Frames),
-		}
-		// if len(res.JsonMeta) != 0 {
-		// 	tRes.Meta = simplejson.NewFromAny(res.JsonMeta)
-		// }
-		if res.Error != nil {
-			tRes.Error = res.Error
-			tRes.ErrorString = res.Error.Error()
-		}
-		tR.Results[refID] = tRes
-	}
+	return ""
+}
 
-	return tR, nil
+// TimeRange is a time.Time based TimeRange.
+type TimeRange struct {
+	From time.Time
+	To   time.Time
 }
 
 // TransformData takes Queries which are either expressions nodes
 // or are datasource requests.
-func (s *Service) TransformData(ctx context.Context, req *backend.QueryDataRequest) (r *backend.QueryDataResponse, err error) {
+func (s *Service) TransformData(ctx context.Context, req *Request) (r *backend.QueryDataResponse, err error) {
 	if s.isDisabled() {
-		return nil, status.Error(codes.PermissionDenied, "Expressions are disabled")
+		return nil, fmt.Errorf("server side expressions are disabled")
 	}
 
 	start := time.Now()
@@ -110,20 +133,20 @@ func (s *Service) TransformData(ctx context.Context, req *backend.QueryDataReque
 	// and parsing graph nodes from the queries.
 	pipeline, err := s.BuildPipeline(req)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, err
 	}
 
 	// Execute the pipeline
 	responses, err := s.ExecutePipeline(ctx, pipeline)
 	if err != nil {
-		return nil, status.Error(codes.Unknown, err.Error())
+		return nil, err
 	}
 
 	// Get which queries have the Hide property so they those queries' results
 	// can be excluded from the response.
 	hidden, err := hiddenRefIDs(req.Queries)
 	if err != nil {
-		return nil, status.Error((codes.Internal), err.Error())
+		return nil, err
 	}
 
 	if len(hidden) != 0 {
@@ -139,7 +162,7 @@ func (s *Service) TransformData(ctx context.Context, req *backend.QueryDataReque
 	return responses, nil
 }
 
-func hiddenRefIDs(queries []backend.DataQuery) (map[string]struct{}, error) {
+func hiddenRefIDs(queries []Query) (map[string]struct{}, error) {
 	hidden := make(map[string]struct{})
 
 	for _, query := range queries {
@@ -158,9 +181,9 @@ func hiddenRefIDs(queries []backend.DataQuery) (map[string]struct{}, error) {
 	return hidden, nil
 }
 
-// QueryData is called used to query datasources that are not expression commands, but are used
+// queryData is called used to query datasources that are not expression commands, but are used
 // alongside expressions and/or are the input of an expression command.
-func QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+func (s *Service) queryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	if len(req.Queries) == 0 {
 		return nil, fmt.Errorf("zero queries found in datasource request")
 	}
@@ -179,71 +202,27 @@ func QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.Que
 		Uid:   datasourceUID,
 	}
 
-	if err := bus.Dispatch(getDsInfo); err != nil {
+	if err := bus.DispatchCtx(ctx, getDsInfo); err != nil {
 		return nil, fmt.Errorf("could not find datasource: %w", err)
 	}
 
-	// Convert plugin-model (datasource) queries to tsdb queries
-	queries := make([]*tsdb.Query, len(req.Queries))
-	for i, query := range req.Queries {
-		sj, err := simplejson.NewJson(query.JSON)
-		if err != nil {
-			return nil, err
-		}
-		queries[i] = &tsdb.Query{
-			RefId:         query.RefID,
-			IntervalMs:    query.Interval.Milliseconds(),
-			MaxDataPoints: query.MaxDataPoints,
-			QueryType:     query.QueryType,
-			DataSource:    getDsInfo.Result,
-			Model:         sj,
-		}
-	}
-
-	// For now take Time Range from first query.
-	timeRange := tsdb.NewTimeRange(strconv.FormatInt(req.Queries[0].TimeRange.From.Unix()*1000, 10), strconv.FormatInt(req.Queries[0].TimeRange.To.Unix()*1000, 10))
-
-	tQ := &tsdb.TsdbQuery{
-		TimeRange: timeRange,
-		Queries:   queries,
-	}
-
-	// Execute the converted queries
-	tsdbRes, err := tsdb.HandleRequest(ctx, getDsInfo.Result, tQ)
+	dsInstanceSettings, err := adapters.ModelToInstanceSettings(getDsInfo.Result, s.decryptSecureJsonDataFn(ctx))
 	if err != nil {
-		return nil, err
+		return nil, errutil.Wrap("failed to convert datasource instance settings", err)
 	}
-	// Convert tsdb results (map) to plugin-model/datasource (slice) results.
-	// Only error, tsdb.Series, and encoded Dataframes responses are mapped.
-	responses := make(map[string]backend.DataResponse, len(tsdbRes.Results))
-	for refID, res := range tsdbRes.Results {
-		pRes := backend.DataResponse{}
-		if res.Error != nil {
-			pRes.Error = res.Error
-		}
 
-		if res.Dataframes != nil {
-			decoded, err := res.Dataframes.Decoded()
-			if err != nil {
-				return nil, err
-			}
-			pRes.Frames = decoded
-			responses[refID] = pRes
-			continue
-		}
+	req.PluginContext.DataSourceInstanceSettings = dsInstanceSettings
+	req.PluginContext.PluginID = getDsInfo.Result.Type
 
-		for _, series := range res.Series {
-			frame, err := tsdb.SeriesToFrame(series)
-			frame.RefID = refID
-			if err != nil {
-				return nil, err
-			}
-			pRes.Frames = append(pRes.Frames, frame)
-		}
+	return s.dataService.QueryData(ctx, req)
+}
 
-		responses[refID] = pRes
+func (s *Service) decryptSecureJsonDataFn(ctx context.Context) func(map[string][]byte) map[string]string {
+	return func(m map[string][]byte) map[string]string {
+		decryptedJsonData, err := s.secretsService.DecryptJsonData(ctx, m)
+		if err != nil {
+			logger.Error("Failed to decrypt secure json data", "error", err)
+		}
+		return decryptedJsonData
 	}
-	return &backend.QueryDataResponse{
-		Responses: responses,
-	}, nil
 }

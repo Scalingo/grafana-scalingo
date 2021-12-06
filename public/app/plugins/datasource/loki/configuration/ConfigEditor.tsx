@@ -1,9 +1,10 @@
 import React from 'react';
 import { DataSourcePluginOptionsEditorProps, DataSourceSettings } from '@grafana/data';
-import { DataSourceHttpSettings } from '@grafana/ui';
+import { AlertingSettings, DataSourceHttpSettings } from '@grafana/ui';
 import { LokiOptions } from '../types';
 import { MaxLinesField } from './MaxLinesField';
 import { DerivedFields } from './DerivedFields';
+import { getAllAlertmanagerDataSources } from 'app/features/alerting/unified/utils/alertmanager';
 
 export type Props = DataSourcePluginOptionsEditorProps<LokiOptions>;
 
@@ -25,6 +26,7 @@ const setDerivedFields = makeJsonUpdater('derivedFields');
 
 export const ConfigEditor = (props: Props) => {
   const { options, onOptionsChange } = props;
+  const alertmanagers = getAllAlertmanagerDataSources();
 
   return (
     <>
@@ -33,6 +35,12 @@ export const ConfigEditor = (props: Props) => {
         dataSourceConfig={options}
         showAccessOptions={false}
         onChange={onOptionsChange}
+      />
+
+      <AlertingSettings<LokiOptions>
+        alertmanagerDataSources={alertmanagers}
+        options={options}
+        onOptionsChange={onOptionsChange}
       />
 
       <div className="gf-form-group">

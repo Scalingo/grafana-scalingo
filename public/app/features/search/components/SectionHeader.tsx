@@ -1,8 +1,10 @@
 import React, { FC, useCallback } from 'react';
-import { css, cx } from 'emotion';
+import { css, cx } from '@emotion/css';
 import { useLocalStorage } from 'react-use';
 import { GrafanaTheme } from '@grafana/data';
+import { selectors } from '@grafana/e2e-selectors';
 import { Icon, Spinner, stylesFactory, useTheme } from '@grafana/ui';
+
 import { DashboardSection, OnToggleChecked } from '../types';
 import { SearchCheckbox } from './SearchCheckbox';
 import { getSectionIcon, getSectionStorageKey } from '../utils';
@@ -29,24 +31,36 @@ export const SectionHeader: FC<SectionHeaderProps> = ({
     onSectionClick(section);
   };
 
-  const onSectionChecked = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
+  const handleCheckboxClick = useCallback(
+    (ev: React.MouseEvent) => {
+      console.log('section header handleCheckboxClick');
+      ev.stopPropagation();
+      ev.preventDefault();
+
       if (onToggleChecked) {
         onToggleChecked(section);
       }
     },
-    [section]
+    [onToggleChecked, section]
   );
 
   return (
     <div
       className={styles.wrapper}
       onClick={onSectionExpand}
-      aria-label={section.expanded ? `Collapse folder ${section.id}` : `Expand folder ${section.id}`}
+      data-testid={
+        section.expanded
+          ? selectors.components.Search.collapseFolder(section.id?.toString())
+          : selectors.components.Search.expandFolder(section.id?.toString())
+      }
     >
-      <SearchCheckbox editable={editable} checked={section.checked} onClick={onSectionChecked} />
+      <SearchCheckbox
+        className={styles.checkbox}
+        editable={editable}
+        checked={section.checked}
+        onClick={handleCheckboxClick}
+        aria-label="Select folder"
+      />
 
       <div className={styles.icon}>
         <Icon name={getSectionIcon(section)} />
@@ -90,6 +104,9 @@ const getSectionHeaderStyles = stylesFactory((theme: GrafanaTheme, selected = fa
       'pointer',
       { selected }
     ),
+    checkbox: css`
+      padding: 0 ${sm} 0 0;
+    `,
     icon: css`
       padding: 0 ${sm} 0 ${editable ? 0 : sm};
     `,

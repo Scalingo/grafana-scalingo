@@ -21,34 +21,43 @@ During an infrastructure monitoring and incident response, you can dig deeper in
 
 ### Logs visualization
 
-Results of log queries are shown as histograms in the graph and individual logs are displayed below. If the data source does not send histogram data for the requested time range, the logs model computes a time series based on the log row counts bucketed by an automatically calculated time interval and the start of the histogram is then anchored by the first log row's timestamp from the result. The end of the time series is anchored to the time picker's **To** range.
+Results of log queries are shown as histograms in the graph and individual logs are explained in the following sections.
+
+If the data source supports a full range log volume histogram, the graph with log distribution for all entered log queries is shown automatically. This feature is currently supported by Elasticsearch data source.
+
+If the data source does not support loading full range log volume histogram, the logs model computes a time series based on the log row counts bucketed by an automatically calculated time interval, and the first log row's timestamp then anchors the start of the histogram from the result. The end of the time series is anchored to the time picker's **To** range.
 
 #### Log level
 
-For logs where a **level** label is specified, we use the value of the label to determine the log level and update color accordingly. If the log doesn't have a level label specified, we parse the log to find out if its content matches any of the supported expressions (see below for more information). The log level is always determined by the first match. In case Grafana is not able to determine a log level, it will be visualized with **unknown** log level.
+For logs where a level label is specified, we use the value of the label to determine the log level and update color accordingly. If the log doesn't have a level label specified, we try to parse the log using logfmt and JSON parsers to find out if its content matches any of the supported expressions (see below for more information). The log level is always determined by the first match. In case Grafana is not able to determine a log level, it will be visualized with an unknown log level.
 
 **Supported log levels and mapping of log level abbreviation and expressions:**
 
+| Supported expressions | Log level |      Color |
+| --------------------- | :-------: | ---------: |
+| emerg                 | critical  |     purple |
+| fatal                 | critical  |     purple |
+| alert                 | critical  |     purple |
+| crit                  | critical  |     purple |
+| critical              | critical  |     purple |
+| err                   |   error   |        red |
+| eror                  |   error   |        red |
+| error                 |   error   |        red |
+| warn                  |  warning  |     yellow |
+| warning               |  warning  |     yellow |
+| info                  |   info    |      green |
+| information           |   info    |      green |
+| notice                |   info    |      green |
+| dbug                  |   debug   |       blue |
+| debug                 |   debug   |       blue |
+| trace                 |   trace   | light blue |
+| \*                    |  unknown  |       grey |
 
-|  Supported expressions      | Log level     | Color       |
-| --------------------------- |:-------------:| -----------:|
-| emerg                       | critical      | purple      |
-| fatal                       | critical      | purple      |
-| alert                       | critical      | purple      |
-| crit                        | critical      | purple      |
-| critical                    | critical      | purple      |
-| err                         | error         | red         |
-| eror                        | error         | red         |
-| error                       | error         | red         |
-| warn                        | warning       | yellow      |
-| warning                     | warning       | yellow      |
-| info                        | info          | green       |
-| information                 | info          | green       |
-| notice                      | info          | green       |
-| dbug                        | debug         | blue        |
-| debug                       | debug         | blue        |
-| trace                       | trace         | light blue  |
-| *                           | unknown       | grey        |
+### Logs navigation
+
+Logs navigation next to the log lines can be used to request more logs. You can do this by clicking on Older logs button on the bottom of navigation. This is especially useful when you hit the line limit and you want to see more logs. Each request that is run from the navigation is then displayed in the navigation as separate page. Every page is showing from and to timestamp of the incoming log lines. You can see previous results by clicking on the page. Explore is caching last five requests run from the logs navigation, so you are not re-running the same queries when clicking on the pages.
+
+![Navigate logs in Explore](/static/img/docs/explore/navigate-logs-8-0.png)
 
 ### Visualization options
 
@@ -65,6 +74,10 @@ Shows or hides the unique labels column that includes only non-common labels. Al
 #### Wrap lines
 
 Set this to True if you want the display to use line wrapping. If set to False, it will result in horizontal scrolling.
+
+#### Prettify JSON
+
+Set this to `true` to pretty print all JSON logs. This setting does not affect logs in any format other than JSON.
 
 #### Deduping
 
@@ -99,7 +112,7 @@ If your logs are structured in `json` or `logfmt`, then you can show or hide det
 
 As mentioned, one of the log integrations is for the new open source log aggregation system from Grafana Labs - [Loki](https://github.com/grafana/loki). Loki is designed to be very cost effective, as it does not index the contents of the logs, but rather a set of labels for each log stream. The logs from Loki are queried in a similar way to querying with label selectors in Prometheus. It uses labels to group log streams which can be made to match up with your Prometheus labels. For more information about Grafana Loki, refer to [Grafana Loki](https://github.com/grafana/loki) or the Grafana Labs hosted variant: [Grafana Cloud Logs](https://grafana.com/loki).
 
-For more information, refer to Loki's data source documentation]({{< relref "../datasources/loki.md" >}}) on how to query for log data.
+For more information, refer to [Loki's data source documentation]({{< relref "../datasources/loki.md" >}}) on how to query for log data.
 
 #### Switch from metrics to logs
 

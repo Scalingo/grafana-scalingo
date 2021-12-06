@@ -7,6 +7,8 @@ import {
   PanelProps,
   standardEditorsRegistry,
   standardFieldConfigEditorRegistry,
+  dateTime,
+  TimeRange,
 } from '@grafana/data';
 import { ComponentClass } from 'react';
 import { PanelQueryRunner } from '../../query/state/PanelQueryRunner';
@@ -17,6 +19,7 @@ import { variableAdapters } from '../../variables/adapters';
 import { createQueryVariableAdapter } from '../../variables/query/adapter';
 import { mockStandardFieldConfigOptions } from '../../../../test/helpers/fieldConfig';
 import { queryBuilder } from 'app/features/variables/shared/testing/builders';
+import { TimeOverrideResult } from '../utils/panel';
 
 standardFieldConfigEditorRegistry.setInit(() => mockStandardFieldConfigOptions());
 standardEditorsRegistry.setInit(() => mockStandardFieldConfigOptions());
@@ -262,7 +265,6 @@ describe('PanelModel', () => {
           });
         });
 
-        model.editSourceId = 1001;
         model.fieldConfig.defaults.decimals = 3;
         model.fieldConfig.defaults.custom = {
           customProp: true,
@@ -284,10 +286,6 @@ describe('PanelModel', () => {
         ];
         model.changePlugin(newPlugin);
         model.alert = { id: 2 };
-      });
-
-      it('should keep editSourceId', () => {
-        expect(model.editSourceId).toBe(1001);
       });
 
       it('should keep maxDataPoints', () => {
@@ -455,6 +453,32 @@ describe('PanelModel', () => {
         const title = model.getDisplayTitle();
 
         expect(title).toEqual('Multi value variable A + B A + B %7BA%2CB%7D');
+      });
+    });
+
+    describe('runAllPanelQueries', () => {
+      it('when called then it should call all pending queries', () => {
+        model.getQueryRunner = jest.fn().mockReturnValue({
+          run: jest.fn(),
+        });
+        const dashboardId = 123;
+        const dashboardTimezone = 'browser';
+        const width = 860;
+        const timeData = {
+          timeInfo: '',
+          timeRange: {
+            from: dateTime([2019, 1, 11, 12, 0]),
+            to: dateTime([2019, 1, 11, 18, 0]),
+            raw: {
+              from: 'now-6h',
+              to: 'now',
+            },
+          } as TimeRange,
+        } as TimeOverrideResult;
+
+        model.runAllPanelQueries(dashboardId, dashboardTimezone, timeData, width);
+
+        expect(model.getQueryRunner).toBeCalled();
       });
     });
   });

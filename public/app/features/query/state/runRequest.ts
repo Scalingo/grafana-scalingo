@@ -1,7 +1,7 @@
 // Libraries
 import { from, merge, Observable, of, timer } from 'rxjs';
 import { isString, map as isArray } from 'lodash';
-import { catchError, finalize, map, mapTo, share, takeUntil, tap } from 'rxjs/operators';
+import { catchError, map, mapTo, share, takeUntil, tap } from 'rxjs/operators';
 // Utils & Services
 import { backendSrv } from 'app/core/services/backend_srv';
 // Types
@@ -22,8 +22,10 @@ import {
 } from '@grafana/data';
 import { toDataQueryError } from '@grafana/runtime';
 import { emitDataRequestEvent } from './queryAnalytics';
-import { expressionDatasource, ExpressionDatasourceID } from 'app/features/expressions/ExpressionDatasource';
+import { dataSource as expressionDatasource } from 'app/features/expressions/ExpressionDatasource';
 import { ExpressionQuery } from 'app/features/expressions/types';
+import { cancelNetworkRequestsOnUnsubscribe } from './processing/canceler';
+import { isExpressionReference } from '@grafana/runtime/src/utils/DataSourceWithBackend';
 
 type MapOfResponsePackets = { [str: string]: DataQueryResponse };
 
@@ -151,7 +153,7 @@ export function runRequest(
     tap(emitDataRequestEvent(datasource)),
     // finalize is triggered when subscriber unsubscribes
     // This makes sure any still running network requests are cancelled
-    finalize(cancelNetworkRequestsOnUnsubscribe(request)),
+    cancelNetworkRequestsOnUnsubscribe(backendSrv, request.requestId),
     // this makes it possible to share this observable in takeUntil
     share()
   );
@@ -162,12 +164,6 @@ export function runRequest(
   return merge(timer(200).pipe(mapTo(state.panelData), takeUntil(dataObservable)), dataObservable);
 }
 
-function cancelNetworkRequestsOnUnsubscribe(req: DataQueryRequest) {
-  return () => {
-    backendSrv.resolveCancelerIfExists(req.requestId);
-  };
-}
-
 export function callQueryMethod(
   datasource: DataSourceApi,
   request: DataQueryRequest,
@@ -175,7 +171,7 @@ export function callQueryMethod(
 ) {
   // If any query has an expression, use the expression endpoint
   for (const target of request.targets) {
-    if (target.datasource === ExpressionDatasourceID) {
+    if (isExpressionReference(target.datasource)) {
       return expressionDatasource.query(request as DataQueryRequest<ExpressionQuery>);
     }
   }

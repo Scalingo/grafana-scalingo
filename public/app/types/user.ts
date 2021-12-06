@@ -1,5 +1,5 @@
-import { TimeZone } from '@grafana/data';
 import { OrgRole } from '.';
+import { SelectableValue } from '@grafana/data';
 
 export interface OrgUser {
   avatarUrl: string;
@@ -23,6 +23,8 @@ export interface User {
   orgId?: number;
 }
 
+export type Unit = { name: string; url: string };
+
 export interface UserDTO {
   id: number;
   login: string;
@@ -38,6 +40,10 @@ export interface UserDTO {
   avatarUrl?: string;
   orgId?: number;
   lastSeenAtAge?: string;
+  licensedRole?: string;
+  permissions?: string[];
+  teams?: Unit[];
+  orgs?: Unit[];
 }
 
 export interface Invitee {
@@ -69,11 +75,6 @@ export interface UsersState {
   hasFetched: boolean;
 }
 
-export interface UserState {
-  orgId: number;
-  timeZone: TimeZone;
-}
-
 export interface UserSession {
   id: number;
   createdAt: string;
@@ -94,11 +95,11 @@ export interface UserOrg {
 }
 
 export interface UserAdminState {
-  user: UserDTO | null;
+  user?: UserDTO;
   sessions: UserSession[];
   orgs: UserOrg[];
   isLoading: boolean;
-  error?: UserAdminError | null;
+  error?: UserAdminError;
 }
 
 export interface UserAdminError {
@@ -106,6 +107,7 @@ export interface UserAdminError {
   body: string;
 }
 
+export type UserFilter = Record<string, string | boolean | SelectableValue[]>;
 export interface UserListAdminState {
   users: UserDTO[];
   query: string;
@@ -113,4 +115,6 @@ export interface UserListAdminState {
   page: number;
   totalPages: number;
   showPaging: boolean;
+  filters: UserFilter[];
+  isLoading: boolean;
 }

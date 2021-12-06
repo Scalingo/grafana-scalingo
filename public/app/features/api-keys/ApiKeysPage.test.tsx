@@ -61,7 +61,7 @@ describe('ApiKeysPage', () => {
   describe('when there are no API keys', () => {
     it('then it should render CTA', () => {
       setup({ apiKeys: getMultipleMockKeys(0), apiKeysCount: 0, hasFetched: true });
-      expect(screen.getByLabelText(selectors.components.CallToActionCard.button('New API Key'))).toBeInTheDocument();
+      expect(screen.getByTestId(selectors.components.CallToActionCard.buttonV2('New API key'))).toBeInTheDocument();
     });
   });
 
@@ -75,9 +75,9 @@ describe('ApiKeysPage', () => {
       setup({ apiKeys, apiKeysCount: apiKeys.length, hasFetched: true });
       expect(screen.getByRole('table')).toBeInTheDocument();
       expect(screen.getAllByRole('row').length).toBe(4);
-      expect(screen.getByRole('row', { name: /first admin 2021-01-01 00:00:00 cancel delete/i })).toBeInTheDocument();
-      expect(screen.getByRole('row', { name: /second editor 2021-01-02 00:00:00 cancel delete/i })).toBeInTheDocument();
-      expect(screen.getByRole('row', { name: /third viewer no expiration date cancel delete/i })).toBeInTheDocument();
+      expect(screen.getByRole('row', { name: /first admin 2021-01-01 00:00:00/i })).toBeInTheDocument();
+      expect(screen.getByRole('row', { name: /second editor 2021-01-02 00:00:00/i })).toBeInTheDocument();
+      expect(screen.getByRole('row', { name: /third viewer no expiration date/i })).toBeInTheDocument();
     });
   });
 
@@ -98,19 +98,19 @@ describe('ApiKeysPage', () => {
     });
   });
 
-  describe('when a user searches for an api key', () => {
+  describe('when a user searches for an API key', () => {
     it('then it should dispatch setSearchQuery with correct parameters', async () => {
       const apiKeys = getMultipleMockKeys(3);
       const { setSearchQueryMock } = setup({ apiKeys, apiKeysCount: apiKeys.length, hasFetched: true });
 
       setSearchQueryMock.mockClear();
       expect(screen.getByPlaceholderText(/search keys/i)).toBeInTheDocument();
-      await userEvent.type(screen.getByPlaceholderText(/search keys/i), 'First');
+      userEvent.type(screen.getByPlaceholderText(/search keys/i), 'First');
       expect(setSearchQueryMock).toHaveBeenCalledTimes(5);
     });
   });
 
-  describe('when a user deletes an api key', () => {
+  describe('when a user deletes an API key', () => {
     it('then it should dispatch deleteApi with correct parameters', async () => {
       const apiKeys = [
         { id: 1, name: 'First', role: OrgRole.Admin, secondsToLive: 60, expiration: '2021-01-01' },
@@ -118,41 +118,44 @@ describe('ApiKeysPage', () => {
         { id: 3, name: 'Third', role: OrgRole.Viewer, secondsToLive: 0, expiration: undefined },
       ];
       const { deleteApiKeyMock } = setup({ apiKeys, apiKeysCount: apiKeys.length, hasFetched: true });
-      const firstRow = screen.getByRole('row', { name: /first admin 2021-01-01 00:00:00 cancel delete/i });
-      const secondRow = screen.getByRole('row', { name: /second editor 2021-01-02 00:00:00 cancel delete/i });
+      const firstRow = screen.getByRole('row', { name: /first admin 2021-01-01 00:00:00/i });
+      const secondRow = screen.getByRole('row', { name: /second editor 2021-01-02 00:00:00/i });
 
       deleteApiKeyMock.mockClear();
-      expect(within(firstRow).getByRole('cell', { name: /cancel delete/i })).toBeInTheDocument();
-      userEvent.click(within(firstRow).getByRole('cell', { name: /cancel delete/i }));
-      expect(within(firstRow).getByRole('button', { name: /delete/i })).toBeInTheDocument();
-      userEvent.click(within(firstRow).getByRole('button', { name: /delete/i }));
+      expect(within(firstRow).getByLabelText('Delete API key')).toBeInTheDocument();
+      userEvent.click(within(firstRow).getByLabelText('Delete API key'));
+
+      expect(within(firstRow).getByRole('button', { name: /delete$/i })).toBeInTheDocument();
+      userEvent.click(within(firstRow).getByRole('button', { name: /delete$/i }));
       expect(deleteApiKeyMock).toHaveBeenCalledTimes(1);
       expect(deleteApiKeyMock).toHaveBeenCalledWith(1, false);
 
       toggleShowExpired();
 
       deleteApiKeyMock.mockClear();
-      expect(within(secondRow).getByRole('cell', { name: /cancel delete/i })).toBeInTheDocument();
-      userEvent.click(within(secondRow).getByRole('cell', { name: /cancel delete/i }));
-      expect(within(secondRow).getByRole('button', { name: /delete/i })).toBeInTheDocument();
-      userEvent.click(within(secondRow).getByRole('button', { name: /delete/i }));
+      expect(within(secondRow).getByLabelText('Delete API key')).toBeInTheDocument();
+      userEvent.click(within(secondRow).getByLabelText('Delete API key'));
+      expect(within(secondRow).getByRole('button', { name: /delete$/i })).toBeInTheDocument();
+      userEvent.click(within(secondRow).getByRole('button', { name: /delete$/i }), undefined, {
+        skipPointerEventsCheck: true,
+      });
       expect(deleteApiKeyMock).toHaveBeenCalledTimes(1);
       expect(deleteApiKeyMock).toHaveBeenCalledWith(2, true);
     });
   });
 
-  describe('when a user adds an api key from CTA', () => {
+  describe('when a user adds an API key from CTA', () => {
     it('then it should call addApiKey with correct parameters', async () => {
       const apiKeys: any[] = [];
       const { addApiKeyMock } = setup({ apiKeys, apiKeysCount: apiKeys.length, hasFetched: true });
 
       addApiKeyMock.mockClear();
-      userEvent.click(screen.getByLabelText(selectors.components.CallToActionCard.button('New API Key')));
+      userEvent.click(screen.getByTestId(selectors.components.CallToActionCard.buttonV2('New API key')));
       await addAndVerifyApiKey(addApiKeyMock, false);
     });
   });
 
-  describe('when a user adds an api key from Add Api Key', () => {
+  describe('when a user adds an API key from Add API key', () => {
     it('then it should call addApiKey with correct parameters', async () => {
       const apiKeys = getMultipleMockKeys(1);
       const { addApiKeyMock } = setup({ apiKeys, apiKeysCount: apiKeys.length, hasFetched: true });
@@ -169,15 +172,15 @@ describe('ApiKeysPage', () => {
     });
   });
 
-  describe('when a user adds an api key with an invalid expiration', () => {
+  describe('when a user adds an API key with an invalid expiration', () => {
     it('then it should display a message', async () => {
       const apiKeys = getMultipleMockKeys(1);
       const { addApiKeyMock } = setup({ apiKeys, apiKeysCount: apiKeys.length, hasFetched: true });
 
       addApiKeyMock.mockClear();
       userEvent.click(screen.getByRole('button', { name: /add api key/i }));
-      await userEvent.type(screen.getByPlaceholderText(/name/i), 'Test');
-      await userEvent.type(screen.getByPlaceholderText(/1d/i), '60x');
+      userEvent.type(screen.getByPlaceholderText(/name/i), 'Test');
+      userEvent.type(screen.getByPlaceholderText(/1d/i), '60x');
       expect(screen.queryByText(/not a valid duration/i)).not.toBeInTheDocument();
       userEvent.click(screen.getByRole('button', { name: /^add$/i }));
       expect(screen.getByText(/not a valid duration/i)).toBeInTheDocument();
@@ -187,19 +190,18 @@ describe('ApiKeysPage', () => {
 });
 
 function toggleShowExpired() {
-  expect(screen.getByText(/show expired/i)).toBeInTheDocument();
-  userEvent.click(screen.getByText(/show expired/i));
+  expect(screen.queryByLabelText(/show expired/i)).toBeInTheDocument();
+  userEvent.click(screen.getByLabelText(/show expired/i));
 }
 
 async function addAndVerifyApiKey(addApiKeyMock: jest.Mock, includeExpired: boolean) {
   expect(screen.getByRole('heading', { name: /add api key/i })).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/name/i)).toBeInTheDocument();
-  expect(screen.getByRole('combobox')).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/1d/i)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /^add$/i })).toBeInTheDocument();
 
-  await userEvent.type(screen.getByPlaceholderText(/name/i), 'Test');
-  await userEvent.type(screen.getByPlaceholderText(/1d/i), '60s');
+  userEvent.type(screen.getByPlaceholderText(/name/i), 'Test');
+  userEvent.type(screen.getByPlaceholderText(/1d/i), '60s');
   userEvent.click(screen.getByRole('button', { name: /^add$/i }));
   expect(addApiKeyMock).toHaveBeenCalledTimes(1);
   expect(addApiKeyMock).toHaveBeenCalledWith(

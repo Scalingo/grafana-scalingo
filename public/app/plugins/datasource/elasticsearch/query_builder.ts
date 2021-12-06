@@ -1,3 +1,5 @@
+import { InternalTimeZones } from '@grafana/data';
+import { gte, lt } from 'semver';
 import {
   Filters,
   Histogram,
@@ -7,20 +9,21 @@ import {
 import {
   isMetricAggregationWithField,
   isMetricAggregationWithSettings,
+  isMovingAverageWithModelSettings,
   isPipelineAggregation,
   isPipelineAggregationWithMultipleBucketPaths,
   MetricAggregation,
   MetricAggregationWithInlineScript,
 } from './components/QueryEditor/MetricAggregationsEditor/aggregations';
 import { defaultBucketAgg, defaultMetricAgg, findMetricById, highlightTags } from './query_def';
-import { ElasticsearchQuery } from './types';
+import { ElasticsearchQuery, TermsQuery } from './types';
 import { convertOrderByToMetricId, getScriptValue } from './utils';
 
 export class ElasticQueryBuilder {
   timeField: string;
-  esVersion: number;
+  esVersion: string;
 
-  constructor(options: { timeField: string; esVersion: number }) {
+  constructor(options: { timeField: string; esVersion: string }) {
     this.timeField = options.timeField;
     this.esVersion = options.esVersion;
   }
@@ -49,7 +52,7 @@ export class ElasticQueryBuilder {
 
     if (aggDef.settings.orderBy !== void 0) {
       queryNode.terms.order = {};
-      if (aggDef.settings.orderBy === '_term' && this.esVersion >= 60) {
+      if (aggDef.settings.orderBy === '_term' && gte(this.esVersion, '6.0.0')) {
         queryNode.terms.order['_key'] = aggDef.settings.order;
       } else {
         queryNode.terms.order[aggDef.settings.orderBy] = aggDef.settings.order;
@@ -92,18 +95,27 @@ export class ElasticQueryBuilder {
   getDateHistogramAgg(aggDef: DateHistogram) {
     const esAgg: any = {};
     const settings = aggDef.settings || {};
-    esAgg.interval = settings.interval;
-    esAgg.field = this.timeField;
+
+    esAgg.field = aggDef.field || this.timeField;
     esAgg.min_doc_count = settings.min_doc_count || 0;
     esAgg.extended_bounds = { min: '$timeFrom', max: '$timeTo' };
     esAgg.format = 'epoch_millis';
+    if (settings.timeZone && settings.timeZone !== InternalTimeZones.utc) {
+      esAgg.time_zone = settings.timeZone;
+    }
 
     if (settings.offset !== '') {
       esAgg.offset = settings.offset;
     }
 
-    if (esAgg.interval === 'auto') {
-      esAgg.interval = '$__interval';
+    const interval = settings.interval === 'auto' ? '$__interval' : settings.interval;
+
+    if (gte(this.esVersion, '8.0.0')) {
+      // The deprecation was actually introduced in 7.0.0, we might want to use that instead of the removal date,
+      // but it woudl be a breaking change on our side.
+      esAgg.fixed_interval = interval;
+    } else {
+      esAgg.interval = interval;
     }
 
     return esAgg;
@@ -146,7 +158,7 @@ export class ElasticQueryBuilder {
     ];
 
     // fields field not supported on ES 5.x
-    if (this.esVersion < 5) {
+    if (lt(this.esVersion, '5.0.0')) {
       query.fields = ['*', '_source'];
     }
 
@@ -201,7 +213,7 @@ export class ElasticQueryBuilder {
     }
   }
 
-  build(target: ElasticsearchQuery, adhocFilters?: any, queryString?: string) {
+  build(target: ElasticsearchQuery, adhocFilters?: any) {
     // make sure query has defaults;
     target.metrics = target.metrics || [defaultMetricAgg()];
     target.bucketAggs = target.bucketAggs || [defaultBucketAgg()];
@@ -209,22 +221,26 @@ export class ElasticQueryBuilder {
     let metric: MetricAggregation;
 
     let i, j, pv, nestedAggs;
-    const query = {
+    const query: any = {
       size: 0,
       query: {
         bool: {
-          filter: [
-            { range: this.getRangeFilter() },
-            {
-              query_string: {
-                analyze_wildcard: true,
-                query: queryString,
-              },
-            },
-          ],
+          filter: [{ range: this.getRangeFilter() }],
         },
       },
     };
+
+    if (target.query && target.query !== '') {
+      query.query.bool.filter = [
+        ...query.query.bool.filter,
+        {
+          query_string: {
+            analyze_wildcard: true,
+            query: target.query,
+          },
+        },
+      ];
+    }
 
     this.addAdhocFilters(query, adhocFilters);
 
@@ -296,7 +312,7 @@ export class ElasticQueryBuilder {
       }
 
       const aggField: any = {};
-      let metricAgg: any = null;
+      let metricAgg: any = {};
 
       if (isPipelineAggregation(metric)) {
         if (isPipelineAggregationWithMultipleBucketPaths(metric)) {
@@ -344,8 +360,55 @@ export class ElasticQueryBuilder {
         Object.entries(metric.settings || {})
           .filter(([_, v]) => v !== null)
           .forEach(([k, v]) => {
-            metricAgg[k] = k === 'script' ? getScriptValue(metric as MetricAggregationWithInlineScript) : v;
+            metricAgg[k] =
+              k === 'script' ? this.buildScript(getScriptValue(metric as MetricAggregationWithInlineScript)) : v;
           });
+
+        // Elasticsearch isn't generally too picky about the data types in the request body,
+        // however some fields are required to be numeric.
+        // Users might have already created some of those with before, where the values were numbers.
+        switch (metric.type) {
+          case 'moving_avg':
+            metricAgg = {
+              ...metricAgg,
+              ...(metricAgg?.window !== undefined && { window: this.toNumber(metricAgg.window) }),
+              ...(metricAgg?.predict !== undefined && { predict: this.toNumber(metricAgg.predict) }),
+              ...(isMovingAverageWithModelSettings(metric) && {
+                settings: {
+                  ...metricAgg.settings,
+                  ...Object.fromEntries(
+                    Object.entries(metricAgg.settings || {})
+                      // Only format properties that are required to be numbers
+                      .filter(([settingName]) => ['alpha', 'beta', 'gamma', 'period'].includes(settingName))
+                      // omitting undefined
+                      .filter(([_, stringValue]) => stringValue !== undefined)
+                      .map(([_, stringValue]) => [_, this.toNumber(stringValue)])
+                  ),
+                },
+              }),
+            };
+            break;
+
+          case 'serial_diff':
+            metricAgg = {
+              ...metricAgg,
+              ...(metricAgg.lag !== undefined && {
+                lag: this.toNumber(metricAgg.lag),
+              }),
+            };
+            break;
+
+          case 'top_metrics':
+            metricAgg = {
+              metrics: metric.settings?.metrics?.map((field) => ({ field })),
+              size: 1,
+            };
+
+            if (metric.settings?.orderBy) {
+              metricAgg.sort = [{ [metric.settings?.orderBy]: metric.settings?.order }];
+            }
+            break;
+        }
       }
 
       aggField[metric.type] = metricAgg;
@@ -355,7 +418,26 @@ export class ElasticQueryBuilder {
     return query;
   }
 
-  getTermsQuery(queryDef: any) {
+  private buildScript(script: string) {
+    if (gte(this.esVersion, '5.6.0')) {
+      return script;
+    }
+
+    return {
+      inline: script,
+    };
+  }
+
+  private toNumber(stringValue: unknown): unknown | number {
+    const parsedValue = parseFloat(`${stringValue}`);
+    if (isNaN(parsedValue)) {
+      return stringValue;
+    }
+
+    return parsedValue;
+  }
+
+  getTermsQuery(queryDef: TermsQuery) {
     const query: any = {
       size: 0,
       query: {
@@ -402,7 +484,7 @@ export class ElasticQueryBuilder {
     switch (orderBy) {
       case 'key':
       case 'term':
-        const keyname = this.esVersion >= 60 ? '_key' : '_term';
+        const keyname = gte(this.esVersion, '6.0.0') ? '_key' : '_term';
         query.aggs['1'].terms.order[keyname] = order;
         break;
       case 'doc_count':
@@ -415,7 +497,7 @@ export class ElasticQueryBuilder {
     return query;
   }
 
-  getLogsQuery(target: ElasticsearchQuery, adhocFilters?: any, querystring?: string) {
+  getLogsQuery(target: ElasticsearchQuery, limit: number, adhocFilters?: any) {
     let query: any = {
       size: 0,
       query: {
@@ -431,16 +513,16 @@ export class ElasticQueryBuilder {
       query.query.bool.filter.push({
         query_string: {
           analyze_wildcard: true,
-          query: querystring,
+          query: target.query,
         },
       });
     }
 
-    query = this.documentQuery(query, 500);
+    query = this.documentQuery(query, limit);
 
     return {
       ...query,
-      aggs: this.build(target, null, querystring).aggs,
+      aggs: this.build(target, null).aggs,
       highlight: {
         fields: {
           '*': {},

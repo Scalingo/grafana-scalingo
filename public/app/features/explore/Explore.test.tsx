@@ -1,14 +1,21 @@
 import React from 'react';
-import { DataSourceApi, LoadingState, toUtc, DataQueryError, DataQueryRequest, CoreApp } from '@grafana/data';
-import { getFirstNonQueryRowSpecificError } from 'app/core/utils/explore';
+import {
+  DataSourceApi,
+  LoadingState,
+  toUtc,
+  DataQueryError,
+  DataQueryRequest,
+  CoreApp,
+  createTheme,
+} from '@grafana/data';
 import { ExploreId } from 'app/types/explore';
 import { shallow } from 'enzyme';
-import { Explore, ExploreProps } from './Explore';
+import { Explore, Props } from './Explore';
 import { scanStopAction } from './state/query';
 import { SecondaryActions } from './SecondaryActions';
-import { getTheme } from '@grafana/ui';
 
-const dummyProps: ExploreProps = {
+const dummyProps: Props = {
+  logsResult: undefined,
   changeSize: jest.fn(),
   datasourceInstance: {
     meta: {
@@ -23,11 +30,6 @@ const dummyProps: ExploreProps = {
   exploreId: ExploreId.left,
   loading: false,
   modifyQueries: jest.fn(),
-  scanning: false,
-  scanRange: {
-    from: '0',
-    to: '0',
-  },
   scanStart: jest.fn(),
   scanStopAction: scanStopAction,
   setQueries: jest.fn(),
@@ -41,7 +43,6 @@ const dummyProps: ExploreProps = {
     to: 0,
   },
   timeZone: 'UTC',
-  onHiddenSeriesChanged: jest.fn(),
   queryResponse: {
     state: LoadingState.NotStarted,
     series: [],
@@ -74,26 +75,18 @@ const dummyProps: ExploreProps = {
       },
     },
   },
-  originPanelId: 1,
   addQueryRow: jest.fn(),
-  theme: getTheme(),
+  theme: createTheme(),
   showMetrics: true,
   showLogs: true,
   showTable: true,
   showTrace: true,
   showNodeGraph: true,
   splitOpen: (() => {}) as any,
-};
-
-const setupErrors = (hasRefId?: boolean) => {
-  return [
-    {
-      message: 'Error message',
-      status: '400',
-      statusText: 'Bad Request',
-      refId: hasRefId ? 'A' : '',
-    },
-  ];
+  logsVolumeData: undefined,
+  loadLogsVolumeData: () => {},
+  changeGraphStyle: () => {},
+  graphStyle: 'lines',
 };
 
 describe('Explore', () => {
@@ -106,22 +99,5 @@ describe('Explore', () => {
     const wrapper = shallow(<Explore {...dummyProps} />);
     expect(wrapper.find(SecondaryActions)).toHaveLength(1);
     expect(wrapper.find(SecondaryActions).props().addQueryRowButtonHidden).toBe(false);
-  });
-
-  it('should filter out a query-row-specific error when looking for non-query-row-specific errors', async () => {
-    const queryErrors = setupErrors(true);
-    const queryError = getFirstNonQueryRowSpecificError(queryErrors);
-    expect(queryError).toBeUndefined();
-  });
-
-  it('should not filter out a generic error when looking for non-query-row-specific errors', async () => {
-    const queryErrors = setupErrors();
-    const queryError = getFirstNonQueryRowSpecificError(queryErrors);
-    expect(queryError).toEqual({
-      message: 'Error message',
-      status: '400',
-      statusText: 'Bad Request',
-      refId: '',
-    });
   });
 });

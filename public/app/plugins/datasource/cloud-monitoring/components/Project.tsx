@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SelectableValue } from '@grafana/data';
-import { SegmentAsync } from '@grafana/ui';
+import { Select } from '@grafana/ui';
 import CloudMonitoringDatasource from '../datasource';
+import { SELECT_WIDTH } from '../constants';
+import { QueryEditorRow } from '.';
 
 export interface Props {
   datasource: CloudMonitoringDatasource;
@@ -11,27 +13,35 @@ export interface Props {
 }
 
 export function Project({ projectName, datasource, onChange, templateVariableOptions }: Props) {
+  const [projects, setProjects] = useState<Array<SelectableValue<string>>>([]);
+  useEffect(() => {
+    datasource.getProjects().then((projects) => setProjects(projects));
+  }, [datasource]);
+
+  const projectsWithTemplateVariables = useMemo(
+    () => [
+      projects,
+      {
+        label: 'Template Variables',
+        options: templateVariableOptions,
+      },
+      ...projects,
+    ],
+    [projects, templateVariableOptions]
+  );
+
   return (
-    <div className="gf-form-inline">
-      <span className="gf-form-label width-9 query-keyword">Project</span>
-      <SegmentAsync
+    <QueryEditorRow label="Project">
+      <Select
+        menuShouldPortal
+        width={SELECT_WIDTH}
         allowCustomValue
+        formatCreateLabel={(v) => `Use project: ${v}`}
         onChange={({ value }) => onChange(value!)}
-        loadOptions={() =>
-          datasource.getProjects().then((projects) => [
-            {
-              label: 'Template Variables',
-              options: templateVariableOptions,
-            },
-            ...projects,
-          ])
-        }
-        value={projectName}
+        options={projectsWithTemplateVariables}
+        value={{ value: projectName, label: projectName }}
         placeholder="Select Project"
       />
-      <div className="gf-form gf-form--grow">
-        <div className="gf-form-label gf-form-label--grow" />
-      </div>
-    </div>
+    </QueryEditorRow>
   );
 }

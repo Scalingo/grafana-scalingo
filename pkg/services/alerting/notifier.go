@@ -53,7 +53,7 @@ type InputType string
 const (
 	// InputTypeText will render a text field in the frontend
 	InputTypeText = "text"
-	// InputTypePassword will render a text field in the frontend
+	// InputTypePassword will render a password field in the frontend
 	InputTypePassword = "password"
 )
 
@@ -83,16 +83,18 @@ type ShowWhen struct {
 	Is    string `json:"is"`
 }
 
-func newNotificationService(renderService rendering.Service) *notificationService {
+func newNotificationService(renderService rendering.Service, decryptFn GetDecryptedValueFn) *notificationService {
 	return &notificationService{
 		log:           log.New("alerting.notifier"),
 		renderService: renderService,
+		decryptFn:     decryptFn,
 	}
 }
 
 type notificationService struct {
 	log           log.Logger
 	renderService rendering.Service
+	decryptFn     GetDecryptedValueFn
 }
 
 func (n *notificationService) SendIfNeeded(evalCtx *EvalContext) error {
@@ -201,9 +203,10 @@ func (n *notificationService) renderAndUploadImage(evalCtx *EvalContext, timeout
 		Width:           1000,
 		Height:          500,
 		Timeout:         timeout,
-		OrgId:           evalCtx.Rule.OrgID,
+		OrgID:           evalCtx.Rule.OrgID,
 		OrgRole:         models.ROLE_ADMIN,
 		ConcurrentLimit: setting.AlertingRenderLimit,
+		Theme:           rendering.ThemeDark,
 	}
 
 	ref, err := evalCtx.GetDashboardUID()
@@ -244,13 +247,13 @@ func (n *notificationService) renderAndUploadImage(evalCtx *EvalContext, timeout
 func (n *notificationService) getNeededNotifiers(orgID int64, notificationUids []string, evalContext *EvalContext) (notifierStateSlice, error) {
 	query := &models.GetAlertNotificationsWithUidToSendQuery{OrgId: orgID, Uids: notificationUids}
 
-	if err := bus.Dispatch(query); err != nil {
+	if err := bus.DispatchCtx(evalContext.Ctx, query); err != nil {
 		return nil, err
 	}
 
 	var result notifierStateSlice
 	for _, notification := range query.Result {
-		not, err := InitNotifier(notification)
+		not, err := InitNotifier(notification, n.decryptFn)
 		if err != nil {
 			n.log.Error("Could not create notifier", "notifier", notification.Uid, "error", err)
 			continue
@@ -280,21 +283,25 @@ func (n *notificationService) getNeededNotifiers(orgID int64, notificationUids [
 }
 
 // InitNotifier instantiate a new notifier based on the model.
-func InitNotifier(model *models.AlertNotification) (Notifier, error) {
+func InitNotifier(model *models.AlertNotification, fn GetDecryptedValueFn) (Notifier, error) {
 	notifierPlugin, found := notifierFactories[model.Type]
 	if !found {
 		return nil, fmt.Errorf("unsupported notification type %q", model.Type)
 	}
 
-	return notifierPlugin.Factory(model)
+	return notifierPlugin.Factory(model, fn)
 }
 
+// GetDecryptedValueFn is a function that returns the decrypted value of
+// the given key. If the key is not present, then it returns the fallback value.
+type GetDecryptedValueFn func(ctx context.Context, sjd map[string][]byte, key string, fallback string, secret string) string
+
 // NotifierFactory is a signature for creating notifiers.
-type NotifierFactory func(notification *models.AlertNotification) (Notifier, error)
+type NotifierFactory func(*models.AlertNotification, GetDecryptedValueFn) (Notifier, error)
 
 var notifierFactories = make(map[string]*NotifierPlugin)
 
-// RegisterNotifier register an notifier
+// RegisterNotifier registers a notifier.
 func RegisterNotifier(plugin *NotifierPlugin) {
 	notifierFactories[plugin.Type] = plugin
 }

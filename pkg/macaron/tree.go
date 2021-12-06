@@ -15,10 +15,10 @@
 package macaron
 
 import (
+	urlpkg "net/url"
 	"regexp"
+	"strconv"
 	"strings"
-
-	"github.com/unknwon/com"
 )
 
 type patternType int8
@@ -156,7 +156,7 @@ func (l *Leaf) URLPath(pairs ...string) string {
 	}
 	for i := 0; i < len(pairs); i += 2 {
 		if len(pairs[i]) == 0 {
-			panic("pair value cannot be empty: " + com.ToStr(i))
+			panic("pair value cannot be empty: " + strconv.Itoa(i))
 		} else if pairs[i][0] != ':' && pairs[i] != "*" && pairs[i] != "*.*" {
 			pairs[i] = ":" + pairs[i]
 		}
@@ -260,8 +260,8 @@ func (t *Tree) Add(pattern string, handle Handle) *Leaf {
 	return t.addNextSegment(pattern, handle)
 }
 
-func (t *Tree) matchLeaf(globLevel int, url string, params Params) (Handle, bool) {
-	url, err := PathUnescape(url)
+func (t *Tree) matchLeaf(globLevel int, url string, params map[string]string) (Handle, bool) {
+	url, err := urlpkg.PathUnescape(url)
 	if err != nil {
 		return nil, false
 	}
@@ -296,15 +296,15 @@ func (t *Tree) matchLeaf(globLevel int, url string, params Params) (Handle, bool
 			return t.leaves[i].handle, true
 		case _PATTERN_MATCH_ALL:
 			params["*"] = url
-			params["*"+com.ToStr(globLevel)] = url
+			params["*"+strconv.Itoa(globLevel)] = url
 			return t.leaves[i].handle, true
 		}
 	}
 	return nil, false
 }
 
-func (t *Tree) matchSubtree(globLevel int, segment, url string, params Params) (Handle, bool) {
-	unescapedSegment, err := PathUnescape(segment)
+func (t *Tree) matchSubtree(globLevel int, segment, url string, params map[string]string) (Handle, bool) {
+	unescapedSegment, err := urlpkg.PathUnescape(segment)
 	if err != nil {
 		return nil, false
 	}
@@ -335,7 +335,7 @@ func (t *Tree) matchSubtree(globLevel int, segment, url string, params Params) (
 			}
 		case _PATTERN_MATCH_ALL:
 			if handle, ok := t.subtrees[i].matchNextSegment(globLevel+1, url, params); ok {
-				params["*"+com.ToStr(globLevel)] = unescapedSegment
+				params["*"+strconv.Itoa(globLevel)] = unescapedSegment
 				return handle, true
 			}
 		}
@@ -343,7 +343,7 @@ func (t *Tree) matchSubtree(globLevel int, segment, url string, params Params) (
 
 	if len(t.leaves) > 0 {
 		leaf := t.leaves[len(t.leaves)-1]
-		unescapedURL, err := PathUnescape(segment + "/" + url)
+		unescapedURL, err := urlpkg.PathUnescape(segment + "/" + url)
 		if err != nil {
 			return nil, false
 		}
@@ -358,14 +358,14 @@ func (t *Tree) matchSubtree(globLevel int, segment, url string, params Params) (
 			return leaf.handle, true
 		} else if leaf.typ == _PATTERN_MATCH_ALL {
 			params["*"] = unescapedURL
-			params["*"+com.ToStr(globLevel)] = unescapedURL
+			params["*"+strconv.Itoa(globLevel)] = unescapedURL
 			return leaf.handle, true
 		}
 	}
 	return nil, false
 }
 
-func (t *Tree) matchNextSegment(globLevel int, url string, params Params) (Handle, bool) {
+func (t *Tree) matchNextSegment(globLevel int, url string, params map[string]string) (Handle, bool) {
 	i := strings.Index(url, "/")
 	if i == -1 {
 		return t.matchLeaf(globLevel, url, params)
@@ -373,10 +373,10 @@ func (t *Tree) matchNextSegment(globLevel int, url string, params Params) (Handl
 	return t.matchSubtree(globLevel, url[:i], url[i+1:], params)
 }
 
-func (t *Tree) Match(url string) (Handle, Params, bool) {
+func (t *Tree) Match(url string) (Handle, map[string]string, bool) {
 	url = strings.TrimPrefix(url, "/")
 	url = strings.TrimSuffix(url, "/")
-	params := make(Params)
+	params := map[string]string{}
 	handle, ok := t.matchNextSegment(0, url, params)
 	return handle, params, ok
 }

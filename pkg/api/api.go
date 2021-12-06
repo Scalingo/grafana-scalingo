@@ -449,8 +449,6 @@ func (hs *HTTPServer) registerRoutes() {
 			}
 		})
 
-		apiRoute.Post("/frontend-metrics", bind(metrics.PostFrontendMetricsCommand{}), routing.Wrap(hs.PostFrontendMetrics))
-
 		// short urls
 		apiRoute.Post("/short-urls", bind(dtos.CreateShortURLCmd{}), routing.Wrap(hs.createShortURL))
 	}, reqSignedIn)

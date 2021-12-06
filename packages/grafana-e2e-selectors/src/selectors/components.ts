@@ -314,10 +314,4 @@ export const Components = {
   VisualizationPreview: {
     card: (name: string) => `data-testid suggestion-${name}`,
   },
-  CallToActionCard: {
-    button: (name: string) => `Call to action button ${name}`,
-  },
-  DataLinksContextMenu: {
-    singleLink: 'Data link',
-  },
 };

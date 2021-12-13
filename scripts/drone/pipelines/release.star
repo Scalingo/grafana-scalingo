@@ -246,6 +246,9 @@ def release_pipelines(ver_mode='release', trigger=None):
     if not trigger:
         trigger = {
             'ref': ['refs/tags/v*',],
+            'repo': {
+              'exclude': ['grafana/grafana'],
+            },
         }
 
     should_publish = ver_mode in ('release', 'test-release',)
@@ -268,10 +271,10 @@ def release_pipelines(ver_mode='release', trigger=None):
             depends_on=[p['name'] for p in oss_pipelines + enterprise_pipelines],
         )
 
-    pipelines.append(notify_pipeline(
-        name='notify-{}'.format(ver_mode), slack_channel='grafana-ci-notifications', trigger=trigger,
-        depends_on=[p['name'] for p in pipelines],
-    ))
+    #pipelines.append(notify_pipeline(
+    #    name='notify-{}'.format(ver_mode), slack_channel='grafana-ci-notifications', trigger=trigger,
+    #    depends_on=[p['name'] for p in pipelines],
+    #))
 
     return pipelines
 

@@ -11,7 +11,7 @@
   "success_url": "/",
   "env": {
     "BUILDPACK_URL": {
-      "description": "Buildpack to use to deploy kibana",
+      "description": "Buildpack to use to deploy Grafana",
       "value": "https://github.com/Scalingo/multi-buildpack.git",
       "required": true
     },

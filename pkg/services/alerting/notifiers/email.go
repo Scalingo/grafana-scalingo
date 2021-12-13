@@ -48,7 +48,7 @@ type EmailNotifier struct {
 
 // NewEmailNotifier is the constructor function
 // for the EmailNotifier.
-func NewEmailNotifier(model *models.AlertNotification) (alerting.Notifier, error) {
+func NewEmailNotifier(model *models.AlertNotification, _ alerting.GetDecryptedValueFn) (alerting.Notifier, error) {
 	addressesString := model.Settings.Get("addresses").MustString()
 	singleEmail := model.Settings.Get("singleEmail").MustBool(false)
 
@@ -100,7 +100,7 @@ func (en *EmailNotifier) Notify(evalContext *alerting.EvalContext) error {
 			},
 			To:            en.Addresses,
 			SingleEmail:   en.SingleEmail,
-			Template:      "alert_notification.html",
+			Template:      "alert_notification",
 			EmbeddedFiles: []string{},
 		},
 	}
@@ -117,9 +117,7 @@ func (en *EmailNotifier) Notify(evalContext *alerting.EvalContext) error {
 		}
 	}
 
-	err = bus.DispatchCtx(evalContext.Ctx, cmd)
-
-	if err != nil {
+	if err := bus.DispatchCtx(evalContext.Ctx, cmd); err != nil {
 		en.log.Error("Failed to send alert notification email", "error", err)
 		return err
 	}

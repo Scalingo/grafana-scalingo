@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Story } from '@storybook/react';
+import { Story, Meta } from '@storybook/react';
 import { withCenteredStory } from '../../utils/storybook/withCenteredStory';
-import { NOOP_CONTROL } from '../../utils/storybook/noopControl';
 import { ClipboardButton, Props } from './ClipboardButton';
 import { Input } from '../Forms/Legacy/Input/Input';
 import mdx from './ClipboardButton.mdx';
@@ -14,18 +13,11 @@ export default {
     docs: {
       page: mdx,
     },
-    knobs: {
-      disable: true,
+    controls: {
+      exclude: ['variant', 'icon', 'className', 'fullWidth', 'getText', 'onClipboardCopy', 'onClipboardError'],
     },
   },
-  argTypes: {
-    size: NOOP_CONTROL,
-    variant: NOOP_CONTROL,
-    icon: NOOP_CONTROL,
-    className: NOOP_CONTROL,
-    fullWidth: NOOP_CONTROL,
-  },
-};
+} as Meta;
 
 interface StoryProps extends Partial<Props> {
   inputText: string;
@@ -40,6 +32,7 @@ const Wrapper: Story<StoryProps> = (args) => {
       <div style={{ display: 'flex', width: '100%', marginBottom: '1em' }}>
         <ClipboardButton
           variant="secondary"
+          size={args.size}
           getText={() => args.inputText}
           onClipboardCopy={() => setCopyMessage(clipboardCopyMessage)}
         >
@@ -55,4 +48,5 @@ export const CopyToClipboard = Wrapper.bind({});
 CopyToClipboard.args = {
   inputText: 'go run build.go -goos linux -pkg-arch amd64 ${OPT} package-only',
   buttonText: 'Copy to clipboard',
+  size: 'md',
 };

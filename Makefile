@@ -2,11 +2,14 @@
 ##
 ## For more information, refer to https://suva.sh/posts/well-documented-makefiles/
 
+WIRE_TAGS = "oss"
+
 -include local/Makefile
+include .bingo/Variables.mk
 
-.PHONY: all deps-go deps-js deps build-go build-server build-cli build-js build build-docker-dev build-docker-full lint-go revive golangci-lint test-go test-js test run run-frontend clean devenv devenv-down revive-strict protobuf help
+.PHONY: all deps-go deps-js deps build-go build-server build-cli build-js build build-docker-dev build-docker-full lint-go golangci-lint test-go test-js gen-ts test run run-frontend clean devenv devenv-down protobuf drone help
 
-GO = GO111MODULE=on go
+GO = go
 GO_FILES ?= ./pkg/...
 SH_FILES ?= $(shell find ./scripts -name *.sh)
 
@@ -23,11 +26,15 @@ deps: deps-js ## Install all dependencies.
 
 node_modules: package.json yarn.lock ## Install node modules.
 	@echo "install frontend dependencies"
-	yarn install --pure-lockfile --no-progress
+	YARN_ENABLE_PROGRESS_BARS=false yarn install --immutable
 
 ##@ Building
 
-build-go: ## Build all Go binaries.
+gen-go: $(WIRE)
+	@echo "generate go files"
+	$(WIRE) gen -tags $(WIRE_TAGS) ./pkg/server ./pkg/cmd/grafana-cli/runner
+
+build-go: gen-go ## Build all Go binaries.
 	@echo "build go files"
 	$(GO) run build.go build
 
@@ -36,7 +43,7 @@ build-server: ## Build Grafana server.
 	$(GO) run build.go build-server
 
 build-cli: ## Build Grafana CLI application.
-	@echo "build in CI environment"
+	@echo "build grafana-cli"
 	$(GO) run build.go build-cli
 
 build-js: ## Build frontend assets.
@@ -51,7 +58,7 @@ scripts/go/bin/bra: scripts/go/go.mod
 	$(GO) build -o ./bin/bra github.com/unknwon/bra
 
 run: scripts/go/bin/bra ## Build and run web server on filesystem changes.
-	@GO111MODULE=on scripts/go/bin/bra run
+	@scripts/go/bin/bra run
 
 run-frontend: deps-js ## Fetch js dependencies and watch frontend for rebuild
 	yarn start
@@ -69,22 +76,6 @@ test-js: ## Run tests for frontend.
 test: test-go test-js ## Run all tests.
 
 ##@ Linting
-
-scripts/go/bin/revive: scripts/go/go.mod
-	@cd scripts/go; \
-	$(GO) build -o ./bin/revive github.com/mgechev/revive
-
-revive: scripts/go/bin/revive
-	@echo "lint via revive"
-	@scripts/go/bin/revive \
-		-formatter stylish \
-		-config ./scripts/go/configs/revive.toml \
-		$(GO_FILES)
-
-revive-strict: scripts/go/bin/revive
-	@echo "lint via revive (strict)"
-	@scripts/revive-strict scripts/go/bin/revive
-
 scripts/go/bin/golangci-lint: scripts/go/go.mod
 	@cd scripts/go; \
 	$(GO) build -o ./bin/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint
@@ -95,7 +86,7 @@ golangci-lint: scripts/go/bin/golangci-lint
 		--config ./scripts/go/configs/.golangci.toml \
 		$(GO_FILES)
 
-lint-go: golangci-lint revive revive-strict # Run all code checks for backend.
+lint-go: golangci-lint ## Run all code checks for backend. You can use GO_FILES to specify exact files to check
 
 # with disabled SC1071 we are ignored some TCL,Expect `/usr/bin/env expect` scripts
 shellcheck: $(SH_FILES) ## Run checks for shell scripts.
@@ -107,7 +98,7 @@ shellcheck: $(SH_FILES) ## Run checks for shell scripts.
 build-docker-dev: ## Build Docker image for development (fast).
 	@echo "build development container"
 	@echo "\033[92mInfo:\033[0m the frontend code is expected to be built already."
-	$(GO) run build.go -goos linux -pkg-arch amd64 ${OPT} build pkg-archive latest
+	$(GO) run build.go -goos linux -pkg-arch amd64 ${OPT} build latest
 	cp dist/grafana-latest.linux-x64.tar.gz packaging/docker
 	cd packaging/docker && docker build --tag grafana/grafana:dev .
 
@@ -155,6 +146,20 @@ clean: ## Clean up intermediate build artifacts.
 	@echo "cleaning"
 	rm -rf node_modules
 	rm -rf public/build
+
+gen-ts:
+	@echo "generating TypeScript definitions"
+	go get github.com/tkrajina/typescriptify-golang-structs/typescriptify@v0.1.7
+	tscriptify -interface -package=github.com/grafana/grafana/pkg/services/live/pipeline -import="import { FieldConfig } from '@grafana/data'" -target=public/app/features/live/pipeline/models.gen.ts pkg/services/live/pipeline/config.go
+	go mod tidy
+
+# This repository's configuration is protected (https://readme.drone.io/signature/).
+# Use this make target to regenerate the configuration YAML files when
+# you modify starlark files.
+drone: $(DRONE)
+	$(DRONE) starlark --format
+	$(DRONE) lint .drone.yml --trusted
+	$(DRONE) --server https://drone.grafana.net sign --save grafana/grafana
 
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)

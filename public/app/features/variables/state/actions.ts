@@ -1,5 +1,5 @@
 import angular from 'angular';
-import castArray from 'lodash/castArray';
+import { castArray, isEqual } from 'lodash';
 import { DataQuery, LoadingState, TimeRange, UrlQueryMap, UrlQueryValue } from '@grafana/data';
 
 import {
@@ -12,6 +12,9 @@ import {
   VariableModel,
   VariableOption,
   VariableRefresh,
+  VariablesChanged,
+  VariablesChangedInUrl,
+  VariablesFinishedProcessingTimeRangeChange,
   VariableWithMultiSupport,
   VariableWithOptions,
 } from '../types';
@@ -19,7 +22,7 @@ import { AppNotification, StoreState, ThunkResult } from '../../../types';
 import { getVariable, getVariables } from './selectors';
 import { variableAdapters } from '../adapters';
 import { Graph } from '../../../core/utils/dag';
-import { notifyApp, updateLocation } from 'app/core/actions';
+import { notifyApp } from 'app/core/actions';
 import {
   addVariable,
   changeVariableProp,
@@ -39,7 +42,15 @@ import {
 import { contextSrv } from 'app/core/services/context_srv';
 import { getTemplateSrv, TemplateSrv } from '../../templating/template_srv';
 import { alignCurrentWithMulti } from '../shared/multiOptions';
-import { hasLegacyVariableSupport, hasStandardVariableSupport, isMulti, isQuery } from '../guard';
+import {
+  hasCurrent,
+  hasLegacyVariableSupport,
+  hasOptions,
+  hasStandardVariableSupport,
+  isAdHoc,
+  isMulti,
+  isQuery,
+} from '../guard';
 import { getTimeSrv } from 'app/features/dashboard/services/TimeSrv';
 import { DashboardModel } from 'app/features/dashboard/state';
 import { createErrorNotification } from '../../../core/copy/appNotification';
@@ -51,12 +62,14 @@ import {
 } from './transactionReducer';
 import { getBackendSrv } from '../../../core/services/backend_srv';
 import { cleanVariables } from './variablesReducer';
-import isEqual from 'lodash/isEqual';
-import { getCurrentText, getVariableRefresh } from '../utils';
+import { ensureStringValues, ExtendedUrlQueryMap, getCurrentText, getVariableRefresh } from '../utils';
 import { store } from 'app/store/store';
 import { getDatasourceSrv } from '../../plugins/datasource_srv';
 import { cleanEditorState } from '../editor/reducer';
 import { cleanPickerState } from '../pickers/OptionsPicker/reducer';
+import { locationService } from '@grafana/runtime';
+import { appEvents } from '../../../core/core';
+import { getAllAffectedPanelIdsForVariableChange } from '../inspect/utils';
 
 // process flow queryVariable
 // thunk => processVariables
@@ -92,7 +105,7 @@ export const initDashboardTemplating = (list: VariableModel[]): ThunkResult<void
   return (dispatch, getState) => {
     let orderIndex = 0;
     for (let index = 0; index < list.length; index++) {
-      const model = list[index];
+      const model = fixSelectedInconsistency(list[index]);
       if (!variableAdapters.getIfExists(model.type)) {
         continue;
       }
@@ -110,8 +123,34 @@ export const initDashboardTemplating = (list: VariableModel[]): ThunkResult<void
   };
 };
 
+export function fixSelectedInconsistency(model: VariableModel): VariableModel | VariableWithOptions {
+  if (!hasOptions(model)) {
+    return model;
+  }
+
+  let found = false;
+  for (const option of model.options) {
+    option.selected = false;
+    if (Array.isArray(model.current.value)) {
+      for (const value of model.current.value) {
+        if (option.value === value) {
+          option.selected = found = true;
+        }
+      }
+    } else if (option.value === model.current.value) {
+      option.selected = found = true;
+    }
+  }
+
+  if (!found && model.options.length) {
+    model.options[0].selected = true;
+  }
+
+  return model;
+}
+
 export const addSystemTemplateVariables = (dashboard: DashboardModel): ThunkResult<void> => {
-  return (dispatch, getState) => {
+  return (dispatch) => {
     const dashboardModel: DashboardVariableModel = {
       ...initialVariableModelState,
       id: '__dashboard',
@@ -246,7 +285,8 @@ export const processVariable = (
 
     const urlValue = queryParams['var-' + variable.name];
     if (urlValue !== void 0) {
-      await variableAdapters.get(variable.type).setValueFromUrl(variable, urlValue ?? '');
+      const stringUrlValue = ensureStringValues(urlValue);
+      await variableAdapters.get(variable.type).setValueFromUrl(variable, stringUrlValue);
       return;
     }
 
@@ -261,14 +301,14 @@ export const processVariable = (
       }
     }
 
-    // for variables that aren't updated via url or refresh let's simulate the same state changes
+    // for variables that aren't updated via URL or refresh, let's simulate the same state changes
     dispatch(completeVariableLoading(identifier));
   };
 };
 
 export const processVariables = (): ThunkResult<Promise<void>> => {
   return async (dispatch, getState) => {
-    const queryParams = getState().location.query;
+    const queryParams = locationService.getSearchObject();
     const promises = getVariables(getState()).map(
       async (variable: VariableModel) => await dispatch(processVariable(toVariableIdentifier(variable), queryParams))
     );
@@ -282,6 +322,7 @@ export const setOptionFromUrl = (
   urlValue: UrlQueryValue
 ): ThunkResult<Promise<void>> => {
   return async (dispatch, getState) => {
+    const stringUrlValue = ensureStringValues(urlValue);
     const variable = getVariable(identifier.id, getState());
     if (getVariableRefresh(variable) !== VariableRefresh.never) {
       // updates options
@@ -293,25 +334,24 @@ export const setOptionFromUrl = (
     if (!variableFromState) {
       throw new Error(`Couldn't find variable with name: ${variable.name}`);
     }
-    // Simple case. Value in url matches existing options text or value.
+    // Simple case. Value in URL matches existing options text or value.
     let option = variableFromState.options.find((op) => {
-      return op.text === urlValue || op.value === urlValue;
+      return op.text === stringUrlValue || op.value === stringUrlValue;
     });
 
     if (!option && isMulti(variableFromState)) {
-      if (variableFromState.allValue && urlValue === variableFromState.allValue) {
+      if (variableFromState.allValue && stringUrlValue === variableFromState.allValue) {
         option = { text: ALL_VARIABLE_TEXT, value: ALL_VARIABLE_VALUE, selected: false };
       }
     }
 
     if (!option) {
-      let defaultText = urlValue as string | string[];
-      const defaultValue = urlValue as string | string[];
+      let defaultText = stringUrlValue;
+      const defaultValue = stringUrlValue;
 
-      if (Array.isArray(urlValue)) {
+      if (Array.isArray(stringUrlValue)) {
         // Multiple values in the url. We construct text as a list of texts from all matched options.
-        const urlValueArray = urlValue as string[];
-        defaultText = urlValueArray.reduce((acc: string[], item: string) => {
+        defaultText = stringUrlValue.reduce((acc: string[], item: string) => {
           const foundOption = variableFromState.options.find((o) => o.value === item);
           if (!foundOption) {
             // @ts-ignore according to strict null errors this can never happen
@@ -325,13 +365,13 @@ export const setOptionFromUrl = (
         }, []);
       }
 
-      // It is possible that we did not match the value to any existing option. In that case the url value will be
+      // It is possible that we did not match the value to any existing option. In that case the URL value will be
       // used anyway for both text and value.
       option = { text: defaultText, value: defaultValue, selected: false };
     }
 
     if (isMulti(variableFromState)) {
-      // In case variable is multiple choice, we cast to array to preserve the same behaviour as when selecting
+      // In case variable is multiple choice, we cast to array to preserve the same behavior as when selecting
       // the option directly, which will return even single value in an array.
       option = alignCurrentWithMulti(
         { text: castArray(option.text), value: castArray(option.value), selected: false },
@@ -458,13 +498,15 @@ const createGraph = (variables: VariableModel[]) => {
 
 export const variableUpdated = (
   identifier: VariableIdentifier,
-  emitChangeEvents: boolean
+  emitChangeEvents: boolean,
+  events: typeof appEvents = appEvents
 ): ThunkResult<Promise<void>> => {
   return async (dispatch, getState) => {
-    const variableInState = getVariable(identifier.id, getState());
+    const state = getState();
+    const variableInState = getVariable(identifier.id, state);
 
     // if we're initializing variables ignore cascading update because we are in a boot up scenario
-    if (getState().templating.transaction.status === TransactionStatus.Fetching) {
+    if (state.templating.transaction.status === TransactionStatus.Fetching) {
       if (getVariableRefresh(variableInState) === VariableRefresh.never) {
         // for variable types with updates that go the setValueFromUrl path in the update let's make sure their state is set to Done.
         await dispatch(upgradeLegacyQueries(toVariableIdentifier(variableInState)));
@@ -473,14 +515,18 @@ export const variableUpdated = (
       return Promise.resolve();
     }
 
-    const variables = getVariables(getState());
+    const variables = getVariables(state);
     const g = createGraph(variables);
+    const panels = state.dashboard?.getModel()?.panels ?? [];
+    const affectedPanelIds = isAdHoc(variableInState)
+      ? undefined // for adhoc variables we don't know which panels that will be impacted
+      : getAllAffectedPanelIdsForVariableChange(variableInState.id, variables, panels);
 
     const node = g.getNode(variableInState.name);
     let promises: Array<Promise<any>> = [];
     if (node) {
       promises = node.getOptimizedInputEdges().map((e) => {
-        const variable = variables.find((v) => v.name === e.inputNode.name);
+        const variable = variables.find((v) => v.name === e.inputNode?.name);
         if (!variable) {
           return Promise.resolve();
         }
@@ -491,10 +537,8 @@ export const variableUpdated = (
 
     return Promise.all(promises).then(() => {
       if (emitChangeEvents) {
-        const dashboard = getState().dashboard.getModel();
-        dashboard?.processRepeats();
-        dispatch(updateLocation({ query: getQueryWithVariables(getState) }));
-        dashboard?.startRefresh();
+        events.publish(new VariablesChanged({ panelIds: affectedPanelIds }));
+        locationService.partial(getQueryWithVariables(getState));
       }
     });
   };
@@ -502,11 +546,12 @@ export const variableUpdated = (
 
 export interface OnTimeRangeUpdatedDependencies {
   templateSrv: TemplateSrv;
+  events: typeof appEvents;
 }
 
 export const onTimeRangeUpdated = (
   timeRange: TimeRange,
-  dependencies: OnTimeRangeUpdatedDependencies = { templateSrv: getTemplateSrv() }
+  dependencies: OnTimeRangeUpdatedDependencies = { templateSrv: getTemplateSrv(), events: appEvents }
 ): ThunkResult<Promise<void>> => async (dispatch, getState) => {
   dependencies.templateSrv.updateTimeRange(timeRange);
   const variablesThatNeedRefresh = getVariables(getState()).filter((variable) => {
@@ -524,8 +569,7 @@ export const onTimeRangeUpdated = (
 
   try {
     await Promise.all(promises);
-    const dashboard = getState().dashboard.getModel();
-    dashboard?.startRefresh();
+    dependencies.events.publish(new VariablesFinishedProcessingTimeRangeChange({ panelIds: undefined }));
   } catch (error) {
     console.error(error);
     dispatch(notifyApp(createVariableErrorNotification('Template variable service failed', error)));
@@ -547,33 +591,56 @@ const timeRangeUpdated = (identifier: VariableIdentifier): ThunkResult<Promise<v
   }
 };
 
-export const templateVarsChangedInUrl = (vars: UrlQueryMap): ThunkResult<void> => async (dispatch, getState) => {
+export const templateVarsChangedInUrl = (
+  vars: ExtendedUrlQueryMap,
+  events: typeof appEvents = appEvents
+): ThunkResult<void> => async (dispatch, getState) => {
   const update: Array<Promise<any>> = [];
+  const dashboard = getState().dashboard.getModel();
   for (const variable of getVariables(getState())) {
     const key = `var-${variable.name}`;
-    if (vars.hasOwnProperty(key)) {
-      if (isVariableUrlValueDifferentFromCurrent(variable, vars[key])) {
-        const promise = variableAdapters.get(variable.type).setValueFromUrl(variable, vars[key]);
-        update.push(promise);
+    if (!vars.hasOwnProperty(key)) {
+      // key not found quick exit
+      continue;
+    }
+
+    if (!isVariableUrlValueDifferentFromCurrent(variable, vars[key].value)) {
+      // variable values doesn't differ quick exit
+      continue;
+    }
+
+    let value = vars[key].value; // as the default the value is set to the value passed into templateVarsChangedInUrl
+    if (vars[key].removed) {
+      // for some reason (panel|data link without variable) the variable url value (var-xyz) has been removed from the url
+      // so we need to revert the value to the value stored in dashboard json
+      const variableInModel = dashboard?.templating.list.find((v) => v.name === variable.name);
+      if (variableInModel && hasCurrent(variableInModel)) {
+        value = variableInModel.current.value; // revert value to the value stored in dashboard json
       }
     }
+
+    const promise = variableAdapters.get(variable.type).setValueFromUrl(variable, value);
+    update.push(promise);
   }
 
   if (update.length) {
     await Promise.all(update);
-    const dashboard = getState().dashboard.getModel();
-    dashboard?.templateVariableValueUpdated();
-    dashboard?.startRefresh();
+    events.publish(new VariablesChangedInUrl({ panelIds: undefined }));
   }
 };
 
-const isVariableUrlValueDifferentFromCurrent = (variable: VariableModel, urlValue: any): boolean => {
+export function isVariableUrlValueDifferentFromCurrent(variable: VariableModel, urlValue: any): boolean {
+  const variableValue = variableAdapters.get(variable.type).getValueForUrl(variable);
+  let stringUrlValue = ensureStringValues(urlValue);
+  if (Array.isArray(variableValue) && !Array.isArray(stringUrlValue)) {
+    stringUrlValue = [stringUrlValue];
+  }
   // lodash isEqual handles array of value equality checks as well
-  return !isEqual(variableAdapters.get(variable.type).getValueForUrl(variable), urlValue);
-};
+  return !isEqual(variableValue, stringUrlValue);
+}
 
 const getQueryWithVariables = (getState: () => StoreState): UrlQueryMap => {
-  const queryParams = getState().location.query;
+  const queryParams = locationService.getSearchObject();
 
   const queryParamsNew = Object.keys(queryParams)
     .filter((key) => key.indexOf('var-') === -1)

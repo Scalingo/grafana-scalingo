@@ -1,7 +1,7 @@
 import React, { FC, MouseEvent, useCallback } from 'react';
 
 import { GrafanaTheme } from '@grafana/data';
-import { css } from 'emotion';
+import { css } from '@emotion/css';
 import { useStyles } from '@grafana/ui';
 
 import { TagBadge } from '../../../core/components/TagFilter/TagBadge';
@@ -19,7 +19,7 @@ export const AnnotationListItemTags: FC<Props> = ({ tags, remove, onClick }) => 
       e.stopPropagation();
       onClick(tag, remove);
     },
-    [remove]
+    [onClick, remove]
   );
 
   if (!tags || !tags.length) {
@@ -27,7 +27,7 @@ export const AnnotationListItemTags: FC<Props> = ({ tags, remove, onClick }) => 
   }
 
   return (
-    <div>
+    <>
       {tags.map((tag) => {
         return (
           <span key={tag} onClick={(e) => onTagClicked(e, tag)} className={styles.pointer}>
@@ -35,14 +35,13 @@ export const AnnotationListItemTags: FC<Props> = ({ tags, remove, onClick }) => 
           </span>
         );
       })}
-    </div>
+    </>
   );
 };
 
 function getStyles(theme: GrafanaTheme) {
   return {
     pointer: css`
-      label: pointer;
       cursor: pointer;
       padding: ${theme.spacing.xxs};
     `,

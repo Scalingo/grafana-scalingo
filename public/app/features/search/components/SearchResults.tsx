@@ -1,9 +1,9 @@
-import React, { FC } from 'react';
-import { css } from 'emotion';
+import React, { FC, memo } from 'react';
+import { css } from '@emotion/css';
 import { FixedSizeList } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { GrafanaTheme } from '@grafana/data';
-import { stylesFactory, useTheme, Spinner } from '@grafana/ui';
+import { Spinner, stylesFactory, useTheme } from '@grafana/ui';
 import { selectors } from '@grafana/e2e-selectors';
 import { DashboardSection, OnToggleChecked, SearchLayout } from '../types';
 import { SEARCH_ITEM_HEIGHT, SEARCH_ITEM_MARGIN } from '../constants';
@@ -20,84 +20,81 @@ export interface Props {
   layout?: string;
 }
 
-const { section: sectionLabel, items: itemsLabel } = selectors.components.Search;
+const { sectionV2: sectionLabel, itemsV2: itemsLabel } = selectors.components.Search;
 
-export const SearchResults: FC<Props> = ({
-  editable,
-  loading,
-  onTagSelected,
-  onToggleChecked,
-  onToggleSection,
-  results,
-  layout,
-}) => {
-  const theme = useTheme();
-  const styles = getSectionStyles(theme);
-  const itemProps = { editable, onToggleChecked, onTagSelected };
-  const renderFolders = () => {
-    return (
-      <div className={styles.wrapper}>
-        {results.map((section) => {
-          return (
-            <div aria-label={sectionLabel} className={styles.section} key={section.id || section.title}>
-              <SectionHeader onSectionClick={onToggleSection} {...{ onToggleChecked, editable, section }} />
-              {section.expanded && (
-                <div aria-label={itemsLabel} className={styles.sectionItems}>
-                  {section.items.map((item) => (
-                    <SearchItem key={item.id} {...itemProps} item={item} />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-  const renderDashboards = () => {
-    const items = results[0]?.items;
-    return (
-      <div className={styles.listModeWrapper}>
-        <AutoSizer disableWidth>
-          {({ height }) => (
-            <FixedSizeList
-              aria-label="Search items"
-              className={styles.wrapper}
-              innerElementType="ul"
-              itemSize={SEARCH_ITEM_HEIGHT + SEARCH_ITEM_MARGIN}
-              height={height}
-              itemCount={items.length}
-              width="100%"
-            >
-              {({ index, style }) => {
-                const item = items[index];
-                // The wrapper div is needed as the inner SearchItem has margin-bottom spacing
-                // And without this wrapper there is no room for that margin
-                return (
-                  <div style={style}>
-                    <SearchItem key={item.id} {...itemProps} item={item} />
+export const SearchResults: FC<Props> = memo(
+  ({ editable, loading, onTagSelected, onToggleChecked, onToggleSection, results, layout }) => {
+    const theme = useTheme();
+    const styles = getSectionStyles(theme);
+    const itemProps = { editable, onToggleChecked, onTagSelected };
+    const renderFolders = () => {
+      return (
+        <div className={styles.wrapper}>
+          {results.map((section) => {
+            return (
+              <div data-testid={sectionLabel} className={styles.section} key={section.id || section.title}>
+                {section.title && (
+                  <SectionHeader onSectionClick={onToggleSection} {...{ onToggleChecked, editable, section }} />
+                )}
+                {section.expanded && (
+                  <div data-testid={itemsLabel} className={styles.sectionItems}>
+                    {section.items.map((item) => (
+                      <SearchItem key={item.id} {...itemProps} item={item} />
+                    ))}
                   </div>
-                );
-              }}
-            </FixedSizeList>
-          )}
-        </AutoSizer>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+    const renderDashboards = () => {
+      const items = results[0]?.items;
+      return (
+        <div className={styles.listModeWrapper}>
+          <AutoSizer disableWidth>
+            {({ height }) => (
+              <FixedSizeList
+                className={styles.wrapper}
+                innerElementType="ul"
+                itemSize={SEARCH_ITEM_HEIGHT + SEARCH_ITEM_MARGIN}
+                height={height}
+                itemCount={items.length}
+                width="100%"
+              >
+                {({ index, style }) => {
+                  const item = items[index];
+                  // The wrapper div is needed as the inner SearchItem has margin-bottom spacing
+                  // And without this wrapper there is no room for that margin
+                  return (
+                    <li style={style}>
+                      <SearchItem key={item.id} {...itemProps} item={item} />
+                    </li>
+                  );
+                }}
+              </FixedSizeList>
+            )}
+          </AutoSizer>
+        </div>
+      );
+    };
+
+    if (loading) {
+      return <Spinner className={styles.spinner} />;
+    } else if (!results || !results.length) {
+      return <div className={styles.noResults}>No dashboards matching your query were found.</div>;
+    }
+
+    return (
+      <div className={styles.resultsContainer}>
+        {layout === SearchLayout.Folders ? renderFolders() : renderDashboards()}
       </div>
     );
-  };
-
-  if (loading) {
-    return <Spinner className={styles.spinner} />;
-  } else if (!results || !results.length) {
-    return <div className={styles.noResults}>No dashboards matching your query were found.</div>;
   }
+);
 
-  return (
-    <div className={styles.resultsContainer}>
-      {layout === SearchLayout.Folders ? renderFolders() : renderDashboards()}
-    </div>
-  );
-};
+SearchResults.displayName = 'SearchResults';
 
 const getSectionStyles = stylesFactory((theme: GrafanaTheme) => {
   const { md } = theme.spacing;

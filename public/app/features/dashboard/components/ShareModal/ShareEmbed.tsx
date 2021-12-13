@@ -1,9 +1,9 @@
 import React, { FormEvent, PureComponent } from 'react';
-import { RadioButtonGroup, Switch, Field, TextArea, ClipboardButton } from '@grafana/ui';
-import { SelectableValue, AppEvents } from '@grafana/data';
-import { DashboardModel, PanelModel } from 'app/features/dashboard/state';
+import { ClipboardButton, Field, Modal, RadioButtonGroup, Switch, TextArea } from '@grafana/ui';
+import { AppEvents, SelectableValue } from '@grafana/data';
 import { appEvents } from 'app/core/core';
 import { buildIframeHtml } from './utils';
+import { ShareModalTabProps } from './types';
 
 const themeOptions: Array<SelectableValue<string>> = [
   { label: 'Current', value: 'current' },
@@ -11,10 +11,7 @@ const themeOptions: Array<SelectableValue<string>> = [
   { label: 'Light', value: 'light' },
 ];
 
-interface Props {
-  dashboard: DashboardModel;
-  panel?: PanelModel;
-}
+interface Props extends ShareModalTabProps {}
 
 interface State {
   useCurrentTimeRange: boolean;
@@ -74,36 +71,39 @@ export class ShareEmbed extends PureComponent<Props, State> {
     const isRelativeTime = this.props.dashboard ? this.props.dashboard.time.to === 'now' : false;
 
     return (
-      <div className="share-modal-body">
-        <div className="share-modal-header">
-          <div className="share-modal-content">
-            <p className="share-modal-info-text">Generate HTML for embedding an iframe with this panel.</p>
-            <Field
-              label="Current time range"
-              description={isRelativeTime ? 'Transforms the current relative time range to an absolute time range' : ''}
-            >
-              <Switch
-                id="share-current-time-range"
-                value={useCurrentTimeRange}
-                onChange={this.onUseCurrentTimeRangeChange}
-              />
-            </Field>
-            <Field label="Theme">
-              <RadioButtonGroup options={themeOptions} value={selectedTheme} onChange={this.onThemeChange} />
-            </Field>
-            <Field
-              label="Embed html"
-              description="The html code below can be pasted and included in another web page. Unless anonymous access is enabled, 
-                the user viewing that page need to be signed into grafana for the graph to load."
-            >
-              <TextArea rows={5} value={iframeHtml} onChange={this.onIframeHtmlChange}></TextArea>
-            </Field>
-            <ClipboardButton variant="primary" getText={this.getIframeHtml} onClipboardCopy={this.onIframeHtmlCopy}>
-              Copy to clipboard
-            </ClipboardButton>
-          </div>
-        </div>
-      </div>
+      <>
+        <p className="share-modal-info-text">Generate HTML for embedding an iframe with this panel.</p>
+        <Field
+          label="Current time range"
+          description={isRelativeTime ? 'Transforms the current relative time range to an absolute time range' : ''}
+        >
+          <Switch
+            id="share-current-time-range"
+            value={useCurrentTimeRange}
+            onChange={this.onUseCurrentTimeRangeChange}
+          />
+        </Field>
+        <Field label="Theme">
+          <RadioButtonGroup options={themeOptions} value={selectedTheme} onChange={this.onThemeChange} />
+        </Field>
+        <Field
+          label="Embed HTML"
+          description="The HTML code below can be pasted and included in another web page. Unless anonymous access is enabled,
+                the user viewing that page need to be signed into Grafana for the graph to load."
+        >
+          <TextArea
+            id="share-panel-embed-embed-html-textarea"
+            rows={5}
+            value={iframeHtml}
+            onChange={this.onIframeHtmlChange}
+          />
+        </Field>
+        <Modal.ButtonRow>
+          <ClipboardButton variant="primary" getText={this.getIframeHtml} onClipboardCopy={this.onIframeHtmlCopy}>
+            Copy to clipboard
+          </ClipboardButton>
+        </Modal.ButtonRow>
+      </>
     );
   }
 }

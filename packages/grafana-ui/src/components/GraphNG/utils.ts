@@ -1,198 +1,75 @@
-import React from 'react';
-import isNumber from 'lodash/isNumber';
-import { GraphNGLegendEventMode, XYFieldMatchers } from './types';
-import {
-  DataFrame,
-  FieldConfig,
-  FieldType,
-  formattedValueToString,
-  getFieldColorModeForField,
-  getFieldDisplayName,
-  getFieldSeriesColor,
-  GrafanaTheme,
-  outerJoinDataFrames,
-  TimeRange,
-  TimeZone,
-} from '@grafana/data';
-import { UPlotConfigBuilder } from '../uPlot/config/UPlotConfigBuilder';
+import { XYFieldMatchers } from './types';
+import { ArrayVector, DataFrame, FieldConfig, FieldType, outerJoinDataFrames } from '@grafana/data';
+import { nullToUndefThreshold } from './nullToUndefThreshold';
+import { AxisPlacement, GraphFieldConfig, ScaleDistribution, ScaleDistributionConfig } from '@grafana/schema';
 import { FIXED_UNIT } from './GraphNG';
-import {
-  AxisPlacement,
-  DrawStyle,
-  GraphFieldConfig,
-  PointVisibility,
-  ScaleDirection,
-  ScaleOrientation,
-} from '../uPlot/config';
 
-const defaultFormatter = (v: any) => (v == null ? '-' : v.toFixed(1));
+// will mutate the DataFrame's fields' values
+function applySpanNullsThresholds(frame: DataFrame) {
+  let refField = frame.fields.find((field) => field.type === FieldType.time); // this doesnt need to be time, just any numeric/asc join field
+  let refValues = refField?.values.toArray() as any[];
 
-const defaultConfig: GraphFieldConfig = {
-  drawStyle: DrawStyle.Line,
-  showPoints: PointVisibility.Auto,
-  axisPlacement: AxisPlacement.Auto,
-};
+  for (let i = 0; i < frame.fields.length; i++) {
+    let field = frame.fields[i];
 
-export function mapMouseEventToMode(event: React.MouseEvent): GraphNGLegendEventMode {
-  if (event.ctrlKey || event.metaKey || event.shiftKey) {
-    return GraphNGLegendEventMode.AppendToSelection;
+    if (field === refField) {
+      continue;
+    }
+
+    if (field.type === FieldType.number) {
+      let spanNulls = field.config.custom?.spanNulls;
+
+      if (typeof spanNulls === 'number') {
+        if (spanNulls !== -1) {
+          field.values = new ArrayVector(nullToUndefThreshold(refValues, field.values.toArray(), spanNulls));
+        }
+      }
+    }
   }
-  return GraphNGLegendEventMode.ToggleSelection;
+
+  return frame;
 }
 
-export function preparePlotFrame(data: DataFrame[], dimFields: XYFieldMatchers) {
-  return outerJoinDataFrames({
-    frames: data,
+export function preparePlotFrame(frames: DataFrame[], dimFields: XYFieldMatchers) {
+  let alignedFrame = outerJoinDataFrames({
+    frames: frames,
     joinBy: dimFields.x,
     keep: dimFields.y,
     keepOriginIndices: true,
   });
+
+  return alignedFrame && applySpanNullsThresholds(alignedFrame);
 }
 
-export function preparePlotConfigBuilder(
-  frame: DataFrame,
-  theme: GrafanaTheme,
-  getTimeRange: () => TimeRange,
-  getTimeZone: () => TimeZone
-): UPlotConfigBuilder {
-  const builder = new UPlotConfigBuilder(getTimeZone);
+export function buildScaleKey(config: FieldConfig<GraphFieldConfig>) {
+  const defaultPart = 'na';
 
-  // X is the first field in the aligned frame
-  const xField = frame.fields[0];
-  let seriesIndex = 0;
+  const scaleRange = `${config.min !== undefined ? config.min : defaultPart}-${
+    config.max !== undefined ? config.max : defaultPart
+  }`;
 
-  if (xField.type === FieldType.time) {
-    builder.addScale({
-      scaleKey: 'x',
-      orientation: ScaleOrientation.Horizontal,
-      direction: ScaleDirection.Right,
-      isTime: true,
-      range: () => {
-        const r = getTimeRange();
-        return [r.from.valueOf(), r.to.valueOf()];
-      },
-    });
+  const scaleSoftRange = `${config.custom?.axisSoftMin !== undefined ? config.custom.axisSoftMin : defaultPart}-${
+    config.custom?.axisSoftMax !== undefined ? config.custom.axisSoftMax : defaultPart
+  }`;
 
-    builder.addAxis({
-      scaleKey: 'x',
-      isTime: true,
-      placement: AxisPlacement.Bottom,
-      timeZone: getTimeZone(),
-      theme,
-    });
-  } else {
-    // Not time!
-    builder.addScale({
-      scaleKey: 'x',
-      orientation: ScaleOrientation.Horizontal,
-      direction: ScaleDirection.Right,
-    });
+  const scalePlacement = `${
+    config.custom?.axisPlacement !== undefined ? config.custom?.axisPlacement : AxisPlacement.Auto
+  }`;
 
-    builder.addAxis({
-      scaleKey: 'x',
-      placement: AxisPlacement.Bottom,
-      theme,
-    });
-  }
+  const scaleUnit = config.unit ?? FIXED_UNIT;
 
-  let indexByName: Map<string, number> | undefined = undefined;
+  const scaleDistribution = config.custom?.scaleDistribution
+    ? getScaleDistributionPart(config.custom.scaleDistribution)
+    : ScaleDistribution.Linear;
 
-  for (let i = 0; i < frame.fields.length; i++) {
-    const field = frame.fields[i];
-    const config = field.config as FieldConfig<GraphFieldConfig>;
-    const customConfig: GraphFieldConfig = {
-      ...defaultConfig,
-      ...config.custom,
-    };
+  const scaleLabel = Boolean(config.custom?.axisLabel) ? config.custom!.axisLabel : defaultPart;
 
-    if (field === xField || field.type !== FieldType.number) {
-      continue;
-    }
-    field.state!.seriesIndex = seriesIndex++;
-
-    const fmt = field.display ?? defaultFormatter;
-    const scaleKey = config.unit || FIXED_UNIT;
-    const colorMode = getFieldColorModeForField(field);
-    const scaleColor = getFieldSeriesColor(field, theme);
-    const seriesColor = scaleColor.color;
-
-    // The builder will manage unique scaleKeys and combine where appropriate
-    builder.addScale({
-      scaleKey,
-      orientation: ScaleOrientation.Vertical,
-      direction: ScaleDirection.Up,
-      distribution: customConfig.scaleDistribution?.type,
-      log: customConfig.scaleDistribution?.log,
-      min: field.config.min,
-      max: field.config.max,
-      softMin: customConfig.axisSoftMin,
-      softMax: customConfig.axisSoftMax,
-    });
-
-    if (customConfig.axisPlacement !== AxisPlacement.Hidden) {
-      builder.addAxis({
-        scaleKey,
-        label: customConfig.axisLabel,
-        size: customConfig.axisWidth,
-        placement: customConfig.axisPlacement ?? AxisPlacement.Auto,
-        formatValue: (v) => formattedValueToString(fmt(v)),
-        theme,
-      });
-    }
-
-    const showPoints = customConfig.drawStyle === DrawStyle.Points ? PointVisibility.Always : customConfig.showPoints;
-
-    let { fillOpacity } = customConfig;
-    if (customConfig.fillBelowTo) {
-      if (!indexByName) {
-        indexByName = getNamesToFieldIndex(frame);
-      }
-      const t = indexByName.get(getFieldDisplayName(field, frame));
-      const b = indexByName.get(customConfig.fillBelowTo);
-      if (isNumber(b) && isNumber(t)) {
-        builder.addBand({
-          series: [t, b],
-          fill: null as any, // using null will have the band use fill options from `t`
-        });
-      }
-      if (!fillOpacity) {
-        fillOpacity = 35; // default from flot
-      }
-    }
-
-    builder.addSeries({
-      scaleKey,
-      showPoints,
-      colorMode,
-      fillOpacity,
-      theme,
-      drawStyle: customConfig.drawStyle!,
-      lineColor: customConfig.lineColor ?? seriesColor,
-      lineWidth: customConfig.lineWidth,
-      lineInterpolation: customConfig.lineInterpolation,
-      lineStyle: customConfig.lineStyle,
-      barAlignment: customConfig.barAlignment,
-      pointSize: customConfig.pointSize,
-      pointColor: customConfig.pointColor ?? seriesColor,
-      spanNulls: customConfig.spanNulls || false,
-      show: !customConfig.hideFrom?.graph,
-      gradientMode: customConfig.gradientMode,
-      thresholds: config.thresholds,
-
-      // The following properties are not used in the uPlot config, but are utilized as transport for legend config
-      dataFrameFieldIndex: field.state?.origin,
-      fieldName: getFieldDisplayName(field, frame),
-      hideInLegend: customConfig.hideFrom?.legend,
-    });
-  }
-
-  return builder;
+  return `${scaleUnit}/${scaleRange}/${scaleSoftRange}/${scalePlacement}/${scaleDistribution}/${scaleLabel}`;
 }
 
-export function getNamesToFieldIndex(frame: DataFrame): Map<string, number> {
-  const names = new Map<string, number>();
-  for (let i = 0; i < frame.fields.length; i++) {
-    names.set(getFieldDisplayName(frame.fields[i], frame), i);
+function getScaleDistributionPart(config: ScaleDistributionConfig) {
+  if (config.type === ScaleDistribution.Log) {
+    return `${config.type}${config.log}`;
   }
-  return names;
+  return config.type;
 }

@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"path/filepath"
 	"testing"
 
@@ -12,24 +15,34 @@ import (
 	"github.com/grafana/grafana/pkg/api/routing"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
+	dboards "github.com/grafana/grafana/pkg/dashboards"
+	"github.com/grafana/grafana/pkg/infra/usagestats"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/alerting"
 	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/libraryelements"
 	"github.com/grafana/grafana/pkg/services/live"
 	"github.com/grafana/grafana/pkg/services/provisioning"
 	"github.com/grafana/grafana/pkg/services/quota"
+	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/web"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetHomeDashboard(t *testing.T) {
-	req := &models.ReqContext{SignedInUser: &models.SignedInUser{}}
+	httpReq, err := http.NewRequest(http.MethodGet, "", nil)
+	require.NoError(t, err)
+	req := &models.ReqContext{SignedInUser: &models.SignedInUser{}, Context: &web.Context{Req: httpReq}}
 	cfg := setting.NewCfg()
 	cfg.StaticRootPath = "../../public/"
 
-	hs := &HTTPServer{Cfg: cfg, Bus: bus.New()}
-	hs.Bus.AddHandler(func(query *models.GetPreferencesWithDefaultsQuery) error {
+	hs := &HTTPServer{
+		Cfg: cfg, Bus: bus.New(),
+		pluginStore: &fakePluginStore{},
+	}
+	hs.Bus.AddHandlerCtx(func(_ context.Context, query *models.GetPreferencesWithDefaultsQuery) error {
 		query.Result = &models.Preferences{
 			HomeDashboardId: 0,
 		}
@@ -74,6 +87,13 @@ type testState struct {
 	dashQueries []*models.GetDashboardQuery
 }
 
+func newTestLive(t *testing.T) *live.GrafanaLive {
+	cfg := &setting.Cfg{AppURL: "http://localhost:3000/"}
+	gLive, err := live.ProvideService(nil, cfg, routing.NewRouteRegister(), nil, nil, nil, nil, sqlstore.InitTestDB(t), nil, &usagestats.UsageStatsMock{T: t})
+	require.NoError(t, err)
+	return gLive
+}
+
 // This tests three main scenarios.
 // If a user has access to execute an action on a dashboard:
 //   1. and the dashboard is in a folder which does not have an acl
@@ -96,14 +116,9 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 
 			state := &testState{}
 
-			bus.AddHandler("test", func(query *models.GetDashboardQuery) error {
+			bus.AddHandlerCtx("test", func(ctx context.Context, query *models.GetDashboardQuery) error {
 				query.Result = fakeDash
 				state.dashQueries = append(state.dashQueries, query)
-				return nil
-			})
-
-			bus.AddHandler("test", func(query *models.GetProvisionedDashboardDataByIdQuery) error {
-				query.Result = nil
 				return nil
 			})
 
@@ -135,19 +150,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 		t.Run("When user is an Org Viewer", func(t *testing.T) {
 			role := models.ROLE_VIEWER
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					dash := getDashboardShouldReturn200(sc)
-
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-
-					assert.False(t, dash.Meta.CanEdit)
-					assert.False(t, dash.Meta.CanSave)
-					assert.False(t, dash.Meta.CanAdmin)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
@@ -161,21 +163,15 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 					assert.False(t, dash.Meta.CanAdmin)
 				})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					CallDeleteDashboardBySlug(sc, &HTTPServer{Cfg: setting.NewCfg()})
-					assert.Equal(t, 403, sc.resp.Code)
-
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
 
-					CallDeleteDashboardByUID(sc, &HTTPServer{Cfg: setting.NewCfg()})
+					callDeleteDashboardBySlug(sc, &HTTPServer{
+						Cfg:                   setting.NewCfg(),
+						LibraryPanelService:   &mockLibraryPanelService{},
+						LibraryElementService: &mockLibraryElementService{},
+					})
 					assert.Equal(t, 403, sc.resp.Code)
 
 					assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
@@ -201,19 +197,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 		t.Run("When user is an Org Editor", func(t *testing.T) {
 			role := models.ROLE_EDITOR
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					dash := getDashboardShouldReturn200(sc)
-
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-
-					assert.True(t, dash.Meta.CanEdit)
-					assert.True(t, dash.Meta.CanSave)
-					assert.False(t, dash.Meta.CanAdmin)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
@@ -226,20 +209,15 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 					assert.False(t, dash.Meta.CanAdmin)
 				})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					CallDeleteDashboardBySlug(sc, &HTTPServer{Cfg: setting.NewCfg()})
-					assert.Equal(t, 200, sc.resp.Code)
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
 
-					CallDeleteDashboardByUID(sc, &HTTPServer{Cfg: setting.NewCfg()})
+					callDeleteDashboardBySlug(sc, &HTTPServer{
+						Cfg:                   setting.NewCfg(),
+						LibraryPanelService:   &mockLibraryPanelService{},
+						LibraryElementService: &mockLibraryElementService{},
+					})
 					assert.Equal(t, 200, sc.resp.Code)
 					assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
 				})
@@ -264,7 +242,10 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 
 	t.Run("Given a dashboard with a parent folder which has an ACL", func(t *testing.T) {
 		hs := &HTTPServer{
-			Cfg: setting.NewCfg(),
+			Cfg:                   setting.NewCfg(),
+			Live:                  newTestLive(t),
+			LibraryPanelService:   &mockLibraryPanelService{},
+			LibraryElementService: &mockLibraryElementService{},
 		}
 
 		setUp := func() *testState {
@@ -280,11 +261,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				setting.ViewersCanEdit = origCanEdit
 			})
 			setting.ViewersCanEdit = false
-
-			bus.AddHandler("test", func(query *models.GetProvisionedDashboardDataByIdQuery) error {
-				query.Result = nil
-				return nil
-			})
 
 			bus.AddHandler("test", func(query *models.GetDashboardsBySlugQuery) error {
 				dashboards := []*models.Dashboard{fakeDash}
@@ -305,7 +281,7 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				return nil
 			})
 
-			bus.AddHandler("test", func(query *models.GetDashboardQuery) error {
+			bus.AddHandlerCtx("test", func(ctx context.Context, query *models.GetDashboardQuery) error {
 				query.Result = fakeDash
 				state.dashQueries = append(state.dashQueries, query)
 				return nil
@@ -330,16 +306,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 		t.Run("When user is an Org Viewer and has no permissions for this dashboard", func(t *testing.T) {
 			role := models.ROLE_VIEWER
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					sc.handlerFunc = hs.GetDashboard
-					sc.fakeReqWithParams("GET", sc.url, map[string]string{}).exec()
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-					assert.Equal(t, 403, sc.resp.Code)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
@@ -350,20 +316,11 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 					assert.Equal(t, 403, sc.resp.Code)
 				})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					CallDeleteDashboardBySlug(sc, hs)
-					assert.Equal(t, 403, sc.resp.Code)
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
 
-					CallDeleteDashboardByUID(sc, hs)
+					callDeleteDashboardByUID(sc, hs)
 					assert.Equal(t, 403, sc.resp.Code)
 					assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
 				})
@@ -388,17 +345,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 		t.Run("When user is an Org Editor and has no permissions for this dashboard", func(t *testing.T) {
 			role := models.ROLE_EDITOR
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					sc.handlerFunc = hs.GetDashboard
-					sc.fakeReqWithParams("GET", sc.url, map[string]string{}).exec()
-
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-					assert.Equal(t, 403, sc.resp.Code)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
@@ -410,20 +356,11 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 					assert.Equal(t, 403, sc.resp.Code)
 				})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUp()
-
-					CallDeleteDashboardBySlug(sc, hs)
-					assert.Equal(t, 403, sc.resp.Code)
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUp()
 
-					CallDeleteDashboardByUID(sc, hs)
+					callDeleteDashboardByUID(sc, hs)
 					assert.Equal(t, 403, sc.resp.Code)
 					assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
 				})
@@ -461,22 +398,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				return state
 			}
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash",
-				"/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-					state := setUpInner()
-					bus.AddHandler("test", func(query *models.GetDashboardAclInfoListQuery) error {
-						query.Result = mockResult
-						return nil
-					})
-
-					dash := getDashboardShouldReturn200(sc)
-
-					assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-					assert.True(t, dash.Meta.CanEdit)
-					assert.True(t, dash.Meta.CanSave)
-					assert.False(t, dash.Meta.CanAdmin)
-				})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi",
 				"/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 					state := setUpInner()
@@ -489,18 +410,10 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 					assert.False(t, dash.Meta.CanAdmin)
 				})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-				state := setUpInner()
-
-				CallDeleteDashboardBySlug(sc, hs)
-				assert.Equal(t, 200, sc.resp.Code)
-				assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-			})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi", "/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 				state := setUpInner()
 
-				CallDeleteDashboardByUID(sc, hs)
+				callDeleteDashboardByUID(sc, hs)
 				assert.Equal(t, 200, sc.resp.Code)
 				assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
 			})
@@ -544,17 +457,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				return state
 			}
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-				state := setUpInner()
-
-				dash := getDashboardShouldReturn200(sc)
-
-				assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-				assert.True(t, dash.Meta.CanEdit)
-				assert.False(t, dash.Meta.CanSave)
-				assert.False(t, dash.Meta.CanAdmin)
-			})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi", "/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 				state := setUpInner()
 
@@ -567,18 +469,10 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				assert.False(t, dash.Meta.CanAdmin)
 			})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-				state := setUpInner()
-
-				CallDeleteDashboardBySlug(sc, hs)
-				assert.Equal(t, 403, sc.resp.Code)
-				assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-			})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi", "/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 				state := setUpInner()
 
-				CallDeleteDashboardByUID(sc, hs)
+				callDeleteDashboardByUID(sc, hs)
 				assert.Equal(t, 403, sc.resp.Code)
 				assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
 			})
@@ -600,16 +494,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				return state
 			}
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-				state := setUpInner()
-
-				dash := getDashboardShouldReturn200(sc)
-				assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-				assert.True(t, dash.Meta.CanEdit)
-				assert.True(t, dash.Meta.CanSave)
-				assert.True(t, dash.Meta.CanAdmin)
-			})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi", "/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 				state := setUpInner()
 
@@ -621,18 +505,10 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				assert.True(t, dash.Meta.CanAdmin)
 			})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-				state := setUpInner()
-
-				CallDeleteDashboardBySlug(sc, hs)
-				assert.Equal(t, 200, sc.resp.Code)
-				assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-			})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi", "/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 				state := setUpInner()
 
-				CallDeleteDashboardByUID(sc, hs)
+				callDeleteDashboardByUID(sc, hs)
 				assert.Equal(t, 200, sc.resp.Code)
 				assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
 			})
@@ -668,16 +544,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				return state
 			}
 
-			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/db/child-dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-				state := setUpInner()
-
-				dash := getDashboardShouldReturn200(sc)
-
-				assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-				assert.False(t, dash.Meta.CanEdit)
-				assert.False(t, dash.Meta.CanSave)
-			})
-
 			loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/abcdefghi", "/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 				state := setUpInner()
 
@@ -687,18 +553,10 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				assert.False(t, dash.Meta.CanSave)
 			})
 
-			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/child-dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-				state := setUpInner()
-
-				CallDeleteDashboardBySlug(sc, hs)
-				assert.Equal(t, 403, sc.resp.Code)
-				assert.Equal(t, "child-dash", state.dashQueries[0].Slug)
-			})
-
 			loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/uid/abcdefghi", "/api/dashboards/uid/:uid", role, func(sc *scenarioContext) {
 				state := setUpInner()
 
-				CallDeleteDashboardByUID(sc, hs)
+				callDeleteDashboardByUID(sc, hs)
 				assert.Equal(t, 403, sc.resp.Code)
 				assert.Equal(t, "abcdefghi", state.dashQueries[0].Uid)
 			})
@@ -730,26 +588,10 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 		dashTwo.FolderId = 3
 		dashTwo.HasAcl = false
 
-		bus.AddHandler("test", func(query *models.GetProvisionedDashboardDataByIdQuery) error {
-			query.Result = nil
-			return nil
-		})
-
 		bus.AddHandler("test", func(query *models.GetDashboardsBySlugQuery) error {
 			dashboards := []*models.Dashboard{dashOne, dashTwo}
 			query.Result = dashboards
 			return nil
-		})
-
-		role := models.ROLE_EDITOR
-
-		loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/dash", "/api/dashboards/db/:slug", role, func(sc *scenarioContext) {
-			CallDeleteDashboardBySlug(sc, &HTTPServer{Cfg: setting.NewCfg()})
-
-			assert.Equal(t, 412, sc.resp.Code)
-			result := sc.ToJSON()
-			assert.Equal(t, "multiple-slugs-exists", result.Get("status").MustString())
-			assert.Equal(t, models.ErrDashboardsWithSameSlugExists.Error(), result.Get("message").MustString())
 		})
 	})
 
@@ -781,7 +623,7 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				},
 			}
 
-			postDashboardScenario(t, "When calling POST on", "/api/dashboards", "/api/dashboards", mock, cmd, func(sc *scenarioContext) {
+			postDashboardScenario(t, "When calling POST on", "/api/dashboards", "/api/dashboards", mock, nil, cmd, func(sc *scenarioContext) {
 				callPostDashboardShouldReturnSuccess(sc)
 
 				dto := mock.SavedDashboards[0]
@@ -798,6 +640,91 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				assert.Equal(t, "uid", result.Get("uid").MustString())
 				assert.Equal(t, "dash", result.Get("slug").MustString())
 				assert.Equal(t, "/d/uid/dash", result.Get("url").MustString())
+			})
+		})
+
+		t.Run("Given a correct request for creating a dashboard with folder uid", func(t *testing.T) {
+			const folderUid string = "folderUID"
+			const dashID int64 = 2
+
+			cmd := models.SaveDashboardCommand{
+				OrgId:  1,
+				UserId: 5,
+				Dashboard: simplejson.NewFromAny(map[string]interface{}{
+					"title": "Dash",
+				}),
+				Overwrite: true,
+				FolderUid: folderUid,
+				IsFolder:  false,
+				Message:   "msg",
+			}
+
+			mock := &dashboards.FakeDashboardService{
+				SaveDashboardResult: &models.Dashboard{
+					Id:      dashID,
+					Uid:     "uid",
+					Title:   "Dash",
+					Slug:    "dash",
+					Version: 2,
+				},
+			}
+
+			mockFolder := &fakeFolderService{
+				GetFolderByUIDResult: &models.Folder{Id: 1, Uid: "folderUID", Title: "Folder"},
+			}
+
+			postDashboardScenario(t, "When calling POST on", "/api/dashboards", "/api/dashboards", mock, mockFolder, cmd, func(sc *scenarioContext) {
+				callPostDashboardShouldReturnSuccess(sc)
+
+				dto := mock.SavedDashboards[0]
+				assert.Equal(t, cmd.OrgId, dto.OrgId)
+				assert.Equal(t, cmd.UserId, dto.User.UserId)
+				assert.Equal(t, "Dash", dto.Dashboard.Title)
+				assert.True(t, dto.Overwrite)
+				assert.Equal(t, "msg", dto.Message)
+
+				result := sc.ToJSON()
+				assert.Equal(t, "success", result.Get("status").MustString())
+				assert.Equal(t, dashID, result.Get("id").MustInt64())
+				assert.Equal(t, "uid", result.Get("uid").MustString())
+				assert.Equal(t, "dash", result.Get("slug").MustString())
+				assert.Equal(t, "/d/uid/dash", result.Get("url").MustString())
+			})
+		})
+
+		t.Run("Given a request with incorrect folder uid for creating a dashboard with", func(t *testing.T) {
+			const folderUid string = "folderUID"
+			const dashID int64 = 2
+
+			cmd := models.SaveDashboardCommand{
+				OrgId:  1,
+				UserId: 5,
+				Dashboard: simplejson.NewFromAny(map[string]interface{}{
+					"title": "Dash",
+				}),
+				Overwrite: true,
+				FolderUid: folderUid,
+				IsFolder:  false,
+				Message:   "msg",
+			}
+
+			mock := &dashboards.FakeDashboardService{
+				SaveDashboardResult: &models.Dashboard{
+					Id:      dashID,
+					Uid:     "uid",
+					Title:   "Dash",
+					Slug:    "dash",
+					Version: 2,
+				},
+			}
+
+			mockFolder := &fakeFolderService{
+				GetFolderByUIDError: errors.New("Error while searching Folder ID"),
+			}
+
+			postDashboardScenario(t, "When calling POST on", "/api/dashboards", "/api/dashboards", mock, mockFolder, cmd, func(sc *scenarioContext) {
+				callPostDashboard(sc)
+				assert.Equal(t, 500, sc.resp.Code)
 			})
 		})
 
@@ -840,7 +767,7 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				}
 
 				postDashboardScenario(t, fmt.Sprintf("Expect '%s' error when calling POST on", tc.SaveError.Error()),
-					"/api/dashboards", "/api/dashboards", mock, cmd, func(sc *scenarioContext) {
+					"/api/dashboards", "/api/dashboards", mock, nil, cmd, func(sc *scenarioContext) {
 						callPostDashboard(sc)
 						assert.Equal(t, tc.ExpectedStatusCode, sc.resp.Code)
 					})
@@ -853,11 +780,6 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 			mockResult := []*models.DashboardAclInfoDTO{}
 			bus.AddHandler("test", func(query *models.GetDashboardAclInfoListQuery) error {
 				query.Result = mockResult
-				return nil
-			})
-
-			bus.AddHandler("test", func(query *models.GetProvisionedDashboardDataByIdQuery) error {
-				query.Result = nil
 				return nil
 			})
 
@@ -914,7 +836,7 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 			fakeDash.FolderId = folderID
 			fakeDash.HasAcl = false
 
-			bus.AddHandler("test", func(query *models.GetDashboardQuery) error {
+			bus.AddHandlerCtx("test", func(ctx context.Context, query *models.GetDashboardQuery) error {
 				query.Result = fakeDash
 				return nil
 			})
@@ -962,7 +884,7 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 			fakeDash.Id = 2
 			fakeDash.HasAcl = false
 
-			bus.AddHandler("test", func(query *models.GetDashboardQuery) error {
+			bus.AddHandlerCtx("test", func(ctx context.Context, query *models.GetDashboardQuery) error {
 				query.Result = fakeDash
 				return nil
 			})
@@ -1010,17 +932,20 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 				query.Result = []*models.Dashboard{{}}
 				return nil
 			})
-			bus.AddHandler("test", func(query *models.GetDashboardQuery) error {
+			bus.AddHandlerCtx("test", func(ctx context.Context, query *models.GetDashboardQuery) error {
 				dataValue, err := simplejson.NewJson([]byte(`{"id": 1, "editable": true, "style": "dark"}`))
 				require.NoError(t, err)
 				query.Result = &models.Dashboard{Id: 1, Data: dataValue}
 				return nil
 			})
 
-			bus.AddHandler("test", func(query *models.GetProvisionedDashboardDataByIdQuery) error {
-				query.Result = &models.DashboardProvisioning{ExternalId: "/tmp/grafana/dashboards/test/dashboard1.json"}
-				return nil
+			origGetProvisionedData := dashboards.GetProvisionedData
+			t.Cleanup(func() {
+				dashboards.GetProvisionedData = origGetProvisionedData
 			})
+			dashboards.GetProvisionedData = func(dboards.Store, int64) (*models.DashboardProvisioning, error) {
+				return &models.DashboardProvisioning{ExternalId: "/tmp/grafana/dashboards/test/dashboard1.json"}, nil
+			}
 
 			bus.AddHandler("test", func(query *models.GetDashboardAclInfoListQuery) error {
 				query.Result = []*models.DashboardAclInfoDTO{
@@ -1030,20 +955,14 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 			})
 		}
 
-		loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/dash", "/api/dashboards/db/:slug", models.ROLE_EDITOR, func(sc *scenarioContext) {
-			setUp()
-
-			CallDeleteDashboardBySlug(sc, &HTTPServer{Cfg: setting.NewCfg()})
-
-			assert.Equal(t, 400, sc.resp.Code)
-			result := sc.ToJSON()
-			assert.Equal(t, models.ErrDashboardCannotDeleteProvisionedDashboard.Error(), result.Get("error").MustString())
-		})
-
 		loggedInUserScenarioWithRole(t, "When calling DELETE on", "DELETE", "/api/dashboards/db/abcdefghi", "/api/dashboards/db/:uid", models.ROLE_EDITOR, func(sc *scenarioContext) {
 			setUp()
 
-			CallDeleteDashboardByUID(sc, &HTTPServer{Cfg: setting.NewCfg()})
+			callDeleteDashboardBySlug(sc, &HTTPServer{
+				Cfg:                   setting.NewCfg(),
+				LibraryPanelService:   &mockLibraryPanelService{},
+				LibraryElementService: &mockLibraryElementService{},
+			})
 
 			assert.Equal(t, 400, sc.resp.Code)
 			result := sc.ToJSON()
@@ -1053,7 +972,7 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 		loggedInUserScenarioWithRole(t, "When calling GET on", "GET", "/api/dashboards/uid/dash", "/api/dashboards/uid/:uid", models.ROLE_EDITOR, func(sc *scenarioContext) {
 			setUp()
 
-			mock := provisioning.NewProvisioningServiceMock()
+			mock := provisioning.NewProvisioningServiceMock(context.Background())
 			mock.GetDashboardProvisionerResolvedPathFunc = func(name string) string {
 				return "/tmp/grafana/dashboards"
 			}
@@ -1066,7 +985,7 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 		loggedInUserScenarioWithRole(t, "When allowUiUpdates is true and calling GET on", "GET", "/api/dashboards/uid/dash", "/api/dashboards/uid/:uid", models.ROLE_EDITOR, func(sc *scenarioContext) {
 			setUp()
 
-			mock := provisioning.NewProvisioningServiceMock()
+			mock := provisioning.NewProvisioningServiceMock(context.Background())
 			mock.GetDashboardProvisionerResolvedPathFunc = func(name string) string {
 				return "/tmp/grafana/dashboards"
 			}
@@ -1075,8 +994,10 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 			}
 
 			hs := &HTTPServer{
-				Cfg:                 setting.NewCfg(),
-				ProvisioningService: mock,
+				Cfg:                   setting.NewCfg(),
+				ProvisioningService:   mock,
+				LibraryPanelService:   &mockLibraryPanelService{},
+				LibraryElementService: &mockLibraryElementService{},
 			}
 			callGetDashboard(sc, hs)
 
@@ -1094,13 +1015,19 @@ func TestDashboardAPIEndpoint(t *testing.T) {
 func getDashboardShouldReturn200WithConfig(sc *scenarioContext, provisioningService provisioning.ProvisioningService) dtos.
 	DashboardFullWithMeta {
 	if provisioningService == nil {
-		provisioningService = provisioning.NewProvisioningServiceMock()
+		provisioningService = provisioning.NewProvisioningServiceMock(context.Background())
 	}
 
+	libraryPanelsService := mockLibraryPanelService{}
+	libraryElementsService := mockLibraryElementService{}
+
 	hs := &HTTPServer{
-		Cfg:                 setting.NewCfg(),
-		ProvisioningService: provisioningService,
+		Cfg:                   setting.NewCfg(),
+		LibraryPanelService:   &libraryPanelsService,
+		LibraryElementService: &libraryElementsService,
+		ProvisioningService:   provisioningService,
 	}
+
 	callGetDashboard(sc, hs)
 
 	require.Equal(sc.t, 200, sc.resp.Code)
@@ -1141,7 +1068,7 @@ func callGetDashboardVersions(sc *scenarioContext) {
 	sc.fakeReqWithParams("GET", sc.url, map[string]string{}).exec()
 }
 
-func CallDeleteDashboardBySlug(sc *scenarioContext, hs *HTTPServer) {
+func callDeleteDashboardBySlug(sc *scenarioContext, hs *HTTPServer) {
 	bus.AddHandler("test", func(cmd *models.DeleteDashboardCommand) error {
 		return nil
 	})
@@ -1150,7 +1077,7 @@ func CallDeleteDashboardBySlug(sc *scenarioContext, hs *HTTPServer) {
 	sc.fakeReqWithParams("DELETE", sc.url, map[string]string{}).exec()
 }
 
-func CallDeleteDashboardByUID(sc *scenarioContext, hs *HTTPServer) {
+func callDeleteDashboardByUID(sc *scenarioContext, hs *HTTPServer) {
 	bus.AddHandler("test", func(cmd *models.DeleteDashboardCommand) error {
 		return nil
 	})
@@ -1173,12 +1100,9 @@ func callPostDashboardShouldReturnSuccess(sc *scenarioContext) {
 	assert.Equal(sc.t, 200, sc.resp.Code)
 }
 
-func (m mockDashboardProvisioningService) DeleteProvisionedDashboard(dashboardId int64, orgId int64) error {
-	panic("implement me")
-}
-
 func postDashboardScenario(t *testing.T, desc string, url string, routePattern string,
-	mock *dashboards.FakeDashboardService, cmd models.SaveDashboardCommand, fn scenarioFunc) {
+	mock *dashboards.FakeDashboardService, mockFolder *fakeFolderService, cmd models.SaveDashboardCommand,
+	fn scenarioFunc) {
 	t.Run(fmt.Sprintf("%s %s", desc, url), func(t *testing.T) {
 		t.Cleanup(bus.ClearBusHandlers)
 
@@ -1186,11 +1110,14 @@ func postDashboardScenario(t *testing.T, desc string, url string, routePattern s
 		hs := HTTPServer{
 			Bus:                 bus.GetBus(),
 			Cfg:                 cfg,
-			ProvisioningService: provisioning.NewProvisioningServiceMock(),
-			Live:                &live.GrafanaLive{Cfg: setting.NewCfg()},
+			ProvisioningService: provisioning.NewProvisioningServiceMock(context.Background()),
+			Live:                newTestLive(t),
 			QuotaService: &quota.QuotaService{
 				Cfg: cfg,
 			},
+			pluginStore:           &fakePluginStore{},
+			LibraryPanelService:   &mockLibraryPanelService{},
+			LibraryElementService: &mockLibraryElementService{},
 		}
 
 		sc := setupScenarioContext(t, url)
@@ -1202,19 +1129,20 @@ func postDashboardScenario(t *testing.T, desc string, url string, routePattern s
 		})
 
 		origNewDashboardService := dashboards.NewService
-		dashboards.MockDashboardService(mock)
-
 		origProvisioningService := dashboards.NewProvisioningService
-		dashboards.NewProvisioningService = func() dashboards.DashboardProvisioningService {
-			return mockDashboardProvisioningService{}
-		}
-
-		sc.m.Post(routePattern, sc.defaultHandler)
-
-		defer func() {
+		origNewFolderService := dashboards.NewFolderService
+		t.Cleanup(func() {
 			dashboards.NewService = origNewDashboardService
 			dashboards.NewProvisioningService = origProvisioningService
-		}()
+			dashboards.NewFolderService = origNewFolderService
+		})
+		dashboards.MockDashboardService(mock)
+		dashboards.NewProvisioningService = func(dboards.Store) dashboards.DashboardProvisioningService {
+			return mockDashboardProvisioningService{}
+		}
+		mockFolderService(mockFolder)
+
+		sc.m.Post(routePattern, sc.defaultHandler)
 
 		fn(sc)
 	})
@@ -1249,11 +1177,13 @@ func restoreDashboardVersionScenario(t *testing.T, desc string, url string, rout
 
 		cfg := setting.NewCfg()
 		hs := HTTPServer{
-			Cfg:                 cfg,
-			Bus:                 bus.GetBus(),
-			ProvisioningService: provisioning.NewProvisioningServiceMock(),
-			Live:                &live.GrafanaLive{Cfg: cfg},
-			QuotaService:        &quota.QuotaService{Cfg: cfg},
+			Cfg:                   cfg,
+			Bus:                   bus.GetBus(),
+			ProvisioningService:   provisioning.NewProvisioningServiceMock(context.Background()),
+			Live:                  newTestLive(t),
+			QuotaService:          &quota.QuotaService{Cfg: cfg},
+			LibraryPanelService:   &mockLibraryPanelService{},
+			LibraryElementService: &mockLibraryElementService{},
 		}
 
 		sc := setupScenarioContext(t, url)
@@ -1269,19 +1199,17 @@ func restoreDashboardVersionScenario(t *testing.T, desc string, url string, rout
 		})
 
 		origProvisioningService := dashboards.NewProvisioningService
-		dashboards.NewProvisioningService = func() dashboards.DashboardProvisioningService {
+		origNewDashboardService := dashboards.NewService
+		t.Cleanup(func() {
+			dashboards.NewService = origNewDashboardService
+			dashboards.NewProvisioningService = origProvisioningService
+		})
+		dashboards.NewProvisioningService = func(dboards.Store) dashboards.DashboardProvisioningService {
 			return mockDashboardProvisioningService{}
 		}
-
-		origNewDashboardService := dashboards.NewService
 		dashboards.MockDashboardService(mock)
 
 		sc.m.Post(routePattern, sc.defaultHandler)
-
-		defer func() {
-			dashboards.NewService = origNewDashboardService
-			dashboards.NewProvisioningService = origProvisioningService
-		}()
 
 		fn(sc)
 	})
@@ -1295,24 +1223,61 @@ func (sc *scenarioContext) ToJSON() *simplejson.Json {
 }
 
 type mockDashboardProvisioningService struct {
+	dashboards.DashboardProvisioningService
 }
 
-func (m mockDashboardProvisioningService) SaveProvisionedDashboard(dto *dashboards.SaveDashboardDTO, provisioning *models.DashboardProvisioning) (*models.Dashboard, error) {
-	panic("implement me")
+func (s mockDashboardProvisioningService) GetProvisionedDashboardDataByDashboardID(dashboardID int64) (
+	*models.DashboardProvisioning, error) {
+	return nil, nil
 }
 
-func (m mockDashboardProvisioningService) SaveFolderForProvisionedDashboards(*dashboards.SaveDashboardDTO) (*models.Dashboard, error) {
-	panic("implement me")
+type mockLibraryPanelService struct {
 }
 
-func (m mockDashboardProvisioningService) GetProvisionedDashboardData(name string) ([]*models.DashboardProvisioning, error) {
-	panic("implement me")
+func (m *mockLibraryPanelService) LoadLibraryPanelsForDashboard(c context.Context, dash *models.Dashboard) error {
+	return nil
 }
 
-func (m mockDashboardProvisioningService) GetProvisionedDashboardDataByDashboardID(dashboardId int64) (*models.DashboardProvisioning, error) {
-	return &models.DashboardProvisioning{}, nil
+func (m *mockLibraryPanelService) CleanLibraryPanelsForDashboard(dash *models.Dashboard) error {
+	return nil
 }
 
-func (m mockDashboardProvisioningService) UnprovisionDashboard(dashboardId int64) error {
-	panic("implement me")
+func (m *mockLibraryPanelService) ConnectLibraryPanelsForDashboard(c context.Context, signedInUser *models.SignedInUser, dash *models.Dashboard) error {
+	return nil
+}
+
+func (m *mockLibraryPanelService) ImportLibraryPanelsForDashboard(c context.Context, signedInUser *models.SignedInUser, dash *models.Dashboard, folderID int64) error {
+	return nil
+}
+
+type mockLibraryElementService struct {
+}
+
+func (l *mockLibraryElementService) CreateElement(c context.Context, signedInUser *models.SignedInUser, cmd libraryelements.CreateLibraryElementCommand) (libraryelements.LibraryElementDTO, error) {
+	return libraryelements.LibraryElementDTO{}, nil
+}
+
+// GetElement gets an element from a UID.
+func (l *mockLibraryElementService) GetElement(c context.Context, signedInUser *models.SignedInUser, UID string) (libraryelements.LibraryElementDTO, error) {
+	return libraryelements.LibraryElementDTO{}, nil
+}
+
+// GetElementsForDashboard gets all connected elements for a specific dashboard.
+func (l *mockLibraryElementService) GetElementsForDashboard(c context.Context, dashboardID int64) (map[string]libraryelements.LibraryElementDTO, error) {
+	return map[string]libraryelements.LibraryElementDTO{}, nil
+}
+
+// ConnectElementsToDashboard connects elements to a specific dashboard.
+func (l *mockLibraryElementService) ConnectElementsToDashboard(c context.Context, signedInUser *models.SignedInUser, elementUIDs []string, dashboardID int64) error {
+	return nil
+}
+
+// DisconnectElementsFromDashboard disconnects elements from a specific dashboard.
+func (l *mockLibraryElementService) DisconnectElementsFromDashboard(c context.Context, dashboardID int64) error {
+	return nil
+}
+
+// DeleteLibraryElementsInFolder deletes all elements for a specific folder.
+func (l *mockLibraryElementService) DeleteLibraryElementsInFolder(c context.Context, signedInUser *models.SignedInUser, folderUID string) error {
+	return nil
 }

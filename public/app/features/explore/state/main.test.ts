@@ -2,19 +2,19 @@ import { serializeStateToUrlParam } from '@grafana/data/src/utils/url';
 import { exploreReducer, navigateToExplore, splitCloseAction } from './main';
 import { thunkTester } from 'test/core/thunk/thunkTester';
 import { PanelModel } from 'app/features/dashboard/state';
-import { updateLocation } from '../../../core/actions';
 import { MockDataSourceApi } from '../../../../test/mocks/datasource_srv';
 import { ExploreId, ExploreItemState, ExploreState } from '../../../types';
 import { reducerTester } from '../../../../test/core/redux/reducerTester';
 import { ExploreUrlState } from '@grafana/data';
+import { locationService } from '@grafana/runtime';
 
 const getNavigateToExploreContext = async (openInNewWindow?: (url: string) => void) => {
-  const url = 'http://www.someurl.com';
+  const url = '/explore';
   const panel: Partial<PanelModel> = {
-    datasource: 'mocked datasource',
+    datasource: { uid: 'mocked datasource' },
     targets: [{ refId: 'A' }],
   };
-  const datasource = new MockDataSourceApi(panel.datasource!);
+  const datasource = new MockDataSourceApi(panel.datasource!.uid!);
   const get = jest.fn().mockResolvedValue(datasource);
   const getDataSourceSrv = jest.fn().mockReturnValue({ get });
   const getTimeSrv = jest.fn();
@@ -27,7 +27,6 @@ const getNavigateToExploreContext = async (openInNewWindow?: (url: string) => vo
   return {
     url,
     panel,
-    datasource,
     get,
     getDataSourceSrv,
     getTimeSrv,
@@ -41,22 +40,14 @@ describe('navigateToExplore', () => {
     describe('and openInNewWindow is undefined', () => {
       const openInNewWindow: (url: string) => void = (undefined as unknown) as (url: string) => void;
       it('then it should dispatch correct actions', async () => {
-        const { dispatchedActions, url } = await getNavigateToExploreContext(openInNewWindow);
-
-        expect(dispatchedActions).toEqual([updateLocation({ path: url, query: {} })]);
+        const { url } = await getNavigateToExploreContext(openInNewWindow);
+        expect(locationService.getLocation().pathname).toEqual(url);
       });
 
       it('then getDataSourceSrv should have been once', async () => {
         const { getDataSourceSrv } = await getNavigateToExploreContext(openInNewWindow);
 
         expect(getDataSourceSrv).toHaveBeenCalledTimes(1);
-      });
-
-      it('then getDataSourceSrv.get should have been called with correct arguments', async () => {
-        const { get, panel } = await getNavigateToExploreContext(openInNewWindow);
-
-        expect(get).toHaveBeenCalledTimes(1);
-        expect(get).toHaveBeenCalledWith(panel.datasource);
       });
 
       it('then getTimeSrv should have been called once', async () => {
@@ -66,15 +57,13 @@ describe('navigateToExplore', () => {
       });
 
       it('then getExploreUrl should have been called with correct arguments', async () => {
-        const { getExploreUrl, panel, datasource, getDataSourceSrv, getTimeSrv } = await getNavigateToExploreContext(
+        const { getExploreUrl, panel, getDataSourceSrv, getTimeSrv } = await getNavigateToExploreContext(
           openInNewWindow
         );
 
         expect(getExploreUrl).toHaveBeenCalledTimes(1);
         expect(getExploreUrl).toHaveBeenCalledWith({
           panel,
-          panelTargets: panel.targets,
-          panelDatasource: datasource,
           datasourceSrv: getDataSourceSrv(),
           timeSrv: getTimeSrv(),
         });
@@ -95,13 +84,6 @@ describe('navigateToExplore', () => {
         expect(getDataSourceSrv).toHaveBeenCalledTimes(1);
       });
 
-      it('then getDataSourceSrv.get should have been called with correct arguments', async () => {
-        const { get, panel } = await getNavigateToExploreContext(openInNewWindow);
-
-        expect(get).toHaveBeenCalledTimes(1);
-        expect(get).toHaveBeenCalledWith(panel.datasource);
-      });
-
       it('then getTimeSrv should have been called once', async () => {
         const { getTimeSrv } = await getNavigateToExploreContext(openInNewWindow);
 
@@ -109,15 +91,13 @@ describe('navigateToExplore', () => {
       });
 
       it('then getExploreUrl should have been called with correct arguments', async () => {
-        const { getExploreUrl, panel, datasource, getDataSourceSrv, getTimeSrv } = await getNavigateToExploreContext(
+        const { getExploreUrl, panel, getDataSourceSrv, getTimeSrv } = await getNavigateToExploreContext(
           openInNewWindow
         );
 
         expect(getExploreUrl).toHaveBeenCalledTimes(1);
         expect(getExploreUrl).toHaveBeenCalledWith({
           panel,
-          panelTargets: panel.targets,
-          panelDatasource: datasource,
           datasourceSrv: getDataSourceSrv(),
           timeSrv: getTimeSrv(),
         });

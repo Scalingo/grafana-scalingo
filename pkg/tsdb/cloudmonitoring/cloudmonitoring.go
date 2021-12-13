@@ -3,7 +3,6 @@ package cloudmonitoring
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,19 +15,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/grafana-google-sdk-go/pkg/utils"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/grafana/grafana/pkg/api/pluginproxy"
-	"github.com/grafana/grafana/pkg/components/simplejson"
+
+	"github.com/grafana/grafana/pkg/infra/httpclient"
 	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins"
+	"github.com/grafana/grafana/pkg/plugins/backendplugin/coreplugin"
+	"github.com/grafana/grafana/pkg/services/datasources"
+
 	"github.com/grafana/grafana/pkg/setting"
-	"github.com/grafana/grafana/pkg/tsdb"
-	"golang.org/x/oauth2/google"
 )
 
 var (
-	slog log.Logger
+	slog = log.New("tsdb.cloudMonitoring")
 )
 
 var (
@@ -47,6 +51,7 @@ var (
 		"us":      "µs",
 		"ms":      "ms",
 		"ns":      "ns",
+		"%":       "percent",
 		"percent": "percent",
 		"MiBy":    "mbytes",
 		"By/s":    "Bps",
@@ -55,159 +60,266 @@ var (
 )
 
 const (
-	gceAuthentication string = "gce"
-	jwtAuthentication string = "jwt"
-	metricQueryType   string = "metrics"
-	sloQueryType      string = "slo"
-	mqlEditorMode     string = "mql"
+	pluginID string = "stackdriver"
+
+	gceAuthentication         string = "gce"
+	jwtAuthentication         string = "jwt"
+	metricQueryType           string = "metrics"
+	sloQueryType              string = "slo"
+	mqlEditorMode             string = "mql"
+	crossSeriesReducerDefault string = "REDUCE_NONE"
+	perSeriesAlignerDefault   string = "ALIGN_MEAN"
 )
 
-// CloudMonitoringExecutor executes queries for the CloudMonitoring datasource
-type CloudMonitoringExecutor struct {
-	httpClient *http.Client
-	dsInfo     *models.DataSource
+func ProvideService(cfg *setting.Cfg, httpClientProvider httpclient.Provider, registrar plugins.CoreBackendRegistrar,
+	dsService *datasources.Service) *Service {
+	s := &Service{
+		httpClientProvider: httpClientProvider,
+		cfg:                cfg,
+		im:                 datasource.NewInstanceManager(newInstanceSettings(httpClientProvider)),
+		dsService:          dsService,
+	}
+
+	mux := http.NewServeMux()
+	s.registerRoutes(mux)
+	factory := coreplugin.New(backend.ServeOpts{
+		QueryDataHandler:    s,
+		CallResourceHandler: httpadapter.New(mux),
+		CheckHealthHandler:  s,
+	})
+
+	if err := registrar.LoadAndRegister(pluginID, factory); err != nil {
+		slog.Error("Failed to register plugin", "error", err)
+	}
+	return s
 }
 
-// NewCloudMonitoringExecutor initializes a http client
-func NewCloudMonitoringExecutor(dsInfo *models.DataSource) (tsdb.TsdbQueryEndpoint, error) {
-	httpClient, err := dsInfo.GetHttpClient()
+func (s *Service) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
+	dsInfo, err := s.getDSInfo(req.PluginContext)
 	if err != nil {
 		return nil, err
 	}
 
-	return &CloudMonitoringExecutor{
-		httpClient: httpClient,
-		dsInfo:     dsInfo,
+	defaultProject, err := s.getDefaultProject(ctx, *dsInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%v/v3/projects/%v/metricDescriptors", dsInfo.services[cloudMonitor].url, defaultProject)
+	request, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := dsInfo.services[cloudMonitor].client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			slog.Warn("Failed to close response body", "err", err)
+		}
+	}()
+
+	status := backend.HealthStatusOk
+	message := "Successfully queried the Google Cloud Monitoring API."
+	if res.StatusCode != 200 {
+		status = backend.HealthStatusError
+		message = res.Status
+	}
+	return &backend.CheckHealthResult{
+		Status:  status,
+		Message: message,
 	}, nil
 }
 
-func init() {
-	slog = log.New("tsdb.cloudMonitoring")
-	tsdb.RegisterTsdbQueryEndpoint("stackdriver", NewCloudMonitoringExecutor)
+type Service struct {
+	httpClientProvider httpclient.Provider
+	cfg                *setting.Cfg
+	im                 instancemgmt.InstanceManager
+	dsService          *datasources.Service
 }
 
-// Query takes in the frontend queries, parses them into the CloudMonitoring query format
-// executes the queries against the CloudMonitoring API and parses the response into
-// the time series or table format
-func (e *CloudMonitoringExecutor) Query(ctx context.Context, dsInfo *models.DataSource, tsdbQuery *tsdb.TsdbQuery) (*tsdb.Response, error) {
-	var result *tsdb.Response
-	var err error
-	queryType := tsdbQuery.Queries[0].Model.Get("type").MustString("")
-
-	switch queryType {
-	case "annotationQuery":
-		result, err = e.executeAnnotationQuery(ctx, tsdbQuery)
-	case "getGCEDefaultProject":
-		result, err = e.getGCEDefaultProject(ctx, tsdbQuery)
-	case "timeSeriesQuery":
-		fallthrough
-	default:
-		result, err = e.executeTimeSeriesQuery(ctx, tsdbQuery)
-	}
-
-	return result, err
+type QueryModel struct {
+	Type string `json:"type"`
 }
 
-func (e *CloudMonitoringExecutor) getGCEDefaultProject(ctx context.Context, tsdbQuery *tsdb.TsdbQuery) (*tsdb.Response, error) {
-	result := &tsdb.Response{
-		Results: make(map[string]*tsdb.QueryResult),
-	}
-	refId := tsdbQuery.Queries[0].RefId
-	queryResult := &tsdb.QueryResult{Meta: simplejson.New(), RefId: refId}
+type datasourceInfo struct {
+	id                 int64
+	updated            time.Time
+	url                string
+	authenticationType string
+	defaultProject     string
+	clientEmail        string
+	tokenUri           string
+	services           map[string]datasourceService
 
-	gceDefaultProject, err := e.getDefaultProject(ctx)
+	decryptedSecureJSONData map[string]string
+}
+
+type datasourceService struct {
+	url    string
+	client *http.Client
+}
+
+func newInstanceSettings(httpClientProvider httpclient.Provider) datasource.InstanceFactoryFunc {
+	return func(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+		var jsonData map[string]interface{}
+		err := json.Unmarshal(settings.JSONData, &jsonData)
+		if err != nil {
+			return nil, fmt.Errorf("error reading settings: %w", err)
+		}
+
+		authType := jwtAuthentication
+		if authTypeOverride, ok := jsonData["authenticationType"].(string); ok && authTypeOverride != "" {
+			authType = authTypeOverride
+		}
+
+		var defaultProject string
+		if jsonData["defaultProject"] != nil {
+			defaultProject = jsonData["defaultProject"].(string)
+		}
+
+		var clientEmail string
+		if jsonData["clientEmail"] != nil {
+			clientEmail = jsonData["clientEmail"].(string)
+		}
+
+		var tokenUri string
+		if jsonData["tokenUri"] != nil {
+			tokenUri = jsonData["tokenUri"].(string)
+		}
+
+		dsInfo := &datasourceInfo{
+			id:                      settings.ID,
+			updated:                 settings.Updated,
+			url:                     settings.URL,
+			authenticationType:      authType,
+			defaultProject:          defaultProject,
+			clientEmail:             clientEmail,
+			tokenUri:                tokenUri,
+			decryptedSecureJSONData: settings.DecryptedSecureJSONData,
+			services:                map[string]datasourceService{},
+		}
+
+		opts, err := settings.HTTPClientOptions()
+		if err != nil {
+			return nil, err
+		}
+
+		for name, info := range routes {
+			client, err := newHTTPClient(dsInfo, opts, httpClientProvider, name)
+			if err != nil {
+				return nil, err
+			}
+			dsInfo.services[name] = datasourceService{
+				url:    info.url,
+				client: client,
+			}
+		}
+
+		return dsInfo, nil
+	}
+}
+
+// QueryData takes in the frontend queries, parses them into the CloudMonitoring query format
+// executes the queries against the CloudMonitoring API and parses the response into data frames
+func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	resp := backend.NewQueryDataResponse()
+	if len(req.Queries) == 0 {
+		return resp, fmt.Errorf("query contains no queries")
+	}
+
+	model := &QueryModel{}
+	err := json.Unmarshal(req.Queries[0].JSON, model)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve default project from GCE metadata server, error: %w", err)
+		return resp, err
 	}
 
-	queryResult.Meta.Set("defaultProject", gceDefaultProject)
-	result.Results[refId] = queryResult
-
-	return result, nil
-}
-
-func (e *CloudMonitoringExecutor) executeTimeSeriesQuery(ctx context.Context, tsdbQuery *tsdb.TsdbQuery) (*tsdb.Response, error) {
-	result := &tsdb.Response{
-		Results: make(map[string]*tsdb.QueryResult),
-	}
-
-	queryExecutors, err := e.buildQueryExecutors(tsdbQuery)
+	dsInfo, err := s.getDSInfo(req.PluginContext)
 	if err != nil {
 		return nil, err
 	}
 
-	unit := e.resolvePanelUnitFromQueries(queryExecutors)
+	switch model.Type {
+	case "annotationQuery":
+		resp, err = s.executeAnnotationQuery(ctx, req, *dsInfo)
+	case "timeSeriesQuery":
+		fallthrough
+	default:
+		resp, err = s.executeTimeSeriesQuery(ctx, req, *dsInfo)
+	}
+
+	return resp, err
+}
+
+func (s *Service) executeTimeSeriesQuery(ctx context.Context, req *backend.QueryDataRequest, dsInfo datasourceInfo) (
+	*backend.QueryDataResponse, error) {
+	resp := backend.NewQueryDataResponse()
+	queryExecutors, err := s.buildQueryExecutors(req)
+	if err != nil {
+		return resp, err
+	}
 
 	for _, queryExecutor := range queryExecutors {
-		queryRes, resp, executedQueryString, err := queryExecutor.run(ctx, tsdbQuery, e)
+		queryRes, dr, executedQueryString, err := queryExecutor.run(ctx, req, s, dsInfo)
 		if err != nil {
-			return nil, err
+			return resp, err
 		}
-		err = queryExecutor.parseResponse(queryRes, resp, executedQueryString)
+		err = queryExecutor.parseResponse(queryRes, dr, executedQueryString)
 		if err != nil {
 			queryRes.Error = err
 		}
 
-		result.Results[queryExecutor.getRefID()] = queryRes
-
-		if len(unit) > 0 {
-			frames, _ := queryRes.Dataframes.Decoded()
-			for i := range frames {
-				if frames[i].Fields[1].Config == nil {
-					frames[i].Fields[1].Config = &data.FieldConfig{}
-				}
-				frames[i].Fields[1].Config.Unit = unit
-			}
-			queryRes.Dataframes = tsdb.NewDecodedDataFrames(frames)
-		}
-		result.Results[queryExecutor.getRefID()] = queryRes
+		resp.Responses[queryExecutor.getRefID()] = *queryRes
 	}
 
-	return result, nil
+	return resp, nil
 }
 
-func (e *CloudMonitoringExecutor) resolvePanelUnitFromQueries(executors []cloudMonitoringQueryExecutor) string {
-	if len(executors) == 0 {
-		return ""
+func queryModel(query backend.DataQuery) (grafanaQuery, error) {
+	var rawQuery map[string]interface{}
+	err := json.Unmarshal(query.JSON, &rawQuery)
+	if err != nil {
+		return grafanaQuery{}, err
 	}
-	unit := executors[0].getUnit()
-	if len(executors) > 1 {
-		for _, query := range executors[1:] {
-			if query.getUnit() != unit {
-				return ""
-			}
+
+	if rawQuery["metricQuery"] == nil {
+		// migrate legacy query
+		var mq metricQuery
+		err = json.Unmarshal(query.JSON, &mq)
+		if err != nil {
+			return grafanaQuery{}, err
 		}
+
+		return grafanaQuery{
+			QueryType:   metricQueryType,
+			MetricQuery: mq,
+		}, nil
 	}
-	if len(unit) > 0 {
-		if val, ok := cloudMonitoringUnitMappings[unit]; ok {
-			return val
-		}
+
+	var q grafanaQuery
+	err = json.Unmarshal(query.JSON, &q)
+	if err != nil {
+		return grafanaQuery{}, err
 	}
-	return ""
+
+	return q, nil
 }
 
-func (e *CloudMonitoringExecutor) buildQueryExecutors(tsdbQuery *tsdb.TsdbQuery) ([]cloudMonitoringQueryExecutor, error) {
-	cloudMonitoringQueryExecutors := []cloudMonitoringQueryExecutor{}
-
-	startTime, err := tsdbQuery.TimeRange.ParseFrom()
-	if err != nil {
-		return nil, err
-	}
-
-	endTime, err := tsdbQuery.TimeRange.ParseTo()
-	if err != nil {
-		return nil, err
-	}
-
+func (s *Service) buildQueryExecutors(req *backend.QueryDataRequest) ([]cloudMonitoringQueryExecutor, error) {
+	var cloudMonitoringQueryExecutors []cloudMonitoringQueryExecutor
+	startTime := req.Queries[0].TimeRange.From
+	endTime := req.Queries[0].TimeRange.To
 	durationSeconds := int(endTime.Sub(startTime).Seconds())
 
-	for _, query := range tsdbQuery.Queries {
-		migrateLegacyQueryModel(query)
-		q := grafanaQuery{}
-		model, _ := query.Model.MarshalJSON()
-		if err := json.Unmarshal(model, &q); err != nil {
+	for _, query := range req.Queries {
+		q, err := queryModel(query)
+		if err != nil {
 			return nil, fmt.Errorf("could not unmarshal CloudMonitoringQuery json: %w", err)
 		}
+
+		q.MetricQuery.PreprocessorType = toPreprocessorType(q.MetricQuery.Preprocessor)
 		var target string
 		params := url.Values{}
 		params.Add("interval.startTime", startTime.UTC().Format(time.RFC3339))
@@ -215,20 +327,19 @@ func (e *CloudMonitoringExecutor) buildQueryExecutors(tsdbQuery *tsdb.TsdbQuery)
 
 		var queryInterface cloudMonitoringQueryExecutor
 		cmtsf := &cloudMonitoringTimeSeriesFilter{
-			RefID:    query.RefId,
+			RefID:    query.RefID,
 			GroupBys: []string{},
 		}
-
 		switch q.QueryType {
 		case metricQueryType:
 			if q.MetricQuery.EditorMode == mqlEditorMode {
 				queryInterface = &cloudMonitoringTimeSeriesQuery{
-					RefID:       query.RefId,
+					RefID:       query.RefID,
 					ProjectName: q.MetricQuery.ProjectName,
 					Query:       q.MetricQuery.Query,
-					IntervalMS:  query.IntervalMs,
+					IntervalMS:  query.Interval.Milliseconds(),
 					AliasBy:     q.MetricQuery.AliasBy,
-					timeRange:   tsdbQuery.TimeRange,
+					timeRange:   req.Queries[0].TimeRange,
 				}
 			} else {
 				cmtsf.AliasBy = q.MetricQuery.AliasBy
@@ -239,7 +350,7 @@ func (e *CloudMonitoringExecutor) buildQueryExecutors(tsdbQuery *tsdb.TsdbQuery)
 				}
 				params.Add("filter", buildFilterString(q.MetricQuery.MetricType, q.MetricQuery.Filters))
 				params.Add("view", q.MetricQuery.View)
-				setMetricAggParams(&params, &q.MetricQuery, durationSeconds, query.IntervalMs)
+				setMetricAggParams(&params, &q.MetricQuery, durationSeconds, query.Interval.Milliseconds())
 				queryInterface = cmtsf
 			}
 		case sloQueryType:
@@ -249,14 +360,15 @@ func (e *CloudMonitoringExecutor) buildQueryExecutors(tsdbQuery *tsdb.TsdbQuery)
 			cmtsf.Service = q.SloQuery.ServiceId
 			cmtsf.Slo = q.SloQuery.SloId
 			params.Add("filter", buildSLOFilterExpression(q.SloQuery))
-			setSloAggParams(&params, &q.SloQuery, durationSeconds, query.IntervalMs)
+			setSloAggParams(&params, &q.SloQuery, durationSeconds, query.Interval.Milliseconds())
 			queryInterface = cmtsf
+		default:
+			panic(fmt.Sprintf("Unrecognized query type %q", q.QueryType))
 		}
 
 		target = params.Encode()
 		cmtsf.Target = target
 		cmtsf.Params = params
-		cmtsf.Unit = q.MetricQuery.Unit
 
 		if setting.Env == setting.Dev {
 			slog.Debug("CloudMonitoring request", "params", params)
@@ -266,25 +378,6 @@ func (e *CloudMonitoringExecutor) buildQueryExecutors(tsdbQuery *tsdb.TsdbQuery)
 	}
 
 	return cloudMonitoringQueryExecutors, nil
-}
-
-func migrateLegacyQueryModel(query *tsdb.Query) {
-	mq := query.Model.Get("metricQuery").MustMap()
-	if mq == nil {
-		migratedModel := simplejson.NewFromAny(map[string]interface{}{
-			"queryType":   metricQueryType,
-			"metricQuery": query.Model.MustMap(),
-		})
-		query.Model = migratedModel
-	}
-}
-
-func reverse(s string) string {
-	chars := []rune(s)
-	for i, j := 0, len(chars)-1; i < j; i, j = i+1, j-1 {
-		chars[i], chars[j] = chars[j], chars[i]
-	}
-	return string(chars)
 }
 
 func interpolateFilterWildcards(value string) string {
@@ -343,16 +436,44 @@ func buildSLOFilterExpression(q sloQuery) string {
 
 func setMetricAggParams(params *url.Values, query *metricQuery, durationSeconds int, intervalMs int64) {
 	if query.CrossSeriesReducer == "" {
-		query.CrossSeriesReducer = "REDUCE_NONE"
+		query.CrossSeriesReducer = crossSeriesReducerDefault
 	}
 
 	if query.PerSeriesAligner == "" {
-		query.PerSeriesAligner = "ALIGN_MEAN"
+		query.PerSeriesAligner = perSeriesAlignerDefault
 	}
 
-	params.Add("aggregation.crossSeriesReducer", query.CrossSeriesReducer)
-	params.Add("aggregation.perSeriesAligner", query.PerSeriesAligner)
-	params.Add("aggregation.alignmentPeriod", calculateAlignmentPeriod(query.AlignmentPeriod, intervalMs, durationSeconds))
+	alignmentPeriod := calculateAlignmentPeriod(query.AlignmentPeriod, intervalMs, durationSeconds)
+
+	// In case a preprocessor is defined, the preprocessor becomes the primary aggregation
+	// and the aggregation that is specified in the UI becomes the secondary aggregation
+	// Rules are specified in this issue: https://github.com/grafana/grafana/issues/30866
+	if query.PreprocessorType != PreprocessorTypeNone {
+		params.Add("secondaryAggregation.alignmentPeriod", alignmentPeriod)
+		params.Add("secondaryAggregation.crossSeriesReducer", query.CrossSeriesReducer)
+		params.Add("secondaryAggregation.perSeriesAligner", query.PerSeriesAligner)
+
+		primaryCrossSeriesReducer := crossSeriesReducerDefault
+		if len(query.GroupBys) > 0 {
+			primaryCrossSeriesReducer = query.CrossSeriesReducer
+		}
+		params.Add("aggregation.crossSeriesReducer", primaryCrossSeriesReducer)
+
+		aligner := "ALIGN_RATE"
+		if query.PreprocessorType == PreprocessorTypeDelta {
+			aligner = "ALIGN_DELTA"
+		}
+		params.Add("aggregation.perSeriesAligner", aligner)
+
+		for _, groupBy := range query.GroupBys {
+			params.Add("secondaryAggregation.groupByFields", groupBy)
+		}
+	} else {
+		params.Add("aggregation.crossSeriesReducer", query.CrossSeriesReducer)
+		params.Add("aggregation.perSeriesAligner", query.PerSeriesAligner)
+	}
+
+	params.Add("aggregation.alignmentPeriod", alignmentPeriod)
 
 	for _, groupBy := range query.GroupBys {
 		params.Add("aggregation.groupByFields", groupBy)
@@ -389,20 +510,8 @@ func calculateAlignmentPeriod(alignmentPeriod string, intervalMs int64, duration
 	return alignmentPeriod
 }
 
-func toSnakeCase(str string) string {
-	return strings.ToLower(matchAllCap.ReplaceAllString(str, "${1}_${2}"))
-}
-
-func containsLabel(labels []string, newLabel string) bool {
-	for _, val := range labels {
-		if val == newLabel {
-			return true
-		}
-	}
-	return false
-}
-
-func formatLegendKeys(metricType string, defaultMetricName string, labels map[string]string, additionalLabels map[string]string, query *cloudMonitoringTimeSeriesFilter) string {
+func formatLegendKeys(metricType string, defaultMetricName string, labels map[string]string,
+	additionalLabels map[string]string, query *cloudMonitoringTimeSeriesFilter) string {
 	if query.AliasBy == "" {
 		return defaultMetricName
 	}
@@ -488,8 +597,8 @@ func calcBucketBound(bucketOptions cloudMonitoringBucketOptions, n int) string {
 	return bucketBound
 }
 
-func (e *CloudMonitoringExecutor) createRequest(ctx context.Context, dsInfo *models.DataSource, proxyPass string, body io.Reader) (*http.Request, error) {
-	u, err := url.Parse(dsInfo.Url)
+func (s *Service) createRequest(ctx context.Context, dsInfo *datasourceInfo, proxyPass string, body io.Reader) (*http.Request, error) {
+	u, err := url.Parse(dsInfo.url)
 	if err != nil {
 		return nil, err
 	}
@@ -499,52 +608,23 @@ func (e *CloudMonitoringExecutor) createRequest(ctx context.Context, dsInfo *mod
 	if body != nil {
 		method = http.MethodPost
 	}
-	req, err := http.NewRequest(method, "https://monitoring.googleapis.com/", body)
+	req, err := http.NewRequest(method, dsInfo.services[cloudMonitor].url, body)
 	if err != nil {
 		slog.Error("Failed to create request", "error", err)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", fmt.Sprintf("Grafana/%s", setting.BuildVersion))
-
-	// find plugin
-	plugin, ok := plugins.DataSources[dsInfo.Type]
-	if !ok {
-		return nil, errors.New("unable to find datasource plugin CloudMonitoring")
-	}
-
-	var cloudMonitoringRoute *plugins.AppPluginRoute
-	for _, route := range plugin.Routes {
-		if route.Path == "cloudmonitoring" {
-			cloudMonitoringRoute = route
-			break
-		}
-	}
-
-	pluginproxy.ApplyRoute(ctx, req, proxyPass, cloudMonitoringRoute, dsInfo)
+	req.URL.Path = proxyPass
 
 	return req, nil
 }
 
-func (e *CloudMonitoringExecutor) getDefaultProject(ctx context.Context) (string, error) {
-	authenticationType := e.dsInfo.JsonData.Get("authenticationType").MustString(jwtAuthentication)
-	if authenticationType == gceAuthentication {
-		defaultCredentials, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/monitoring.read")
-		if err != nil {
-			return "", fmt.Errorf("failed to retrieve default project from GCE metadata server: %w", err)
-		}
-		token, err := defaultCredentials.TokenSource.Token()
-		if err != nil {
-			return "", fmt.Errorf("failed to retrieve GCP credential token: %w", err)
-		}
-		if !token.Valid() {
-			return "", errors.New("failed to validate GCP credentials")
-		}
-
-		return defaultCredentials.ProjectID, nil
+func (s *Service) getDefaultProject(ctx context.Context, dsInfo datasourceInfo) (string, error) {
+	if dsInfo.authenticationType == gceAuthentication {
+		return utils.GCEDefaultProject(ctx)
 	}
-	return e.dsInfo.JsonData.Get("defaultProject").MustString(), nil
+	return dsInfo.defaultProject, nil
 }
 
 func unmarshalResponse(res *http.Response) (cloudMonitoringResponse, error) {
@@ -574,7 +654,7 @@ func unmarshalResponse(res *http.Response) (cloudMonitoringResponse, error) {
 	return data, nil
 }
 
-func addConfigData(frames data.Frames, dl string) data.Frames {
+func addConfigData(frames data.Frames, dl string, unit string) data.Frames {
 	for i := range frames {
 		if frames[i].Fields[1].Config == nil {
 			frames[i].Fields[1].Config = &data.FieldConfig{}
@@ -585,6 +665,25 @@ func addConfigData(frames data.Frames, dl string) data.Frames {
 			URL:         dl,
 		}
 		frames[i].Fields[1].Config.Links = append(frames[i].Fields[1].Config.Links, deepLink)
+		if len(unit) > 0 {
+			if val, ok := cloudMonitoringUnitMappings[unit]; ok {
+				frames[i].Fields[1].Config.Unit = val
+			}
+		}
 	}
 	return frames
+}
+
+func (s *Service) getDSInfo(pluginCtx backend.PluginContext) (*datasourceInfo, error) {
+	i, err := s.im.Get(pluginCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, ok := i.(*datasourceInfo)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast datsource info")
+	}
+
+	return instance, nil
 }

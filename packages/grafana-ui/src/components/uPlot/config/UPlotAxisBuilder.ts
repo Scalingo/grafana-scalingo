@@ -1,26 +1,33 @@
-import { dateTimeFormat, GrafanaTheme, systemDateFormats, TimeZone } from '@grafana/data';
+import { dateTimeFormat, GrafanaTheme2, isBooleanUnit, systemDateFormats, TimeZone } from '@grafana/data';
 import uPlot, { Axis } from 'uplot';
 import { PlotConfigBuilder } from '../types';
 import { measureText } from '../../../utils/measureText';
-import { AxisPlacement } from '../config';
+import { AxisPlacement } from '@grafana/schema';
 import { optMinMax } from './UPlotScaleBuilder';
 
 export interface AxisProps {
   scaleKey: string;
-  theme: GrafanaTheme;
+  theme: GrafanaTheme2;
   label?: string;
   show?: boolean;
   size?: number | null;
   gap?: number;
+  tickLabelRotation?: number;
   placement?: AxisPlacement;
-  grid?: boolean;
-  ticks?: boolean;
+  grid?: Axis.Grid;
+  ticks?: Axis.Ticks;
+  filter?: Axis.Filter;
+  space?: Axis.Space;
   formatValue?: (v: any) => string;
+  incrs?: Axis.Incrs;
   splits?: Axis.Splits;
-  values?: any;
+  values?: Axis.Values;
   isTime?: boolean;
   timeZone?: TimeZone;
 }
+
+export const UPLOT_AXIS_FONT_SIZE = 12;
+const labelPad = 8;
 
 export class UPlotAxisBuilder extends PlotConfigBuilder<AxisProps, Axis> {
   merge(props: AxisProps) {
@@ -32,15 +39,61 @@ export class UPlotAxisBuilder extends PlotConfigBuilder<AxisProps, Axis> {
       this.props.placement = props.placement;
     }
   }
+  /* Minimum grid & tick spacing in CSS pixels */
+  calculateSpace(self: uPlot, axisIdx: number, scaleMin: number, scaleMax: number, plotDim: number): number {
+    const axis = self.axes[axisIdx];
+    const scale = self.scales[axis.scale!];
+
+    // for axis left & right
+    if (axis.side !== 2 || !scale) {
+      return 30;
+    }
+
+    const defaultSpacing = 40;
+
+    if (scale.time) {
+      const maxTicks = plotDim / defaultSpacing;
+      const increment = (scaleMax - scaleMin) / maxTicks;
+      const sample = formatTime(self, [scaleMin], axisIdx, defaultSpacing, increment);
+      const width = measureText(sample[0], UPLOT_AXIS_FONT_SIZE).width + 18;
+      return width;
+    }
+
+    return defaultSpacing;
+  }
+
+  /** height of x axis or width of y axis in CSS pixels alloted for values, gap & ticks, but excluding axis label */
+  calculateAxisSize(self: uPlot, values: string[], axisIdx: number) {
+    const axis = self.axes[axisIdx];
+
+    let axisSize = axis.ticks!.size!;
+
+    if (axis.side === 2) {
+      axisSize += axis!.gap! + UPLOT_AXIS_FONT_SIZE;
+    } else if (values?.length) {
+      let maxTextWidth = values.reduce(
+        (acc, value) => Math.max(acc, measureText(value, UPLOT_AXIS_FONT_SIZE).width),
+        0
+      );
+      // limit y tick label width to 40% of visualization
+      const textWidthWithLimit = Math.min(self.width * 0.4, maxTextWidth);
+      // Not sure why this += and not normal assignment
+      axisSize += axis!.gap! + axis!.labelGap! + textWidthWithLimit;
+    }
+
+    return Math.ceil(axisSize);
+  }
 
   getConfig(): Axis {
-    const {
+    let {
       scaleKey,
       label,
       show = true,
       placement = AxisPlacement.Auto,
-      grid = true,
-      ticks = true,
+      grid = { show: true },
+      ticks,
+      space,
+      filter,
       gap = 5,
       formatValue,
       splits,
@@ -48,37 +101,63 @@ export class UPlotAxisBuilder extends PlotConfigBuilder<AxisProps, Axis> {
       isTime,
       timeZone,
       theme,
+      tickLabelRotation,
+      size,
     } = this.props;
 
-    const gridColor = theme.isDark ? theme.palette.gray25 : theme.palette.gray90;
+    const font = `${UPLOT_AXIS_FONT_SIZE}px ${theme.typography.fontFamily}`;
+
+    const gridColor = theme.isDark ? 'rgba(240, 250, 255, 0.09)' : 'rgba(0, 10, 23, 0.09)';
+
+    if (isBooleanUnit(scaleKey)) {
+      splits = [0, 1];
+    }
 
     let config: Axis = {
       scale: scaleKey,
       show,
-      stroke: theme.colors.text,
+      stroke: theme.colors.text.primary,
       side: getUPlotSideFromAxis(placement),
-      font: `12px 'Roboto'`,
-      labelFont: `12px 'Roboto'`,
-      size: this.props.size ?? calculateAxisSize,
+      font,
+      size:
+        size ??
+        ((self, values, axisIdx) => {
+          return this.calculateAxisSize(self, values, axisIdx);
+        }),
+      rotate: tickLabelRotation,
       gap,
+
+      labelGap: 0,
+
       grid: {
-        show: grid,
+        show: grid.show,
         stroke: gridColor,
         width: 1 / devicePixelRatio,
       },
-      ticks: {
-        show: ticks,
-        stroke: gridColor,
-        width: 1 / devicePixelRatio,
-      },
+      ticks: Object.assign(
+        {
+          show: true,
+          stroke: gridColor,
+          width: 1 / devicePixelRatio,
+          size: 4,
+        },
+        ticks
+      ),
       splits,
       values: values,
-      space: calculateSpace,
+      space:
+        space ??
+        ((self, axisIdx, scaleMin, scaleMax, plotDim) => {
+          return this.calculateSpace(self, axisIdx, scaleMin, scaleMax, plotDim);
+        }),
+      filter,
     };
 
-    if (label !== undefined && label !== null && label.length > 0) {
+    if (label != null && label.length > 0) {
       config.label = label;
-      config.labelSize = 18;
+      config.labelSize = UPLOT_AXIS_FONT_SIZE + labelPad;
+      config.labelFont = font;
+      config.labelGap = labelPad;
     }
 
     if (values) {
@@ -86,7 +165,7 @@ export class UPlotAxisBuilder extends PlotConfigBuilder<AxisProps, Axis> {
     } else if (isTime) {
       config.values = formatTime;
     } else if (formatValue) {
-      config.values = (u: uPlot, vals: any[]) => vals.map((v) => formatValue(v));
+      config.values = (u: uPlot, vals: any[]) => vals.map(formatValue!);
     }
 
     // store timezone
@@ -94,50 +173,6 @@ export class UPlotAxisBuilder extends PlotConfigBuilder<AxisProps, Axis> {
 
     return config;
   }
-}
-
-/* Minimum grid & tick spacing in CSS pixels */
-function calculateSpace(self: uPlot, axisIdx: number, scaleMin: number, scaleMax: number, plotDim: number): number {
-  const axis = self.axes[axisIdx];
-  const scale = self.scales[axis.scale!];
-
-  // for axis left & right
-  if (axis.side !== 2 || !scale) {
-    return 30;
-  }
-
-  const defaultSpacing = 40;
-
-  if (scale.time) {
-    const maxTicks = plotDim / defaultSpacing;
-    const increment = (scaleMax - scaleMin) / maxTicks;
-    const sample = formatTime(self, [scaleMin], axisIdx, defaultSpacing, increment);
-    const width = measureText(sample[0], 12).width + 18;
-    return width;
-  }
-
-  return defaultSpacing;
-}
-
-/** height of x axis or width of y axis in CSS pixels alloted for values, gap & ticks, but excluding axis label */
-function calculateAxisSize(self: uPlot, values: string[], axisIdx: number) {
-  const axis = self.axes[axisIdx];
-  if (axis.side === 2) {
-    return 33;
-  }
-
-  if (values === null || !values.length) {
-    return 0;
-  }
-
-  let maxLength = values[0];
-  for (let i = 0; i < values.length; i++) {
-    if (values[i].length > maxLength.length) {
-      maxLength = values[i];
-    }
-  }
-
-  return measureText(maxLength, 12).width + 18;
 }
 
 const timeUnitSize = {
@@ -157,17 +192,17 @@ function formatTime(self: uPlot, splits: number[], axisIdx: number, foundSpace: 
   const yearRoundedToDay = Math.round(timeUnitSize.year / timeUnitSize.day) * timeUnitSize.day;
   const incrementRoundedToDay = Math.round(foundIncr / timeUnitSize.day) * timeUnitSize.day;
 
-  let format = systemDateFormats.interval.minute;
+  let format = systemDateFormats.interval.year;
 
   if (foundIncr < timeUnitSize.second) {
     format = systemDateFormats.interval.second.replace('ss', 'ss.SS');
   } else if (foundIncr <= timeUnitSize.minute) {
     format = systemDateFormats.interval.second;
-  } else if (foundIncr <= timeUnitSize.hour || range <= timeUnitSize.day) {
+  } else if (range <= timeUnitSize.day) {
     format = systemDateFormats.interval.minute;
   } else if (foundIncr <= timeUnitSize.day) {
     format = systemDateFormats.interval.hour;
-  } else if (foundIncr <= timeUnitSize.month || range < timeUnitSize.year) {
+  } else if (range < timeUnitSize.year) {
     format = systemDateFormats.interval.day;
   } else if (incrementRoundedToDay === yearRoundedToDay) {
     format = systemDateFormats.interval.year;

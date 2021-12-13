@@ -2,68 +2,142 @@ package loki
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/grafana/grafana/pkg/components/null"
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"github.com/grafana/grafana/pkg/infra/httpclient"
 	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/tsdb"
+	"github.com/grafana/grafana/pkg/plugins"
+	"github.com/grafana/grafana/pkg/plugins/backendplugin/coreplugin"
+	"github.com/grafana/grafana/pkg/tsdb/intervalv2"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )
 
-type LokiExecutor struct{}
+type Service struct {
+	intervalCalculator intervalv2.Calculator
+	im                 instancemgmt.InstanceManager
+	plog               log.Logger
+}
 
-func NewLokiExecutor(dsInfo *models.DataSource) (tsdb.TsdbQueryEndpoint, error) {
-	return &LokiExecutor{}, nil
+func ProvideService(httpClientProvider httpclient.Provider, registrar plugins.CoreBackendRegistrar) (*Service, error) {
+	im := datasource.NewInstanceManager(newInstanceSettings(httpClientProvider))
+	s := &Service{
+		im:                 im,
+		intervalCalculator: intervalv2.NewCalculator(),
+		plog:               log.New("tsdb.loki"),
+	}
+
+	factory := coreplugin.New(backend.ServeOpts{
+		QueryDataHandler: s,
+	})
+
+	if err := registrar.LoadAndRegister("loki", factory); err != nil {
+		s.plog.Error("Failed to register plugin", "error", err)
+		return nil, err
+	}
+
+	return s, nil
 }
 
 var (
-	plog               log.Logger
-	legendFormat       *regexp.Regexp
-	intervalCalculator tsdb.IntervalCalculator
+	legendFormat = regexp.MustCompile(`\{\{\s*(.+?)\s*\}\}`)
 )
 
-func init() {
-	plog = log.New("tsdb.loki")
-	tsdb.RegisterTsdbQueryEndpoint("loki", NewLokiExecutor)
-	legendFormat = regexp.MustCompile(`\{\{\s*(.+?)\s*\}\}`)
-	intervalCalculator = tsdb.NewIntervalCalculator(&tsdb.IntervalOptions{MinInterval: time.Second * 1})
+type datasourceInfo struct {
+	HTTPClient        *http.Client
+	URL               string
+	TLSClientConfig   *tls.Config
+	BasicAuthUser     string
+	BasicAuthPassword string
+	TimeInterval      string `json:"timeInterval"`
 }
 
-func (e *LokiExecutor) Query(ctx context.Context, dsInfo *models.DataSource, tsdbQuery *tsdb.TsdbQuery) (*tsdb.Response, error) {
-	result := &tsdb.Response{
-		Results: map[string]*tsdb.QueryResult{},
-	}
+type ResponseModel struct {
+	Expr         string `json:"expr"`
+	LegendFormat string `json:"legendFormat"`
+	Interval     string `json:"interval"`
+	IntervalMS   int    `json:"intervalMS"`
+	Resolution   int64  `json:"resolution"`
+}
 
-	tlsConfig, err := dsInfo.GetTLSConfig()
+func newInstanceSettings(httpClientProvider httpclient.Provider) datasource.InstanceFactoryFunc {
+	return func(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+		opts, err := settings.HTTPClientOptions()
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := httpClientProvider.New(opts)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsClientConfig, err := httpClientProvider.GetTLSConfig(opts)
+		if err != nil {
+			return nil, err
+		}
+
+		jsonData := datasourceInfo{}
+		err = json.Unmarshal(settings.JSONData, &jsonData)
+		if err != nil {
+			return nil, fmt.Errorf("error reading settings: %w", err)
+		}
+
+		model := &datasourceInfo{
+			HTTPClient:        client,
+			URL:               settings.URL,
+			TLSClientConfig:   tlsClientConfig,
+			TimeInterval:      jsonData.TimeInterval,
+			BasicAuthUser:     settings.BasicAuthUser,
+			BasicAuthPassword: settings.DecryptedSecureJSONData["basicAuthPassword"],
+		}
+		return model, nil
+	}
+}
+
+func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	result := backend.NewQueryDataResponse()
+	queryRes := backend.DataResponse{}
+
+	dsInfo, err := s.getDSInfo(req.PluginContext)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 
 	client := &client.DefaultClient{
-		Address:  dsInfo.Url,
+		Address:  dsInfo.URL,
 		Username: dsInfo.BasicAuthUser,
-		Password: dsInfo.DecryptedBasicAuthPassword(),
+		Password: dsInfo.BasicAuthPassword,
 		TLSConfig: config.TLSConfig{
-			InsecureSkipVerify: tlsConfig.InsecureSkipVerify,
+			InsecureSkipVerify: dsInfo.TLSClientConfig.InsecureSkipVerify,
+		},
+		Tripperware: func(t http.RoundTripper) http.RoundTripper {
+			return dsInfo.HTTPClient.Transport
 		},
 	}
 
-	queries, err := parseQuery(dsInfo, tsdbQuery.Queries, tsdbQuery)
+	queries, err := s.parseQuery(dsInfo, req)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 
 	for _, query := range queries {
-		plog.Debug("Sending query", "start", query.Start, "end", query.End, "step", query.Step, "query", query.Expr)
+		s.plog.Debug("Sending query", "start", query.Start, "end", query.End, "step", query.Step, "query", query.Expr)
 		span, _ := opentracing.StartSpanFromContext(ctx, "alerting.loki")
 		span.SetTag("expr", query.Expr)
 		span.SetTag("start_unixnano", query.Start.UnixNano())
@@ -76,23 +150,22 @@ func (e *LokiExecutor) Query(ctx context.Context, dsInfo *models.DataSource, tsd
 		interval := time.Second * 1
 
 		value, err := client.QueryRange(query.Expr, limit, query.Start, query.End, logproto.BACKWARD, query.Step, interval, false)
-
 		if err != nil {
-			return nil, err
+			return result, err
 		}
 
-		queryResult, err := parseResponse(value, query)
+		frames, err := parseResponse(value, query)
 		if err != nil {
-			return nil, err
+			return result, err
 		}
-		result.Results[query.RefId] = queryResult
+		queryRes.Frames = frames
+		result.Responses[query.RefID] = queryRes
 	}
-
 	return result, nil
 }
 
 //If legend (using of name or pattern instead of time series name) is used, use that name/pattern for formatting
-func formatLegend(metric model.Metric, query *LokiQuery) string {
+func formatLegend(metric model.Metric, query *lokiQuery) string {
 	if query.LegendFormat == "" {
 		return metric.String()
 	}
@@ -110,73 +183,87 @@ func formatLegend(metric model.Metric, query *LokiQuery) string {
 	return string(result)
 }
 
-func parseQuery(dsInfo *models.DataSource, queries []*tsdb.Query, queryContext *tsdb.TsdbQuery) ([]*LokiQuery, error) {
-	qs := []*LokiQuery{}
-	for _, queryModel := range queries {
-		expr, err := queryModel.Model.Get("expr").String()
+func (s *Service) parseQuery(dsInfo *datasourceInfo, queryContext *backend.QueryDataRequest) ([]*lokiQuery, error) {
+	qs := []*lokiQuery{}
+	for _, query := range queryContext.Queries {
+		model := &ResponseModel{}
+		err := json.Unmarshal(query.JSON, model)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse Expr: %v", err)
+			return nil, err
 		}
 
-		format := queryModel.Model.Get("legendFormat").MustString("")
+		start := query.TimeRange.From
+		end := query.TimeRange.To
 
-		start, err := queryContext.TimeRange.ParseFrom()
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse From: %v", err)
-		}
-
-		end, err := queryContext.TimeRange.ParseTo()
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse To: %v", err)
-		}
-
-		dsInterval, err := tsdb.GetIntervalFrom(dsInfo, queryModel.Model, time.Second)
+		dsInterval, err := intervalv2.GetIntervalFrom(dsInfo.TimeInterval, model.Interval, int64(model.IntervalMS), time.Second)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse Interval: %v", err)
 		}
 
-		interval := intervalCalculator.Calculate(queryContext.TimeRange, dsInterval)
-		step := time.Duration(int64(interval.Value))
+		interval := s.intervalCalculator.Calculate(query.TimeRange, dsInterval, query.MaxDataPoints)
 
-		qs = append(qs, &LokiQuery{
-			Expr:         expr,
+		var resolution int64 = 1
+		if model.Resolution >= 1 && model.Resolution <= 5 || model.Resolution == 10 {
+			resolution = model.Resolution
+		}
+
+		step := time.Duration(int64(interval.Value) * resolution)
+
+		qs = append(qs, &lokiQuery{
+			Expr:         model.Expr,
 			Step:         step,
-			LegendFormat: format,
+			LegendFormat: model.LegendFormat,
 			Start:        start,
 			End:          end,
-			RefId:        queryModel.RefId,
+			RefID:        query.RefID,
 		})
 	}
 
 	return qs, nil
 }
 
-func parseResponse(value *loghttp.QueryResponse, query *LokiQuery) (*tsdb.QueryResult, error) {
-	queryRes := tsdb.NewQueryResult()
+func parseResponse(value *loghttp.QueryResponse, query *lokiQuery) (data.Frames, error) {
+	frames := data.Frames{}
 
 	//We are currently processing only matrix results (for alerting)
-	data, ok := value.Data.Result.(loghttp.Matrix)
+	matrix, ok := value.Data.Result.(loghttp.Matrix)
 	if !ok {
-		return queryRes, fmt.Errorf("unsupported result format: %q", value.Data.ResultType)
+		return frames, fmt.Errorf("unsupported result format: %q", value.Data.ResultType)
 	}
 
-	for _, v := range data {
-		series := tsdb.TimeSeries{
-			Name:   formatLegend(v.Metric, query),
-			Tags:   make(map[string]string, len(v.Metric)),
-			Points: make([]tsdb.TimePoint, 0, len(v.Values)),
-		}
+	for _, v := range matrix {
+		name := formatLegend(v.Metric, query)
+		tags := make(map[string]string, len(v.Metric))
+		timeVector := make([]time.Time, 0, len(v.Values))
+		values := make([]float64, 0, len(v.Values))
 
 		for k, v := range v.Metric {
-			series.Tags[string(k)] = string(v)
+			tags[string(k)] = string(v)
 		}
 
 		for _, k := range v.Values {
-			series.Points = append(series.Points, tsdb.NewTimePoint(null.FloatFrom(float64(k.Value)), float64(k.Timestamp.Unix()*1000)))
+			timeVector = append(timeVector, time.Unix(k.Timestamp.Unix(), 0).UTC())
+			values = append(values, float64(k.Value))
 		}
 
-		queryRes.Series = append(queryRes.Series, &series)
+		frames = append(frames, data.NewFrame(name,
+			data.NewField("time", nil, timeVector),
+			data.NewField("value", tags, values).SetConfig(&data.FieldConfig{DisplayNameFromDS: name})))
 	}
 
-	return queryRes, nil
+	return frames, nil
+}
+
+func (s *Service) getDSInfo(pluginCtx backend.PluginContext) (*datasourceInfo, error) {
+	i, err := s.im.Get(pluginCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, ok := i.(*datasourceInfo)
+	if !ok {
+		return nil, fmt.Errorf("failed to cast datsource info")
+	}
+
+	return instance, nil
 }

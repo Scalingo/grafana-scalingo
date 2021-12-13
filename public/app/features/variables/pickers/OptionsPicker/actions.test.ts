@@ -7,7 +7,6 @@ import {
   moveOptionsHighlight,
   showOptions,
   toggleOption,
-  toggleTag,
   updateOptionsAndFilter,
   updateSearchQuery,
 } from './reducer';
@@ -16,7 +15,6 @@ import {
   filterOrSearchOptions,
   navigateOptions,
   openOptions,
-  toggleAndFetchTag,
   toggleOptionByHighlight,
 } from './actions';
 import { NavigationKey } from '../types';
@@ -24,7 +22,7 @@ import { toVariablePayload } from '../../state/types';
 import { addVariable, changeVariableProp, setCurrentVariableValue } from '../../state/sharedReducer';
 import { variableAdapters } from '../../adapters';
 import { createQueryVariableAdapter } from '../../query/adapter';
-import { updateLocation } from 'app/core/actions';
+import { locationService } from '@grafana/runtime';
 import { queryBuilder } from '../../shared/testing/builders';
 
 const datasource = {
@@ -39,6 +37,10 @@ jest.mock('@grafana/runtime', () => {
     getDataSourceSrv: jest.fn(() => ({
       get: () => datasource,
     })),
+    locationService: {
+      partial: jest.fn(),
+      getSearchObject: () => ({}),
+    },
   };
 });
 
@@ -65,7 +67,6 @@ describe('options picker actions', () => {
         ...createOption(['A']),
         selected: true,
         value: ['A'],
-        tags: [] as any[],
       };
 
       tester.thenDispatchedActionsShouldEqual(
@@ -187,7 +188,6 @@ describe('options picker actions', () => {
         ...createOption(['B']),
         selected: true,
         value: ['B'],
-        tags: [] as any[],
       };
 
       tester.thenDispatchedActionsShouldEqual(
@@ -195,9 +195,9 @@ describe('options picker actions', () => {
         setCurrentVariableValue(toVariablePayload(variable, { option })),
         changeVariableProp(toVariablePayload(variable, { propName: 'queryValue', propValue: '' })),
         hideOptions(),
-        setCurrentVariableValue(toVariablePayload(variable, { option })),
-        updateLocation({ query: { 'var-Constant': ['B'] } })
+        setCurrentVariableValue(toVariablePayload(variable, { option }))
       );
+      expect(locationService.partial).toHaveBeenLastCalledWith({ 'var-Constant': ['B'] });
     });
   });
 
@@ -327,7 +327,6 @@ describe('options picker actions', () => {
         ...createOption(['A']),
         selected: true,
         value: ['A'] as any[],
-        tags: [] as any[],
       };
 
       tester.thenDispatchedActionsShouldEqual(
@@ -356,16 +355,15 @@ describe('options picker actions', () => {
         ...createOption([]),
         selected: true,
         value: [],
-        tags: [] as any[],
       };
 
       tester.thenDispatchedActionsShouldEqual(
         setCurrentVariableValue(toVariablePayload(variable, { option })),
         changeVariableProp(toVariablePayload(variable, { propName: 'queryValue', propValue: '' })),
         hideOptions(),
-        setCurrentVariableValue(toVariablePayload(variable, { option })),
-        updateLocation({ query: { 'var-Constant': [] } })
+        setCurrentVariableValue(toVariablePayload(variable, { option }))
       );
+      expect(locationService.partial).toHaveBeenLastCalledWith({ 'var-Constant': [] });
     });
   });
 
@@ -388,16 +386,15 @@ describe('options picker actions', () => {
         ...createOption([]),
         selected: true,
         value: [],
-        tags: [] as any[],
       };
 
       tester.thenDispatchedActionsShouldEqual(
         setCurrentVariableValue(toVariablePayload(variable, { option })),
         changeVariableProp(toVariablePayload(variable, { propName: 'queryValue', propValue: 'C' })),
         hideOptions(),
-        setCurrentVariableValue(toVariablePayload(variable, { option })),
-        updateLocation({ query: { 'var-Constant': [] } })
+        setCurrentVariableValue(toVariablePayload(variable, { option }))
       );
+      expect(locationService.partial).toHaveBeenLastCalledWith({ 'var-Constant': [] });
     });
   });
 
@@ -450,53 +447,6 @@ describe('options picker actions', () => {
       );
     });
   });
-
-  describe('when toggleAndFetchTag is dispatched with values', () => {
-    it('then correct actions are dispatched', async () => {
-      const options = [createOption('A'), createOption('B'), createOption('C')];
-      const tag = createTag('tag', []);
-      const variable = createMultiVariable({
-        options,
-        current: createOption(['A'], ['A'], true),
-        includeAll: false,
-        tags: [tag],
-      });
-
-      const tester = await reduxTester<RootReducerType>()
-        .givenRootReducer(getRootReducer())
-        .whenActionIsDispatched(addVariable(toVariablePayload(variable, { global: false, index: 0, model: variable })))
-        .whenActionIsDispatched(showOptions(variable))
-        .whenAsyncActionIsDispatched(toggleAndFetchTag(tag), true);
-
-      tester.thenDispatchedActionsShouldEqual(toggleTag(tag));
-    });
-  });
-
-  describe('when toggleAndFetchTag is dispatched without values', () => {
-    it('then correct actions are dispatched', async () => {
-      const options = [createOption('A'), createOption('B'), createOption('C')];
-      const tag = createTag('tag');
-      const values = [createMetric('b')];
-      const variable = createMultiVariable({
-        options,
-        current: createOption(['A'], ['A'], true),
-        includeAll: false,
-        tags: [tag],
-      });
-
-      datasource.metricFindQuery.mockReset();
-      // @ts-ignore strict null error TS2345: Argument of type '() => Promise<{ value: string; text: string; }[]>' is not assignable to parameter of type '() => Promise<never[]>'
-      datasource.metricFindQuery.mockImplementation(() => Promise.resolve(values));
-
-      const tester = await reduxTester<RootReducerType>()
-        .givenRootReducer(getRootReducer())
-        .whenActionIsDispatched(addVariable(toVariablePayload(variable, { global: false, index: 0, model: variable })))
-        .whenActionIsDispatched(showOptions(variable))
-        .whenAsyncActionIsDispatched(toggleAndFetchTag(tag), true);
-
-      tester.thenDispatchedActionsShouldEqual(toggleTag({ ...tag, values: ['b'] }));
-    });
-  });
 });
 
 function createMultiVariable(extend?: Partial<QueryVariableModel>): QueryVariableModel {
@@ -509,13 +459,9 @@ function createMultiVariable(extend?: Partial<QueryVariableModel>): QueryVariabl
     options: [],
     query: 'options-query',
     name: 'Constant',
-    datasource: 'datasource',
+    datasource: { uid: 'datasource' },
     definition: '',
     sort: VariableSort.alphabeticalAsc,
-    tags: [],
-    tagsQuery: 'tags-query',
-    tagValuesQuery: '',
-    useTags: true,
     refresh: VariableRefresh.never,
     regex: '',
     multi: true,
@@ -537,13 +483,5 @@ function createMetric(value: string | string[]) {
   return {
     value: value,
     text: value,
-  };
-}
-
-function createTag(name: string, values?: any[]) {
-  return {
-    selected: false,
-    text: name,
-    values,
   };
 }

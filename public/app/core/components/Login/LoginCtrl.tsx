@@ -1,11 +1,6 @@
 import React, { PureComponent } from 'react';
 import config from 'app/core/config';
-
-import { updateLocation } from 'app/core/actions';
-import { connect } from 'react-redux';
-import { StoreState } from 'app/types';
 import { getBackendSrv } from '@grafana/runtime';
-import { hot } from 'react-hot-loader';
 import appEvents from 'app/core/app_events';
 import { AppEvents } from '@grafana/data';
 
@@ -18,9 +13,10 @@ export interface FormModel {
   password: string;
   email: string;
 }
+
 interface Props {
-  routeParams?: any;
-  updateLocation?: typeof updateLocation;
+  resetCode?: string;
+
   children: (props: {
     isLoggingIn: boolean;
     changePassword: (pw: string) => void;
@@ -44,6 +40,7 @@ interface State {
 
 export class LoginCtrl extends PureComponent<Props, State> {
   result: any = {};
+
   constructor(props: Props) {
     super(props);
     this.state = {
@@ -62,7 +59,8 @@ export class LoginCtrl extends PureComponent<Props, State> {
       confirmNew: password,
       oldPassword: 'admin',
     };
-    if (!this.props.routeParams.code) {
+
+    if (!this.props.resetCode) {
       getBackendSrv()
         .put('/api/user/password', pw)
         .then(() => {
@@ -72,7 +70,7 @@ export class LoginCtrl extends PureComponent<Props, State> {
     }
 
     const resetModel = {
-      code: this.props.routeParams.code,
+      code: this.props.resetCode,
       newPassword: password,
       confirmPassword: password,
     };
@@ -117,12 +115,12 @@ export class LoginCtrl extends PureComponent<Props, State> {
     // Use window.location.href to force page reload
     if (this.result.redirectUrl) {
       if (config.appSubUrl !== '' && !this.result.redirectUrl.startsWith(config.appSubUrl)) {
-        window.location.href = config.appSubUrl + this.result.redirectUrl;
+        window.location.assign(config.appSubUrl + this.result.redirectUrl);
       } else {
-        window.location.href = this.result.redirectUrl;
+        window.location.assign(this.result.redirectUrl);
       }
     } else {
-      window.location.href = config.appSubUrl + '/';
+      window.location.assign(config.appSubUrl + '/');
     }
   };
 
@@ -153,10 +151,4 @@ export class LoginCtrl extends PureComponent<Props, State> {
   }
 }
 
-export const mapStateToProps = (state: StoreState) => ({
-  routeParams: state.location.routeParams,
-});
-
-const mapDispatchToProps = { updateLocation };
-
-export default hot(module)(connect(mapStateToProps, mapDispatchToProps)(LoginCtrl));
+export default LoginCtrl;

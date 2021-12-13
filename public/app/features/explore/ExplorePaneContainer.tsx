@@ -1,9 +1,6 @@
 import React from 'react';
-import { hot } from 'react-hot-loader';
-import { compose } from 'redux';
 import { connect, ConnectedProps } from 'react-redux';
 import memoizeOne from 'memoize-one';
-import { withTheme } from '@grafana/ui';
 import { DataQuery, ExploreUrlState, EventBusExtended, EventBusSrv } from '@grafana/data';
 import { selectors } from '@grafana/e2e-selectors';
 import store from 'app/core/store';
@@ -19,20 +16,22 @@ import {
   lastUsedDatasourceKeyForOrgId,
   parseUrlState,
 } from 'app/core/utils/explore';
-import { getTimeZone } from '../profile/state/selectors';
+import { getFiscalYearStartMonth, getTimeZone } from '../profile/state/selectors';
 import Explore from './Explore';
 
-type PropsFromRedux = ConnectedProps<typeof connector>;
-interface Props extends PropsFromRedux {
+interface OwnProps {
   exploreId: ExploreId;
+  urlQuery: string;
   split: boolean;
 }
+
+interface Props extends OwnProps, ConnectedProps<typeof connector> {}
 
 /**
  * This component is responsible for handling initialization of an Explore pane and triggering synchronization
  * of state based on URL changes and preventing any infinite loops.
  */
-export class ExplorePaneContainerUnconnected extends React.PureComponent<Props & ConnectedProps<typeof connector>> {
+class ExplorePaneContainerUnconnected extends React.PureComponent<Props> {
   el: any;
   exploreEvents: EventBusExtended;
 
@@ -63,14 +62,8 @@ export class ExplorePaneContainerUnconnected extends React.PureComponent<Props &
   }
 
   componentWillUnmount() {
-    const { path } = this.props;
     this.exploreEvents.removeAllListeners();
-
-    // We run cleanup only if we are still in explore and we are just closing single pane.
-    // When navigating out of explore parent does the cleanup.
-    if (path.match(/\/explore$/)) {
-      this.props.cleanupPaneAction({ exploreId: this.props.exploreId });
-    }
+    this.props.cleanupPaneAction({ exploreId: this.props.exploreId });
   }
 
   componentDidUpdate(prevProps: Props) {
@@ -78,12 +71,7 @@ export class ExplorePaneContainerUnconnected extends React.PureComponent<Props &
   }
 
   refreshExplore = (prevUrlQuery: string) => {
-    const { exploreId, urlQuery, path } = this.props;
-
-    // Make sure we don't refresh after navigating outside as this would be called before parent unmounts
-    if (!path.match(/\/explore$/)) {
-      return;
-    }
+    const { exploreId, urlQuery } = this.props;
 
     // Update state from url only if it changed and only if the change wasn't initialised by redux to prevent any loops
     if (urlQuery !== prevUrlQuery && urlQuery !== lastSavedUrl[exploreId]) {
@@ -98,7 +86,7 @@ export class ExplorePaneContainerUnconnected extends React.PureComponent<Props &
   render() {
     const exploreClass = this.props.split ? 'explore explore-split' : 'explore';
     return (
-      <div className={exploreClass} ref={this.getRef} aria-label={selectors.pages.Explore.General.container}>
+      <div className={exploreClass} ref={this.getRef} data-testid={selectors.pages.Explore.General.container}>
         {this.props.initialized && <Explore exploreId={this.props.exploreId} />}
       </div>
     );
@@ -108,27 +96,24 @@ export class ExplorePaneContainerUnconnected extends React.PureComponent<Props &
 const ensureQueriesMemoized = memoizeOne(ensureQueries);
 const getTimeRangeFromUrlMemoized = memoizeOne(getTimeRangeFromUrl);
 
-function mapStateToProps(state: StoreState, { exploreId }: { exploreId: ExploreId }) {
-  const urlQuery = state.location.query[exploreId] as string;
-  const path = state.location.path;
-  const urlState = parseUrlState(urlQuery);
+function mapStateToProps(state: StoreState, props: OwnProps) {
+  const urlState = parseUrlState(props.urlQuery);
   const timeZone = getTimeZone(state.user);
+  const fiscalYearStartMonth = getFiscalYearStartMonth(state.user);
 
   const { datasource, queries, range: urlRange, originPanelId } = (urlState || {}) as ExploreUrlState;
   const initialDatasource = datasource || store.get(lastUsedDatasourceKeyForOrgId(state.user.orgId));
   const initialQueries: DataQuery[] = ensureQueriesMemoized(queries);
   const initialRange = urlRange
-    ? getTimeRangeFromUrlMemoized(urlRange, timeZone)
-    : getTimeRange(timeZone, DEFAULT_RANGE);
+    ? getTimeRangeFromUrlMemoized(urlRange, timeZone, fiscalYearStartMonth)
+    : getTimeRange(timeZone, DEFAULT_RANGE, fiscalYearStartMonth);
 
   return {
-    initialized: state.explore[exploreId]?.initialized,
+    initialized: state.explore[props.exploreId]?.initialized,
     initialDatasource,
     initialQueries,
     initialRange,
     originPanelId,
-    urlQuery,
-    path,
   };
 }
 
@@ -140,4 +125,4 @@ const mapDispatchToProps = {
 
 const connector = connect(mapStateToProps, mapDispatchToProps);
 
-export const ExplorePaneContainer = compose(hot(module), connector, withTheme)(ExplorePaneContainerUnconnected);
+export const ExplorePaneContainer = connector(ExplorePaneContainerUnconnected);

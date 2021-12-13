@@ -1,5 +1,5 @@
-import React, { Dispatch, FC, FormEvent, SetStateAction } from 'react';
-import { css } from 'emotion';
+import React, { FC, FormEvent } from 'react';
+import { css } from '@emotion/css';
 import { HorizontalGroup, RadioButtonGroup, stylesFactory, useTheme, Checkbox } from '@grafana/ui';
 import { GrafanaTheme, SelectableValue } from '@grafana/data';
 import { SortPicker } from 'app/core/components/Select/SortPicker';
@@ -8,18 +8,17 @@ import { SearchSrv } from 'app/core/services/search_srv';
 import { DashboardQuery, SearchLayout } from '../types';
 
 export const layoutOptions = [
-  { value: SearchLayout.Folders, icon: 'folder' },
-  { value: SearchLayout.List, icon: 'list-ul' },
+  { value: SearchLayout.Folders, icon: 'folder', ariaLabel: 'View by folders' },
+  { value: SearchLayout.List, icon: 'list-ul', ariaLabel: 'View as list' },
 ];
 
 const searchSrv = new SearchSrv();
 
-type onSelectChange = (value: SelectableValue) => void;
 interface Props {
-  onLayoutChange: Dispatch<SetStateAction<string>>;
-  onSortChange: onSelectChange;
+  onLayoutChange: (layout: SearchLayout) => void;
+  onSortChange: (value: SelectableValue) => void;
   onStarredFilterChange?: (event: FormEvent<HTMLInputElement>) => void;
-  onTagFilterChange: onSelectChange;
+  onTagFilterChange: (tags: string[]) => void;
   query: DashboardQuery;
   showStarredFilter?: boolean;
   hideLayout?: boolean;

@@ -144,7 +144,7 @@ export const getFileLoaders = () => {
       use: [
         shouldExtractCss
           ? {
-              loader: 'file-loader',
+              loader: require.resolve('file-loader'),
               options: {
                 outputPath: '/',
                 name: '[path][name].[ext]',
@@ -158,9 +158,10 @@ export const getFileLoaders = () => {
     },
     {
       test: /\.(woff|woff2|eot|ttf|otf)(\?v=\d+\.\d+\.\d+)?$/,
-      loader: 'file-loader',
+      loader: require.resolve('file-loader'),
       options: {
-        publicPath: `/public/plugins/${getPluginId()}/fonts`,
+        // Keep publicPath relative for host.com/grafana/ deployments
+        publicPath: `public/plugins/${getPluginId()}/fonts`,
         outputPath: 'fonts',
         name: '[name].[ext]',
       },

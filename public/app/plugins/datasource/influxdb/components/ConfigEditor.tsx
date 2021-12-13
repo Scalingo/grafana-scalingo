@@ -9,7 +9,7 @@ import {
   onUpdateDatasourceSecureJsonDataOption,
   updateDatasourcePluginJsonDataOption,
 } from '@grafana/data';
-import { DataSourceHttpSettings, InfoBox, InlineField, InlineFormLabel, LegacyForms } from '@grafana/ui';
+import { Alert, DataSourceHttpSettings, InfoBox, InlineField, InlineFormLabel, LegacyForms } from '@grafana/ui';
 const { Select, Input, SecretFormField } = LegacyForms;
 import { InfluxOptions, InfluxSecureJsonData, InfluxVersion } from '../types';
 
@@ -22,12 +22,12 @@ const versions = [
   {
     label: 'InfluxQL',
     value: InfluxVersion.InfluxQL,
-    description: 'The InfluxDB SQL-like query language.  Supported in InfluxDB 1.x',
+    description: 'The InfluxDB SQL-like query language.',
   },
   {
     label: 'Flux',
     value: InfluxVersion.Flux,
-    description: 'Advanced data scripting and query language.  Supported in InfluxDB 2.x and 1.8+ (beta)',
+    description: 'Advanced data scripting and query language.  Supported in InfluxDB 2.x and 1.8+',
   },
 ] as Array<SelectableValue<InfluxVersion>>;
 
@@ -215,6 +215,7 @@ export class ConfigEditor extends PureComponent<Props, State> {
               HTTP Method
             </InlineFormLabel>
             <Select
+              menuShouldPortal
               className="width-10"
               value={httpModes.find((httpMode) => httpMode.value === options.jsonData.httpMode)}
               options={httpModes}
@@ -257,6 +258,7 @@ export class ConfigEditor extends PureComponent<Props, State> {
           <div className="gf-form-inline">
             <div className="gf-form">
               <Select
+                menuShouldPortal
                 className="width-30"
                 value={options.jsonData.version === InfluxVersion.Flux ? versions[1] : versions[0]}
                 options={versions}
@@ -277,6 +279,12 @@ export class ConfigEditor extends PureComponent<Props, State> {
               </a>
             </p>
           </InfoBox>
+        )}
+
+        {options.access === 'direct' && (
+          <Alert title="Deprecation Notice" severity="warning">
+            Browser access mode in the InfluxDB datasource is deprecated and will be removed in a future release.
+          </Alert>
         )}
 
         <DataSourceHttpSettings

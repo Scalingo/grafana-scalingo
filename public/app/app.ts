@@ -1,54 +1,70 @@
 import 'symbol-observable';
-import 'core-js/stable';
+import 'core-js';
 import 'regenerator-runtime/runtime';
 
 import 'whatwg-fetch'; // fetch polyfill needed for PhantomJs rendering
 import 'abortcontroller-polyfill/dist/polyfill-patch-fetch'; // fetch polyfill needed for PhantomJs rendering
-// @ts-ignore
-import ttiPolyfill from 'tti-polyfill';
-
+import './polyfills/old-mediaquerylist'; // Safari < 14 does not have mql.addEventListener()
 import 'file-saver';
 import 'jquery';
-import _ from 'lodash';
-import angular from 'angular';
-import 'angular-route';
-import 'angular-sanitize';
-import 'angular-bindonce';
-import 'react';
-import 'react-dom';
 
-import 'vendor/bootstrap/bootstrap';
-import 'vendor/angular-other/angular-strap';
+// eslint-disable-next-line lodash/import-scope
+import _ from 'lodash';
+import ReactDOM from 'react-dom';
+import React from 'react';
 import config from 'app/core/config';
 // @ts-ignore ignoring this for now, otherwise we would have to extend _ interface with move
 import {
-  AppEvents,
+  locationUtil,
+  monacoLanguageRegistry,
   setLocale,
   setTimeZoneResolver,
+  setWeekStart,
   standardEditorsRegistry,
   standardFieldConfigEditorRegistry,
   standardTransformersRegistry,
 } from '@grafana/data';
-import appEvents from 'app/core/app_events';
-import { checkBrowserCompatibility } from 'app/core/utils/browser';
 import { arrayMove } from 'app/core/utils/arrayMove';
-import { importPluginModule } from 'app/features/plugins/plugin_loader';
-import { angularModules, coreModule } from 'app/core/core_module';
-import { contextSrv, registerAngularDirectives } from 'app/core/core';
-import { setupAngularRoutes } from 'app/routes/routes';
-import { registerEchoBackend, setEchoSrv } from '@grafana/runtime';
+import { preloadPlugins } from './features/plugins/pluginPreloader';
+import {
+  locationService,
+  registerEchoBackend,
+  setBackendSrv,
+  setDataSourceSrv,
+  setEchoSrv,
+  setLocationSrv,
+  setQueryRunnerFactory,
+} from '@grafana/runtime';
 import { Echo } from './core/services/echo/Echo';
 import { reportPerformance } from './core/services/echo/EchoSrv';
 import { PerformanceBackend } from './core/services/echo/backends/PerformanceBackend';
-import 'app/routes/GrafanaCtrl';
 import 'app/features/all';
-import { getScrollbarWidth, getStandardFieldConfigs, getStandardOptionEditors } from '@grafana/ui';
+import { getScrollbarWidth, getStandardFieldConfigs } from '@grafana/ui';
 import { getDefaultVariableAdapters, variableAdapters } from './features/variables/adapters';
 import { initDevFeatures } from './dev';
 import { getStandardTransformers } from 'app/core/utils/standardTransformers';
 import { SentryEchoBackend } from './core/services/echo/backends/sentry/SentryBackend';
-import { monkeyPatchInjectorWithPreAssignedBindings } from './core/injectorMonkeyPatch';
 import { setVariableQueryRunner, VariableQueryRunner } from './features/variables/query/VariableQueryRunner';
+import { configureStore } from './store/configureStore';
+import { AppWrapper } from './AppWrapper';
+import { interceptLinkClicks } from './core/navigation/patch/interceptLinkClicks';
+import { PanelRenderer } from './features/panel/components/PanelRenderer';
+import { QueryRunner } from './features/query/state/QueryRunner';
+import { getTimeSrv } from './features/dashboard/services/TimeSrv';
+import { getVariablesUrlParams } from './features/variables/getAllVariableValuesForUrl';
+import getDefaultMonacoLanguages from '../lib/monaco-languages';
+import { contextSrv } from './core/services/context_srv';
+import { GAEchoBackend } from './core/services/echo/backends/analytics/GABackend';
+import { ApplicationInsightsBackend } from './core/services/echo/backends/analytics/ApplicationInsightsBackend';
+import { RudderstackBackend } from './core/services/echo/backends/analytics/RudderstackBackend';
+import { getAllOptionEditors } from './core/components/editors/registry';
+import { backendSrv } from './core/services/backend_srv';
+import { setPanelRenderer } from '@grafana/runtime/src/components/PanelRenderer';
+import { PanelDataErrorView } from './features/panel/components/PanelDataErrorView';
+import { setPanelDataErrorView } from '@grafana/runtime/src/components/PanelDataErrorView';
+import { DatasourceSrv } from './features/plugins/datasource_srv';
+import { AngularApp } from './angular';
+import { ModalManager } from './core/services/ModalManager';
 
 // add move to lodash for backward compatabilty with plugins
 // @ts-ignore
@@ -56,8 +72,8 @@ _.move = arrayMove;
 
 // import symlinked extensions
 const extensionsIndex = (require as any).context('.', true, /extensions\/index.ts/);
-extensionsIndex.keys().forEach((key: any) => {
-  extensionsIndex(key);
+const extensionsExports = extensionsIndex.keys().map((key: any) => {
+  return extensionsIndex(key);
 });
 
 if (process.env.NODE_ENV === 'development') {
@@ -65,170 +81,148 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 export class GrafanaApp {
-  registerFunctions: any;
-  ngModuleDependencies: any[];
-  preBootModules: any[] | null;
+  angularApp: AngularApp;
 
   constructor() {
-    this.preBootModules = [];
-    this.registerFunctions = {};
-    this.ngModuleDependencies = [];
+    this.angularApp = new AngularApp();
   }
 
-  useModule(module: angular.IModule) {
-    if (this.preBootModules) {
-      this.preBootModules.push(module);
-    } else {
-      _.extend(module, this.registerFunctions);
-    }
-    this.ngModuleDependencies.push(module.name);
-    return module;
-  }
+  async init() {
+    try {
+      setBackendSrv(backendSrv);
+      initEchoSrv();
+      addClassIfNoOverlayScrollbar();
+      setLocale(config.bootData.user.locale);
+      setWeekStart(config.bootData.user.weekStart);
+      setPanelRenderer(PanelRenderer);
+      setPanelDataErrorView(PanelDataErrorView);
+      setLocationSrv(locationService);
+      setTimeZoneResolver(() => config.bootData.user.timezone);
+      // Important that extension reducers are initialized before store
+      addExtensionReducers();
+      configureStore();
+      initExtensions();
 
-  init() {
-    const app = angular.module('grafana', []);
+      standardEditorsRegistry.setInit(getAllOptionEditors);
+      standardFieldConfigEditorRegistry.setInit(getStandardFieldConfigs);
+      standardTransformersRegistry.setInit(getStandardTransformers);
+      variableAdapters.setInit(getDefaultVariableAdapters);
+      monacoLanguageRegistry.setInit(getDefaultMonacoLanguages);
 
-    addClassIfNoOverlayScrollbar();
-    setLocale(config.bootData.user.locale);
-    setTimeZoneResolver(() => config.bootData.user.timezone);
+      setQueryRunnerFactory(() => new QueryRunner());
+      setVariableQueryRunner(new VariableQueryRunner());
 
-    standardEditorsRegistry.setInit(getStandardOptionEditors);
-    standardFieldConfigEditorRegistry.setInit(getStandardFieldConfigs);
-    standardTransformersRegistry.setInit(getStandardTransformers);
-    variableAdapters.setInit(getDefaultVariableAdapters);
-
-    setVariableQueryRunner(new VariableQueryRunner());
-
-    app.config(
-      (
-        $controllerProvider: angular.IControllerProvider,
-        $compileProvider: angular.ICompileProvider,
-        $filterProvider: angular.IFilterProvider,
-        $httpProvider: angular.IHttpProvider,
-        $provide: angular.auto.IProvideService
-      ) => {
-        if (config.buildInfo.env !== 'development') {
-          $compileProvider.debugInfoEnabled(false);
-        }
-
-        $httpProvider.useApplyAsync(true);
-
-        this.registerFunctions.controller = $controllerProvider.register;
-        this.registerFunctions.directive = $compileProvider.directive;
-        this.registerFunctions.factory = $provide.factory;
-        this.registerFunctions.service = $provide.service;
-        this.registerFunctions.filter = $filterProvider.register;
-
-        $provide.decorator('$http', [
-          '$delegate',
-          '$templateCache',
-          ($delegate: any, $templateCache: any) => {
-            const get = $delegate.get;
-            $delegate.get = (url: string, config: any) => {
-              if (url.match(/\.html$/)) {
-                // some template's already exist in the cache
-                if (!$templateCache.get(url)) {
-                  url += '?v=' + new Date().getTime();
-                }
-              }
-              return get(url, config);
-            };
-            return $delegate;
-          },
-        ]);
-      }
-    );
-
-    this.ngModuleDependencies = [
-      'grafana.core',
-      'ngRoute',
-      'ngSanitize',
-      '$strap.directives',
-      'grafana',
-      'pasvaz.bindonce',
-      'react',
-    ];
-
-    // makes it possible to add dynamic stuff
-    _.each(angularModules, (m: angular.IModule) => {
-      this.useModule(m);
-    });
-
-    // register react angular wrappers
-    coreModule.config(setupAngularRoutes);
-    registerAngularDirectives();
-
-    // disable tool tip animation
-    $.fn.tooltip.defaults.animation = false;
-
-    // bootstrap the app
-    const injector: any = angular.bootstrap(document, this.ngModuleDependencies);
-
-    injector.invoke(() => {
-      _.each(this.preBootModules, (module: angular.IModule) => {
-        _.extend(module, this.registerFunctions);
+      locationUtil.initialize({
+        config,
+        getTimeRangeForUrl: getTimeSrv().timeRangeForUrl,
+        getVariablesUrlParams: getVariablesUrlParams,
       });
 
-      this.preBootModules = null;
+      // intercept anchor clicks and forward it to custom history instead of relying on browser's history
+      document.addEventListener('click', interceptLinkClicks);
 
-      if (!checkBrowserCompatibility()) {
-        setTimeout(() => {
-          appEvents.emit(AppEvents.alertWarning, [
-            'Your browser is not fully supported',
-            'A newer browser version is recommended',
-          ]);
-        }, 1000);
-      }
-    });
+      // Init DataSourceSrv
+      const dataSourceSrv = new DatasourceSrv();
+      dataSourceSrv.init(config.datasources, config.defaultDatasource);
+      setDataSourceSrv(dataSourceSrv);
 
-    monkeyPatchInjectorWithPreAssignedBindings(injector);
+      // init modal manager
+      const modalManager = new ModalManager();
+      modalManager.init();
 
-    // Preload selected app plugins
-    for (const modulePath of config.pluginsToPreload) {
-      importPluginModule(modulePath);
+      // Init angular
+      this.angularApp.init();
+
+      // Preload selected app plugins
+      await preloadPlugins(config.pluginsToPreload);
+
+      ReactDOM.render(
+        React.createElement(AppWrapper, {
+          app: this,
+        }),
+        document.getElementById('reactRoot')
+      );
+    } catch (error: any) {
+      console.error('Failed to start Grafana', error);
+      window.__grafana_load_failed();
     }
   }
+}
 
-  initEchoSrv() {
-    setEchoSrv(new Echo({ debug: process.env.NODE_ENV === 'development' }));
+function addExtensionReducers() {
+  if (extensionsExports.length > 0) {
+    extensionsExports[0].addExtensionReducers();
+  }
+}
 
-    window.addEventListener('load', (e) => {
-      const loadMetricName = 'frontend_boot_load_time_seconds';
+function initExtensions() {
+  if (extensionsExports.length > 0) {
+    extensionsExports[0].init();
+  }
+}
 
-      if (performance && performance.getEntriesByType) {
-        performance.mark(loadMetricName);
+function initEchoSrv() {
+  setEchoSrv(new Echo({ debug: process.env.NODE_ENV === 'development' }));
 
-        const paintMetrics = performance.getEntriesByType('paint');
+  window.addEventListener('load', (e) => {
+    const loadMetricName = 'frontend_boot_load_time_seconds';
 
-        for (const metric of paintMetrics) {
-          reportPerformance(
-            `frontend_boot_${metric.name}_time_seconds`,
-            Math.round(metric.startTime + metric.duration) / 1000
-          );
-        }
+    if (performance && performance.getEntriesByType) {
+      performance.mark(loadMetricName);
 
-        const loadMetric = performance.getEntriesByName(loadMetricName)[0];
-        reportPerformance(loadMetric.name, Math.round(loadMetric.startTime + loadMetric.duration) / 1000);
+      const paintMetrics = performance.getEntriesByType('paint');
+
+      for (const metric of paintMetrics) {
+        reportPerformance(
+          `frontend_boot_${metric.name}_time_seconds`,
+          Math.round(metric.startTime + metric.duration) / 1000
+        );
       }
-    });
 
-    if (contextSrv.user.orgRole !== '') {
-      registerEchoBackend(new PerformanceBackend({}));
+      const loadMetric = performance.getEntriesByName(loadMetricName)[0];
+      reportPerformance(loadMetric.name, Math.round(loadMetric.startTime + loadMetric.duration) / 1000);
     }
+  });
 
-    if (config.sentry.enabled) {
-      registerEchoBackend(
-        new SentryEchoBackend({
-          ...config.sentry,
-          user: config.bootData.user,
-          buildInfo: config.buildInfo,
-        })
-      );
-    }
+  if (contextSrv.user.orgRole !== '') {
+    registerEchoBackend(new PerformanceBackend({}));
+  }
 
-    window.addEventListener('DOMContentLoaded', () => {
-      reportPerformance('dcl', Math.round(performance.now()));
-    });
+  if (config.sentry.enabled) {
+    registerEchoBackend(
+      new SentryEchoBackend({
+        ...config.sentry,
+        user: config.bootData.user,
+        buildInfo: config.buildInfo,
+      })
+    );
+  }
+
+  if ((config as any).googleAnalyticsId) {
+    registerEchoBackend(
+      new GAEchoBackend({
+        googleAnalyticsId: (config as any).googleAnalyticsId,
+      })
+    );
+  }
+
+  if ((config as any).rudderstackWriteKey && (config as any).rudderstackDataPlaneUrl) {
+    registerEchoBackend(
+      new RudderstackBackend({
+        writeKey: (config as any).rudderstackWriteKey,
+        dataPlaneUrl: (config as any).rudderstackDataPlaneUrl,
+        user: config.bootData.user,
+      })
+    );
+  }
+
+  if (config.applicationInsightsConnectionString) {
+    registerEchoBackend(
+      new ApplicationInsightsBackend({
+        connectionString: config.applicationInsightsConnectionString,
+        endpointUrl: config.applicationInsightsEndpointUrl,
+      })
+    );
   }
 }
 

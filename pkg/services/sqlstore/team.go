@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -11,18 +12,16 @@ import (
 )
 
 func init() {
-	bus.AddHandler("sql", CreateTeam)
-	bus.AddHandler("sql", UpdateTeam)
-	bus.AddHandler("sql", DeleteTeam)
-	bus.AddHandler("sql", SearchTeams)
-	bus.AddHandler("sql", GetTeamById)
-	bus.AddHandler("sql", GetTeamsByUser)
+	bus.AddHandlerCtx("sql", UpdateTeam)
+	bus.AddHandlerCtx("sql", DeleteTeam)
+	bus.AddHandlerCtx("sql", SearchTeams)
+	bus.AddHandlerCtx("sql", GetTeamById)
+	bus.AddHandlerCtx("sql", GetTeamsByUser)
 
-	bus.AddHandler("sql", AddTeamMember)
-	bus.AddHandler("sql", UpdateTeamMember)
-	bus.AddHandler("sql", RemoveTeamMember)
-	bus.AddHandler("sql", GetTeamMembers)
-	bus.AddHandler("sql", IsAdminOfTeams)
+	bus.AddHandlerCtx("sql", UpdateTeamMember)
+	bus.AddHandlerCtx("sql", RemoveTeamMember)
+	bus.AddHandlerCtx("sql", GetTeamMembers)
+	bus.AddHandlerCtx("sql", IsAdminOfTeams)
 }
 
 func getFilteredUsers(signedInUser *models.SignedInUser, hiddenUsers map[string]struct{}) []string {
@@ -43,7 +42,7 @@ func getFilteredUsers(signedInUser *models.SignedInUser, hiddenUsers map[string]
 
 func getTeamMemberCount(filteredUsers []string) string {
 	if len(filteredUsers) > 0 {
-		return `(SELECT COUNT(*) FROM team_member 
+		return `(SELECT COUNT(*) FROM team_member
 			INNER JOIN ` + dialect.Quote("user") + ` ON team_member.user_id = ` + dialect.Quote("user") + `.id
 			WHERE team_member.team_id = team.id AND ` + dialect.Quote("user") + `.login NOT IN (?` +
 			strings.Repeat(",?", len(filteredUsers)-1) + ")" +
@@ -75,31 +74,28 @@ func getTeamSelectSQLBase(filteredUsers []string) string {
 		` FROM team as team `
 }
 
-func CreateTeam(cmd *models.CreateTeamCommand) error {
-	return inTransaction(func(sess *DBSession) error {
-		if isNameTaken, err := isTeamNameTaken(cmd.OrgId, cmd.Name, 0, sess); err != nil {
+func (ss *SQLStore) CreateTeam(name, email string, orgID int64) (models.Team, error) {
+	team := models.Team{
+		Name:    name,
+		Email:   email,
+		OrgId:   orgID,
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+	err := ss.WithTransactionalDbSession(context.Background(), func(sess *DBSession) error {
+		if isNameTaken, err := isTeamNameTaken(orgID, name, 0, sess); err != nil {
 			return err
 		} else if isNameTaken {
 			return models.ErrTeamNameTaken
 		}
 
-		team := models.Team{
-			Name:    cmd.Name,
-			Email:   cmd.Email,
-			OrgId:   cmd.OrgId,
-			Created: time.Now(),
-			Updated: time.Now(),
-		}
-
 		_, err := sess.Insert(&team)
-
-		cmd.Result = team
-
 		return err
 	})
+	return team, err
 }
 
-func UpdateTeam(cmd *models.UpdateTeamCommand) error {
+func UpdateTeam(ctx context.Context, cmd *models.UpdateTeamCommand) error {
 	return inTransaction(func(sess *DBSession) error {
 		if isNameTaken, err := isTeamNameTaken(cmd.OrgId, cmd.Name, cmd.Id, sess); err != nil {
 			return err
@@ -130,7 +126,7 @@ func UpdateTeam(cmd *models.UpdateTeamCommand) error {
 }
 
 // DeleteTeam will delete a team, its member and any permissions connected to the team
-func DeleteTeam(cmd *models.DeleteTeamCommand) error {
+func DeleteTeam(ctx context.Context, cmd *models.DeleteTeamCommand) error {
 	return inTransaction(func(sess *DBSession) error {
 		if _, err := teamExists(cmd.OrgId, cmd.Id, sess); err != nil {
 			return err
@@ -152,8 +148,8 @@ func DeleteTeam(cmd *models.DeleteTeamCommand) error {
 	})
 }
 
-func teamExists(orgId int64, teamId int64, sess *DBSession) (bool, error) {
-	if res, err := sess.Query("SELECT 1 from team WHERE org_id=? and id=?", orgId, teamId); err != nil {
+func teamExists(orgID int64, teamID int64, sess *DBSession) (bool, error) {
+	if res, err := sess.Query("SELECT 1 from team WHERE org_id=? and id=?", orgID, teamID); err != nil {
 		return false, err
 	} else if len(res) != 1 {
 		return false, models.ErrTeamNotFound
@@ -165,7 +161,6 @@ func teamExists(orgId int64, teamId int64, sess *DBSession) (bool, error) {
 func isTeamNameTaken(orgId int64, name string, existingId int64, sess *DBSession) (bool, error) {
 	var team models.Team
 	exists, err := sess.Where("org_id=? and name=?", orgId, name).Get(&team)
-
 	if err != nil {
 		return false, nil
 	}
@@ -177,7 +172,7 @@ func isTeamNameTaken(orgId int64, name string, existingId int64, sess *DBSession
 	return false, nil
 }
 
-func SearchTeams(query *models.SearchTeamsQuery) error {
+func SearchTeams(ctx context.Context, query *models.SearchTeamsQuery) error {
 	query.Result = models.SearchTeamQueryResult{
 		Teams: make([]*models.TeamDTO, 0),
 	}
@@ -240,7 +235,7 @@ func SearchTeams(query *models.SearchTeamsQuery) error {
 	return err
 }
 
-func GetTeamById(query *models.GetTeamByIdQuery) error {
+func GetTeamById(ctx context.Context, query *models.GetTeamByIdQuery) error {
 	var sql bytes.Buffer
 	params := make([]interface{}, 0)
 
@@ -269,7 +264,7 @@ func GetTeamById(query *models.GetTeamByIdQuery) error {
 }
 
 // GetTeamsByUser is used by the Guardian when checking a users' permissions
-func GetTeamsByUser(query *models.GetTeamsByUserQuery) error {
+func GetTeamsByUser(ctx context.Context, query *models.GetTeamsByUserQuery) error {
 	query.Result = make([]*models.TeamDTO, 0)
 
 	var sql bytes.Buffer
@@ -283,26 +278,27 @@ func GetTeamsByUser(query *models.GetTeamsByUserQuery) error {
 }
 
 // AddTeamMember adds a user to a team
-func AddTeamMember(cmd *models.AddTeamMemberCommand) error {
-	return inTransaction(func(sess *DBSession) error {
-		if res, err := sess.Query("SELECT 1 from team_member WHERE org_id=? and team_id=? and user_id=?", cmd.OrgId, cmd.TeamId, cmd.UserId); err != nil {
+func (ss *SQLStore) AddTeamMember(userID, orgID, teamID int64, isExternal bool, permission models.PermissionType) error {
+	return ss.WithTransactionalDbSession(context.Background(), func(sess *DBSession) error {
+		if res, err := sess.Query("SELECT 1 from team_member WHERE org_id=? and team_id=? and user_id=?",
+			orgID, teamID, userID); err != nil {
 			return err
 		} else if len(res) == 1 {
 			return models.ErrTeamMemberAlreadyAdded
 		}
 
-		if _, err := teamExists(cmd.OrgId, cmd.TeamId, sess); err != nil {
+		if _, err := teamExists(orgID, teamID, sess); err != nil {
 			return err
 		}
 
 		entity := models.TeamMember{
-			OrgId:      cmd.OrgId,
-			TeamId:     cmd.TeamId,
-			UserId:     cmd.UserId,
-			External:   cmd.External,
+			OrgId:      orgID,
+			TeamId:     teamID,
+			UserId:     userID,
+			External:   isExternal,
 			Created:    time.Now(),
 			Updated:    time.Now(),
-			Permission: cmd.Permission,
+			Permission: permission,
 		}
 
 		_, err := sess.Insert(&entity)
@@ -326,7 +322,7 @@ func getTeamMember(sess *DBSession, orgId int64, teamId int64, userId int64) (mo
 }
 
 // UpdateTeamMember updates a team member
-func UpdateTeamMember(cmd *models.UpdateTeamMemberCommand) error {
+func UpdateTeamMember(ctx context.Context, cmd *models.UpdateTeamMemberCommand) error {
 	return inTransaction(func(sess *DBSession) error {
 		member, err := getTeamMember(sess, cmd.OrgId, cmd.TeamId, cmd.UserId)
 		if err != nil {
@@ -352,7 +348,7 @@ func UpdateTeamMember(cmd *models.UpdateTeamMemberCommand) error {
 }
 
 // RemoveTeamMember removes a member from a team
-func RemoveTeamMember(cmd *models.RemoveTeamMemberCommand) error {
+func RemoveTeamMember(ctx context.Context, cmd *models.RemoveTeamMemberCommand) error {
 	return inTransaction(func(sess *DBSession) error {
 		if _, err := teamExists(cmd.OrgId, cmd.TeamId, sess); err != nil {
 			return err
@@ -403,7 +399,7 @@ func isLastAdmin(sess *DBSession, orgId int64, teamId int64, userId int64) (bool
 }
 
 // GetTeamMembers return a list of members for the specified team
-func GetTeamMembers(query *models.GetTeamMembersQuery) error {
+func GetTeamMembers(ctx context.Context, query *models.GetTeamMembersQuery) error {
 	query.Result = make([]*models.TeamMemberDTO, 0)
 	sess := x.Table("team_member")
 	sess.Join("INNER", x.Dialect().Quote("user"), fmt.Sprintf("team_member.user_id=%s.id", x.Dialect().Quote("user")))
@@ -445,7 +441,7 @@ func GetTeamMembers(query *models.GetTeamMembersQuery) error {
 	return err
 }
 
-func IsAdminOfTeams(query *models.IsAdminOfTeamsQuery) error {
+func IsAdminOfTeams(ctx context.Context, query *models.IsAdminOfTeamsQuery) error {
 	builder := &SQLBuilder{}
 	builder.Write("SELECT COUNT(team.id) AS count FROM team INNER JOIN team_member ON team_member.team_id = team.id WHERE team.org_id = ? AND team_member.user_id = ? AND team_member.permission = ?", query.SignedInUser.OrgId, query.SignedInUser.UserId, models.PERMISSION_ADMIN)
 

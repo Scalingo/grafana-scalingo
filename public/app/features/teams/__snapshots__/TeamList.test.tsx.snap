@@ -42,16 +42,11 @@ exports[`Render should render teams table 1`] = `
         className="gf-form gf-form--grow"
       >
         <FilterInput
-          inputClassName="gf-form-input"
-          labelClassName="gf-form--has-input-icon gf-form--grow"
           onChange={[Function]}
           placeholder="Search teams"
           value=""
         />
       </div>
-      <div
-        className="page-action-bar__spacer"
-      />
       <LinkButton
         className=""
         href="org/teams/new"
@@ -97,6 +92,7 @@ exports[`Render should render teams table 1`] = `
                 href="org/teams/edit/1"
               >
                 <img
+                  alt="Team avatar"
                   className="filter-table__avatar"
                   src="some/url/"
                 />
@@ -133,6 +129,7 @@ exports[`Render should render teams table 1`] = `
               className="text-right"
             >
               <DeleteButton
+                aria-label="Delete team"
                 disabled={false}
                 onConfirm={[Function]}
                 size="sm"
@@ -149,6 +146,7 @@ exports[`Render should render teams table 1`] = `
                 href="org/teams/edit/2"
               >
                 <img
+                  alt="Team avatar"
                   className="filter-table__avatar"
                   src="some/url/"
                 />
@@ -185,6 +183,7 @@ exports[`Render should render teams table 1`] = `
               className="text-right"
             >
               <DeleteButton
+                aria-label="Delete team"
                 disabled={false}
                 onConfirm={[Function]}
                 size="sm"
@@ -201,6 +200,7 @@ exports[`Render should render teams table 1`] = `
                 href="org/teams/edit/3"
               >
                 <img
+                  alt="Team avatar"
                   className="filter-table__avatar"
                   src="some/url/"
                 />
@@ -237,6 +237,7 @@ exports[`Render should render teams table 1`] = `
               className="text-right"
             >
               <DeleteButton
+                aria-label="Delete team"
                 disabled={false}
                 onConfirm={[Function]}
                 size="sm"
@@ -253,6 +254,7 @@ exports[`Render should render teams table 1`] = `
                 href="org/teams/edit/4"
               >
                 <img
+                  alt="Team avatar"
                   className="filter-table__avatar"
                   src="some/url/"
                 />
@@ -289,6 +291,7 @@ exports[`Render should render teams table 1`] = `
               className="text-right"
             >
               <DeleteButton
+                aria-label="Delete team"
                 disabled={false}
                 onConfirm={[Function]}
                 size="sm"
@@ -305,6 +308,7 @@ exports[`Render should render teams table 1`] = `
                 href="org/teams/edit/5"
               >
                 <img
+                  alt="Team avatar"
                   className="filter-table__avatar"
                   src="some/url/"
                 />
@@ -341,6 +345,7 @@ exports[`Render should render teams table 1`] = `
               className="text-right"
             >
               <DeleteButton
+                aria-label="Delete team"
                 disabled={false}
                 onConfirm={[Function]}
                 size="sm"
@@ -377,16 +382,11 @@ exports[`Render when feature toggle editorsCanAdmin is turned on and signedin us
         className="gf-form gf-form--grow"
       >
         <FilterInput
-          inputClassName="gf-form-input"
-          labelClassName="gf-form--has-input-icon gf-form--grow"
           onChange={[Function]}
           placeholder="Search teams"
           value=""
         />
       </div>
-      <div
-        className="page-action-bar__spacer"
-      />
       <LinkButton
         className=" disabled"
         href="#"
@@ -432,6 +432,7 @@ exports[`Render when feature toggle editorsCanAdmin is turned on and signedin us
                 href="org/teams/edit/1"
               >
                 <img
+                  alt="Team avatar"
                   className="filter-table__avatar"
                   src="some/url/"
                 />
@@ -468,6 +469,7 @@ exports[`Render when feature toggle editorsCanAdmin is turned on and signedin us
               className="text-right"
             >
               <DeleteButton
+                aria-label="Delete team"
                 disabled={true}
                 onConfirm={[Function]}
                 size="sm"
@@ -504,16 +506,11 @@ exports[`Render when feature toggle editorsCanAdmin is turned on and signedin us
         className="gf-form gf-form--grow"
       >
         <FilterInput
-          inputClassName="gf-form-input"
-          labelClassName="gf-form--has-input-icon gf-form--grow"
           onChange={[Function]}
           placeholder="Search teams"
           value=""
         />
       </div>
-      <div
-        className="page-action-bar__spacer"
-      />
       <LinkButton
         className=""
         href="org/teams/new"
@@ -559,6 +556,7 @@ exports[`Render when feature toggle editorsCanAdmin is turned on and signedin us
                 href="org/teams/edit/1"
               >
                 <img
+                  alt="Team avatar"
                   className="filter-table__avatar"
                   src="some/url/"
                 />
@@ -595,6 +593,7 @@ exports[`Render when feature toggle editorsCanAdmin is turned on and signedin us
               className="text-right"
             >
               <DeleteButton
+                aria-label="Delete team"
                 disabled={true}
                 onConfirm={[Function]}
                 size="sm"

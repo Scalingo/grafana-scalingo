@@ -1,7 +1,8 @@
 import React, { PureComponent } from 'react';
-import { css } from 'emotion';
+import { css } from '@emotion/css';
 import { ConfirmButton, ConfirmModal, Button } from '@grafana/ui';
-import { UserSession } from 'app/types';
+import { AccessControlAction, UserSession } from 'app/types';
+import { contextSrv } from 'app/core/core';
 
 interface Props {
   sessions: UserSession[];
@@ -15,12 +16,19 @@ interface State {
 }
 
 export class UserSessions extends PureComponent<Props, State> {
+  forceAllLogoutButton = React.createRef<HTMLButtonElement>();
   state: State = {
     showLogoutModal: false,
   };
 
-  showLogoutConfirmationModal = (show: boolean) => () => {
-    this.setState({ showLogoutModal: show });
+  showLogoutConfirmationModal = () => {
+    this.setState({ showLogoutModal: true });
+  };
+
+  dismissLogoutConfirmationModal = () => {
+    this.setState({ showLogoutModal: false }, () => {
+      this.forceAllLogoutButton.current?.focus();
+    });
   };
 
   onSessionRevoke = (id: number) => {
@@ -42,6 +50,8 @@ export class UserSessions extends PureComponent<Props, State> {
       margin-top: 0.8rem;
     `;
 
+    const canLogout = contextSrv.hasPermission(AccessControlAction.UsersLogout);
+
     return (
       <>
         <h3 className="page-heading">Sessions</h3>
@@ -53,7 +63,7 @@ export class UserSessions extends PureComponent<Props, State> {
                   <th>Last seen</th>
                   <th>Logged on</th>
                   <th>IP address</th>
-                  <th colSpan={2}>Browser &amp; OS</th>
+                  <th colSpan={2}>Browser and OS</th>
                 </tr>
               </thead>
               <tbody>
@@ -66,13 +76,16 @@ export class UserSessions extends PureComponent<Props, State> {
                       <td>{`${session.browser} on ${session.os} ${session.osVersion}`}</td>
                       <td>
                         <div className="pull-right">
-                          <ConfirmButton
-                            confirmText="Confirm logout"
-                            confirmVariant="destructive"
-                            onConfirm={this.onSessionRevoke(session.id)}
-                          >
-                            Force logout
-                          </ConfirmButton>
+                          {canLogout && (
+                            <ConfirmButton
+                              confirmText="Confirm logout"
+                              confirmVariant="destructive"
+                              onConfirm={this.onSessionRevoke(session.id)}
+                              autoFocus
+                            >
+                              Force logout
+                            </ConfirmButton>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -81,8 +94,8 @@ export class UserSessions extends PureComponent<Props, State> {
             </table>
           </div>
           <div className={logoutFromAllDevicesClass}>
-            {sessions.length > 0 && (
-              <Button variant="secondary" onClick={this.showLogoutConfirmationModal(true)}>
+            {canLogout && sessions.length > 0 && (
+              <Button variant="secondary" onClick={this.showLogoutConfirmationModal} ref={this.forceAllLogoutButton}>
                 Force logout from all devices
               </Button>
             )}
@@ -92,7 +105,7 @@ export class UserSessions extends PureComponent<Props, State> {
               body="Are you sure you want to force logout from all devices?"
               confirmText="Force logout"
               onConfirm={this.onAllSessionsRevoke}
-              onDismiss={this.showLogoutConfirmationModal(false)}
+              onDismiss={this.dismissLogoutConfirmationModal}
             />
           </div>
         </div>

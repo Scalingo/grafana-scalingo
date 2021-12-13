@@ -16,9 +16,10 @@ import {
 import { AdHocVariableFilter, AdHocVariableModel } from 'app/features/variables/types';
 import { variableUpdated } from '../state/actions';
 import { isAdHoc } from '../guard';
+import { DataSourceRef, getDataSourceRef } from '@grafana/data';
 
 export interface AdHocTableOptions {
-  datasource: string;
+  datasource: DataSourceRef;
   key: string;
   value: string;
   operator: string;
@@ -29,6 +30,7 @@ const filterTableName = 'Filters';
 export const applyFilterFromTable = (options: AdHocTableOptions): ThunkResult<void> => {
   return async (dispatch, getState) => {
     let variable = getVariableByOptions(options, getState());
+    console.log('getVariableByOptions', options, getState().templating.variables);
 
     if (!variable) {
       dispatch(createAdHocVariable(options));
@@ -80,12 +82,12 @@ export const setFiltersFromUrl = (id: string, filters: AdHocVariableFilter[]): T
   };
 };
 
-export const changeVariableDatasource = (datasource?: string): ThunkResult<void> => {
+export const changeVariableDatasource = (datasource?: DataSourceRef): ThunkResult<void> => {
   return async (dispatch, getState) => {
     const { editor } = getState().templating;
     const variable = getVariable(editor.id, getState());
 
-    const loadingText = 'Adhoc filters are applied automatically to all queries that target this datasource';
+    const loadingText = 'Ad hoc filters are applied automatically to all queries that target this data source';
 
     dispatch(
       changeVariableEditorExtended({
@@ -101,7 +103,7 @@ export const changeVariableDatasource = (datasource?: string): ThunkResult<void>
       dispatch(
         changeVariableEditorExtended({
           propName: 'infoText',
-          propValue: 'This datasource does not support adhoc filters yet.',
+          propValue: 'This data source does not support ad hoc filters yet.',
         })
       );
     }
@@ -109,19 +111,20 @@ export const changeVariableDatasource = (datasource?: string): ThunkResult<void>
 };
 
 export const initAdHocVariableEditor = (): ThunkResult<void> => (dispatch) => {
-  const dataSources = getDatasourceSrv().getMetricSources();
+  const dataSources = getDatasourceSrv().getList({ metrics: true, variables: false });
   const selectable = dataSources.reduce(
-    (all: Array<{ text: string; value: string | null }>, ds) => {
+    (all: Array<{ text: string; value: DataSourceRef | null }>, ds) => {
       if (ds.meta.mixed) {
         return all;
       }
 
-      const text = ds.value === null ? `${ds.name} (default)` : ds.name;
-      all.push({ text: text, value: ds.value });
+      const text = ds.isDefault ? `${ds.name} (default)` : ds.name;
+      const value = getDataSourceRef(ds);
+      all.push({ text, value });
 
       return all;
     },
-    [{ text: '', value: '' }]
+    [{ text: '', value: {} }]
   );
 
   dispatch(
@@ -155,6 +158,6 @@ const createAdHocVariable = (options: AdHocTableOptions): ThunkResult<void> => {
 
 const getVariableByOptions = (options: AdHocTableOptions, state: StoreState): AdHocVariableModel => {
   return Object.values(state.templating.variables).find(
-    (v) => isAdHoc(v) && v.datasource === options.datasource
+    (v) => isAdHoc(v) && v.datasource?.uid === options.datasource.uid
   ) as AdHocVariableModel;
 };

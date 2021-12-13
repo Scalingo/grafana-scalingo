@@ -1,4 +1,4 @@
-import cloneDeep from 'lodash/cloneDeep';
+import { cloneDeep } from 'lodash';
 
 import { QueryVariableModel, VariableRefresh } from '../types';
 import { initialQueryVariableModelState, queryVariableReducer } from './reducer';
@@ -21,7 +21,7 @@ export const createQueryVariableAdapter = (): VariableAdapter<QueryVariableModel
     picker: optionPickerFactory<QueryVariableModel>(),
     editor: QueryVariableEditor,
     dependsOn: (variable, variableToTest) => {
-      return containsVariable(variable.query, variable.datasource, variable.regex, variableToTest.name);
+      return containsVariable(variable.query, variable.datasource?.uid, variable.regex, variableToTest.name);
     },
     setValue: async (variable, option, emitChanges = false) => {
       await dispatch(setOptionAsCurrent(toVariableIdentifier(variable), option, emitChanges));

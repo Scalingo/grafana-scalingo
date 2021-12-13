@@ -7,19 +7,19 @@ import (
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/services/teamguardian"
 	"github.com/grafana/grafana/pkg/util"
 )
 
 // POST /api/teams
 func (hs *HTTPServer) CreateTeam(c *models.ReqContext, cmd models.CreateTeamCommand) response.Response {
-	cmd.OrgId = c.OrgId
-
 	if c.OrgRole == models.ROLE_VIEWER {
 		return response.Error(403, "Not allowed to create team.", nil)
 	}
 
-	if err := hs.Bus.Dispatch(&cmd); err != nil {
+	team, err := createTeam(hs.SQLStore, cmd.Name, cmd.Email, c.OrgId)
+	if err != nil {
 		if errors.Is(err, models.ErrTeamNameTaken) {
 			return response.Error(409, "Team name taken", err)
 		}
@@ -31,23 +31,17 @@ func (hs *HTTPServer) CreateTeam(c *models.ReqContext, cmd models.CreateTeamComm
 		// the SignedInUser is an empty struct therefore
 		// an additional check whether it is an actual user is required
 		if c.SignedInUser.IsRealUser() {
-			addMemberCmd := models.AddTeamMemberCommand{
-				UserId:     c.SignedInUser.UserId,
-				OrgId:      cmd.OrgId,
-				TeamId:     cmd.Result.Id,
-				Permission: models.PERMISSION_ADMIN,
-			}
-
-			if err := hs.Bus.Dispatch(&addMemberCmd); err != nil {
-				c.Logger.Error("Could not add creator to team.", "error", err)
+			if err := addTeamMember(hs.SQLStore, c.SignedInUser.UserId, c.OrgId, team.Id, false,
+				models.PERMISSION_ADMIN); err != nil {
+				c.Logger.Error("Could not add creator to team", "error", err)
 			}
 		} else {
-			c.Logger.Warn("Could not add creator to team because is not a real user.")
+			c.Logger.Warn("Could not add creator to team because is not a real user")
 		}
 	}
 
 	return response.JSON(200, &util.DynMap{
-		"teamId":  cmd.Result.Id,
+		"teamId":  team.Id,
 		"message": "Team created",
 	})
 }
@@ -61,7 +55,7 @@ func (hs *HTTPServer) UpdateTeam(c *models.ReqContext, cmd models.UpdateTeamComm
 		return response.Error(403, "Not allowed to update team", err)
 	}
 
-	if err := hs.Bus.Dispatch(&cmd); err != nil {
+	if err := hs.Bus.DispatchCtx(c.Req.Context(), &cmd); err != nil {
 		if errors.Is(err, models.ErrTeamNameTaken) {
 			return response.Error(400, "Team name taken", err)
 		}
@@ -81,7 +75,7 @@ func (hs *HTTPServer) DeleteTeamByID(c *models.ReqContext) response.Response {
 		return response.Error(403, "Not allowed to delete team", err)
 	}
 
-	if err := hs.Bus.Dispatch(&models.DeleteTeamCommand{OrgId: orgId, Id: teamId}); err != nil {
+	if err := hs.Bus.DispatchCtx(c.Req.Context(), &models.DeleteTeamCommand{OrgId: orgId, Id: teamId}); err != nil {
 		if errors.Is(err, models.ErrTeamNotFound) {
 			return response.Error(404, "Failed to delete Team. ID not found", nil)
 		}
@@ -117,7 +111,7 @@ func (hs *HTTPServer) SearchTeams(c *models.ReqContext) response.Response {
 		HiddenUsers:  hs.Cfg.HiddenUsers,
 	}
 
-	if err := bus.Dispatch(&query); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &query); err != nil {
 		return response.Error(500, "Failed to search Teams", err)
 	}
 
@@ -140,7 +134,7 @@ func (hs *HTTPServer) GetTeamByID(c *models.ReqContext) response.Response {
 		HiddenUsers:  hs.Cfg.HiddenUsers,
 	}
 
-	if err := bus.Dispatch(&query); err != nil {
+	if err := bus.DispatchCtx(c.Req.Context(), &query); err != nil {
 		if errors.Is(err, models.ErrTeamNotFound) {
 			return response.Error(404, "Team not found", err)
 		}
@@ -161,7 +155,7 @@ func (hs *HTTPServer) GetTeamPreferences(c *models.ReqContext) response.Response
 		return response.Error(403, "Not allowed to view team preferences.", err)
 	}
 
-	return getPreferencesFor(orgId, 0, teamId)
+	return hs.getPreferencesFor(c.Req.Context(), orgId, 0, teamId)
 }
 
 // PUT /api/teams/:teamId/preferences
@@ -173,5 +167,12 @@ func (hs *HTTPServer) UpdateTeamPreferences(c *models.ReqContext, dtoCmd dtos.Up
 		return response.Error(403, "Not allowed to update team preferences.", err)
 	}
 
-	return updatePreferencesFor(orgId, 0, teamId, &dtoCmd)
+	return hs.updatePreferencesFor(c.Req.Context(), orgId, 0, teamId, &dtoCmd)
+}
+
+// createTeam creates a team.
+//
+// Stubbable by tests.
+var createTeam = func(sqlStore *sqlstore.SQLStore, name, email string, orgID int64) (models.Team, error) {
+	return sqlStore.CreateTeam(name, email, orgID)
 }

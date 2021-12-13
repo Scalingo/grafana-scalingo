@@ -1,34 +1,31 @@
 import React, { PureComponent } from 'react';
-import { hot } from 'react-hot-loader';
 import { connect, ConnectedProps } from 'react-redux';
 import Page from 'app/core/components/Page/Page';
 import AlertRuleItem from './AlertRuleItem';
 import appEvents from 'app/core/app_events';
-import { updateLocation } from 'app/core/actions';
 import { getNavModel } from 'app/core/selectors/navModel';
-import { AlertDefinition, AlertRule, CoreEvents, StoreState } from 'app/types';
+import { AlertRule, StoreState } from 'app/types';
 import { getAlertRulesAsync, togglePauseAlertRule } from './state/actions';
 import { getAlertRuleItems, getSearchQuery } from './state/selectors';
-import { FilterInput } from 'app/core/components/FilterInput/FilterInput';
 import { SelectableValue } from '@grafana/data';
-import { config } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 import { setSearchQuery } from './state/reducers';
-import { Button, LinkButton, Select, VerticalGroup } from '@grafana/ui';
-import { AlertDefinitionItem } from './components/AlertDefinitionItem';
+import { Button, FilterInput, LinkButton, Select, VerticalGroup } from '@grafana/ui';
+import { GrafanaRouteComponentProps } from 'app/core/navigation/types';
+import { ShowModalReactEvent } from '../../types/events';
+import { AlertHowToModal } from './AlertHowToModal';
+import { UnifiedAlertingPromotion } from './components/UnifiedAlertingPromotion';
 
 function mapStateToProps(state: StoreState) {
   return {
     navModel: getNavModel(state.navIndex, 'alert-list'),
     alertRules: getAlertRuleItems(state),
-    stateFilter: state.location.query.state,
     search: getSearchQuery(state.alertRules),
     isLoading: state.alertRules.isLoading,
-    ngAlertDefinitions: state.alertDefinition.alertDefinitions,
   };
 }
 
 const mapDispatchToProps = {
-  updateLocation,
   getAlertRulesAsync,
   setSearchQuery,
   togglePauseAlertRule,
@@ -36,17 +33,17 @@ const mapDispatchToProps = {
 
 const connector = connect(mapStateToProps, mapDispatchToProps);
 
-interface OwnProps {}
+interface OwnProps extends GrafanaRouteComponentProps<{}, { state: string }> {}
 
 export type Props = OwnProps & ConnectedProps<typeof connector>;
 
-export class AlertRuleListUnconnected extends PureComponent<Props, any> {
+export class AlertRuleListUnconnected extends PureComponent<Props> {
   stateFilters = [
     { label: 'All', value: 'all' },
     { label: 'OK', value: 'ok' },
     { label: 'Not OK', value: 'not_ok' },
     { label: 'Alerting', value: 'alerting' },
-    { label: 'No Data', value: 'no_data' },
+    { label: 'No data', value: 'no_data' },
     { label: 'Paused', value: 'paused' },
     { label: 'Pending', value: 'pending' },
   ];
@@ -56,7 +53,7 @@ export class AlertRuleListUnconnected extends PureComponent<Props, any> {
   }
 
   componentDidUpdate(prevProps: Props) {
-    if (prevProps.stateFilter !== this.props.stateFilter) {
+    if (prevProps.queryParams.state !== this.props.queryParams.state) {
       this.fetchRules();
     }
   }
@@ -66,25 +63,15 @@ export class AlertRuleListUnconnected extends PureComponent<Props, any> {
   }
 
   getStateFilter(): string {
-    const { stateFilter } = this.props;
-    if (stateFilter) {
-      return stateFilter.toString();
-    }
-    return 'all';
+    return this.props.queryParams.state ?? 'all';
   }
 
   onStateFilterChanged = (option: SelectableValue) => {
-    this.props.updateLocation({
-      query: { state: option.value },
-    });
+    locationService.partial({ state: option.value });
   };
 
   onOpenHowTo = () => {
-    appEvents.emit(CoreEvents.showModal, {
-      src: 'public/app/features/alerting/partials/alert_howto.html',
-      modalClass: 'confirm-modal',
-      model: {},
-    });
+    appEvents.publish(new ShowModalReactEvent({ component: AlertHowToModal }));
   };
 
   onSearchQueryChange = (value: string) => {
@@ -111,19 +98,17 @@ export class AlertRuleListUnconnected extends PureComponent<Props, any> {
         <Page.Contents isLoading={isLoading}>
           <div className="page-action-bar">
             <div className="gf-form gf-form--grow">
-              <FilterInput
-                labelClassName="gf-form--has-input-icon gf-form--grow"
-                inputClassName="gf-form-input"
-                placeholder="Search alerts"
-                value={search}
-                onChange={this.onSearchQueryChange}
-              />
+              <FilterInput placeholder="Search alerts" value={search} onChange={this.onSearchQueryChange} />
             </div>
             <div className="gf-form">
-              <label className="gf-form-label">States</label>
+              <label className="gf-form-label" htmlFor="alert-state-filter">
+                States
+              </label>
 
               <div className="width-13">
                 <Select
+                  inputId={'alert-state-filter'}
+                  menuShouldPortal
                   options={this.stateFilters}
                   onChange={this.onStateFilterChanged}
                   value={this.getStateFilter()}
@@ -131,8 +116,8 @@ export class AlertRuleListUnconnected extends PureComponent<Props, any> {
               </div>
             </div>
             <div className="page-action-bar__spacer" />
-            {config.featureToggles.ngalert && (
-              <LinkButton variant="primary" href="alerting/new">
+            {config.unifiedAlertingEnabled && (
+              <LinkButton variant="primary" href="alerting/ng/new">
                 Add NG Alert
               </LinkButton>
             )}
@@ -140,24 +125,15 @@ export class AlertRuleListUnconnected extends PureComponent<Props, any> {
               How to add an alert
             </Button>
           </div>
+          <UnifiedAlertingPromotion />
           <VerticalGroup spacing="none">
-            {alertRules.map((rule, index) => {
-              // Alert definition has "title" as name property.
-              if (rule.hasOwnProperty('name')) {
-                return (
-                  <AlertRuleItem
-                    rule={rule as AlertRule}
-                    key={rule.id}
-                    search={search}
-                    onTogglePause={() => this.onTogglePause(rule as AlertRule)}
-                  />
-                );
-              }
+            {alertRules.map((rule) => {
               return (
-                <AlertDefinitionItem
-                  key={`${rule.id}-${index}`}
-                  alertDefinition={rule as AlertDefinition}
+                <AlertRuleItem
+                  rule={rule as AlertRule}
+                  key={rule.id}
                   search={search}
+                  onTogglePause={() => this.onTogglePause(rule as AlertRule)}
                 />
               );
             })}
@@ -168,4 +144,4 @@ export class AlertRuleListUnconnected extends PureComponent<Props, any> {
   }
 }
 
-export default hot(module)(connector(AlertRuleListUnconnected));
+export default connector(AlertRuleListUnconnected);

@@ -10,7 +10,7 @@ import {
 } from './reducer';
 import { variableAdapters } from '../adapters';
 import { AddVariable, toVariableIdentifier, toVariablePayload, VariableIdentifier } from '../state/types';
-import cloneDeep from 'lodash/cloneDeep';
+import { cloneDeep } from 'lodash';
 import { VariableType } from '@grafana/data';
 import { addVariable, removeVariable } from '../state/sharedReducer';
 import { updateOptions } from '../state/actions';
@@ -109,12 +109,10 @@ export const switchToListMode = (): ThunkResult<void> => (dispatch, getState) =>
   const state = getState();
   const variables = getEditorVariables(state);
   const dashboard = state.dashboard.getModel();
-  const { unknown, usages } = createUsagesNetwork(variables, dashboard);
-  const unknownsNetwork = transformUsagesToNetwork(unknown);
-  const unknownExits = Object.keys(unknown).length > 0;
+  const { usages } = createUsagesNetwork(variables, dashboard);
   const usagesNetwork = transformUsagesToNetwork(usages);
 
-  dispatch(initInspect({ unknown, usages, usagesNetwork, unknownsNetwork, unknownExits }));
+  dispatch(initInspect({ usages, usagesNetwork }));
 };
 
 export function getNextAvailableId(type: VariableType, variables: VariableModel[]): string {

@@ -23,10 +23,15 @@ import { silenceConsoleOutput } from '../../../../test/core/utils/silenceConsole
 import { notifyApp } from '../../../core/reducers/appNotification';
 import { expect } from '../../../../test/lib/common';
 import { TemplatingState } from './reducers';
+import { appEvents } from '../../../core/core';
 
 variableAdapters.setInit(() => [createIntervalVariableAdapter(), createConstantVariableAdapter()]);
 
+const dashboard = new DashboardModel({});
+
 const getTestContext = () => {
+  jest.clearAllMocks();
+
   const interval = intervalBuilder()
     .withId('interval-0')
     .withName('interval-0')
@@ -52,20 +57,19 @@ const getTestContext = () => {
   };
   const updateTimeRangeMock = jest.fn();
   const templateSrvMock = ({ updateTimeRange: updateTimeRangeMock } as unknown) as TemplateSrv;
-  const dependencies: OnTimeRangeUpdatedDependencies = { templateSrv: templateSrvMock };
+  const dependencies: OnTimeRangeUpdatedDependencies = { templateSrv: templateSrvMock, events: appEvents };
   const templateVariableValueUpdatedMock = jest.fn();
-  const dashboard = ({
-    getModel: () =>
-      (({
-        templateVariableValueUpdated: templateVariableValueUpdatedMock,
-        startRefresh: startRefreshMock,
-      } as unknown) as DashboardModel),
-  } as unknown) as DashboardState;
   const startRefreshMock = jest.fn();
+  const dashboardState = ({
+    getModel: () => {
+      dashboard.templateVariableValueUpdated = templateVariableValueUpdatedMock;
+      dashboard.startRefresh = startRefreshMock;
+      return dashboard;
+    },
+  } as unknown) as DashboardState;
   const adapter = variableAdapters.get('interval');
   const preloadedState = ({
-    dashboard,
-    location: { query: '' },
+    dashboard: dashboardState,
     templating: ({
       variables: {
         'interval-0': { ...interval },

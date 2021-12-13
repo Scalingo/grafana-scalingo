@@ -6,7 +6,7 @@ import { selectors } from '@grafana/e2e-selectors';
 import { LoadingState } from '@grafana/data';
 
 import { VariablePickerProps } from '../types';
-import { QueryVariableModel } from '../../types';
+import { QueryVariableModel, VariableWithMultiSupport, VariableWithOptions } from '../../types';
 import { queryBuilder } from '../../shared/testing/builders';
 import { optionPickerFactory } from './OptionsPicker';
 import { initialState, OptionsPickerState } from './reducer';
@@ -30,7 +30,7 @@ function setupTestContext({ pickerState = {}, variable = {} }: Args = {}) {
     ...variable,
   };
   const onVariableChange = jest.fn();
-  const props: VariablePickerProps<QueryVariableModel> = {
+  const props: VariablePickerProps<VariableWithMultiSupport | VariableWithOptions> = {
     variable: v,
     onVariableChange,
   };
@@ -56,11 +56,11 @@ function setupTestContext({ pickerState = {}, variable = {} }: Args = {}) {
 }
 
 function getSubMenu(text: string) {
-  return screen.getByLabelText(selectors.pages.Dashboard.SubMenu.submenuItemValueDropDownValueLinkTexts(text));
+  return screen.getByTestId(selectors.pages.Dashboard.SubMenu.submenuItemValueDropDownValueLinkTexts(text));
 }
 
 function getOption(text: string) {
-  return screen.getByLabelText(selectors.pages.Dashboard.SubMenu.submenuItemValueDropDownOptionTexts('A'));
+  return screen.getByTestId(selectors.pages.Dashboard.SubMenu.submenuItemValueDropDownOptionTexts('A'));
 }
 
 describe('OptionPicker', () => {
@@ -106,7 +106,7 @@ describe('OptionPicker', () => {
         variable: { ...defaultVariable, state: LoadingState.Loading },
       });
       expect(getSubMenu('A + C')).toBeInTheDocument();
-      expect(screen.getByLabelText('Loading indicator')).toBeInTheDocument();
+      expect(screen.getByLabelText(selectors.components.LoadingIndicator.icon)).toBeInTheDocument();
     });
 
     it('link text should not be clickable', () => {

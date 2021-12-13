@@ -22,5 +22,11 @@ export enum DataTransformerID {
   ensureColumns = 'ensureColumns',
   groupBy = 'groupBy',
   sortBy = 'sortBy',
+  histogram = 'histogram',
+  configFromData = 'configFromData',
+  rowsToFields = 'rowsToFields',
   prepareTimeSeries = 'prepareTimeSeries',
+  convertFieldType = 'convertFieldType',
+  fieldLookup = 'fieldLookup',
+  extractFields = 'extractFields',
 }

@@ -1,22 +1,20 @@
-// Libraries
 import React, { PureComponent } from 'react';
 import classNames from 'classnames';
 import { Subscription } from 'rxjs';
 import { connect, MapDispatchToProps, MapStateToProps } from 'react-redux';
-// Components
+import { AngularComponent, getAngularLoader, locationService } from '@grafana/runtime';
+import { getDefaultTimeRange, LoadingState, PanelData, PanelPlugin } from '@grafana/data';
+import { selectors } from '@grafana/e2e-selectors';
+
 import { PanelHeader } from './PanelHeader/PanelHeader';
-// Utils & Services
 import { getTimeSrv, TimeSrv } from '../services/TimeSrv';
-import { AngularComponent, getAngularLoader } from '@grafana/runtime';
-import { setPanelAngularComponent } from '../state/reducers';
+import { setPanelAngularComponent } from 'app/features/panel/state/reducers';
 import config from 'app/core/config';
-// Types
 import { DashboardModel, PanelModel } from '../state';
 import { StoreState } from 'app/types';
-import { getDefaultTimeRange, LoadingState, PanelData, PanelPlugin } from '@grafana/data';
 import { PANEL_BORDER } from 'app/core/constants';
-import { selectors } from '@grafana/e2e-selectors';
-import { RenderEvent } from 'app/types/events';
+import { isSoloRoute } from '../../../routes/utils';
+import { getPanelStateForModel } from 'app/features/panel/state/selectors';
 
 interface OwnProps {
   panel: PanelModel;
@@ -30,7 +28,7 @@ interface OwnProps {
 }
 
 interface ConnectedProps {
-  angularComponent?: AngularComponent | null;
+  angularComponent?: AngularComponent;
 }
 
 interface DispatchProps {
@@ -42,7 +40,6 @@ export type Props = OwnProps & ConnectedProps & DispatchProps;
 export interface State {
   data: PanelData;
   errorMessage?: string;
-  alertState?: string;
 }
 
 interface AngularScopeProps {
@@ -84,28 +81,7 @@ export class PanelChromeAngularUnconnected extends PureComponent<Props, State> {
         next: (data: PanelData) => this.onPanelDataUpdate(data),
       })
     );
-
-    this.subs.add(panel.events.subscribe(RenderEvent, this.onPanelRenderEvent));
   }
-
-  onPanelRenderEvent = (event: RenderEvent) => {
-    const { alertState } = this.state;
-    // graph sends these old render events with payloads
-    const payload = event.payload;
-
-    if (payload && payload.alertState && this.props.panel.alert) {
-      this.setState({ alertState: payload.alertState });
-    } else if (payload && payload.alertState && !this.props.panel.alert) {
-      // when user deletes alert in panel editor the source panel needs to refresh as this is in the mutable state and
-      // will not automatically re render
-      this.setState({ alertState: undefined });
-    } else if (payload && alertState) {
-      this.setState({ alertState: undefined });
-    } else {
-      // only needed for detecting title updates right now fix before 7.0
-      this.forceUpdate();
-    }
-  };
 
   onPanelDataUpdate(data: PanelData) {
     let errorMessage: string | undefined;
@@ -123,7 +99,6 @@ export class PanelChromeAngularUnconnected extends PureComponent<Props, State> {
   }
 
   componentWillUnmount() {
-    this.cleanUpAngularPanel();
     this.subs.unsubscribe();
   }
 
@@ -131,7 +106,6 @@ export class PanelChromeAngularUnconnected extends PureComponent<Props, State> {
     const { plugin, height, width, panel } = this.props;
 
     if (prevProps.plugin !== plugin) {
-      this.cleanUpAngularPanel();
       this.loadAngularPanel();
     }
 
@@ -179,29 +153,14 @@ export class PanelChromeAngularUnconnected extends PureComponent<Props, State> {
     };
 
     setPanelAngularComponent({
-      panelId: panel.id,
+      key: panel.key,
       angularComponent: loader.load(this.element, this.scopeProps, template),
     });
   }
 
-  cleanUpAngularPanel() {
-    const { angularComponent, setPanelAngularComponent, panel } = this.props;
-
-    if (angularComponent) {
-      angularComponent.destroy();
-    }
-
-    setPanelAngularComponent({ panelId: panel.id, angularComponent: null });
-  }
-
   hasOverlayHeader() {
     const { panel } = this.props;
-    const { errorMessage, data } = this.state;
-
-    // always show normal header if we have an error message
-    if (errorMessage) {
-      return false;
-    }
+    const { data } = this.state;
 
     // always show normal header if we have time override
     if (data.request && data.request.timeInfo) {
@@ -213,12 +172,14 @@ export class PanelChromeAngularUnconnected extends PureComponent<Props, State> {
 
   render() {
     const { dashboard, panel, isViewing, isEditing, plugin } = this.props;
-    const { errorMessage, data, alertState } = this.state;
+    const { errorMessage, data } = this.state;
     const { transparent } = panel;
+
+    const alertState = data.alertState?.state;
 
     const containerClassNames = classNames({
       'panel-container': true,
-      'panel-container--absolute': true,
+      'panel-container--absolute': isSoloRoute(locationService.getLocation().pathname),
       'panel-container--transparent': transparent,
       'panel-container--no-title': this.hasOverlayHeader(),
       'panel-has-alert': panel.alert !== undefined,
@@ -254,7 +215,7 @@ export class PanelChromeAngularUnconnected extends PureComponent<Props, State> {
 
 const mapStateToProps: MapStateToProps<ConnectedProps, OwnProps, StoreState> = (state, props) => {
   return {
-    angularComponent: state.dashboard.panels[props.panel.id].angularComponent,
+    angularComponent: getPanelStateForModel(state, props.panel)?.angularComponent,
   };
 };
 

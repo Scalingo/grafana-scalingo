@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,11 +18,12 @@ type configReader interface {
 }
 
 type configReaderImpl struct {
-	log log.Logger
+	log         log.Logger
+	pluginStore plugins.Store
 }
 
-func newConfigReader(logger log.Logger) configReader {
-	return &configReaderImpl{log: logger}
+func newConfigReader(logger log.Logger, pluginStore plugins.Store) configReader {
+	return &configReaderImpl{log: logger, pluginStore: pluginStore}
 }
 
 func (cr *configReaderImpl) readConfig(path string) ([]*pluginsAsConfig, error) {
@@ -55,7 +57,7 @@ func (cr *configReaderImpl) readConfig(path string) ([]*pluginsAsConfig, error) 
 
 	checkOrgIDAndOrgName(apps)
 
-	err = validatePluginsConfig(apps)
+	err = cr.validatePluginsConfig(apps)
 	if err != nil {
 		return nil, err
 	}
@@ -105,15 +107,15 @@ func validateRequiredField(apps []*pluginsAsConfig) error {
 	return nil
 }
 
-func validatePluginsConfig(apps []*pluginsAsConfig) error {
+func (cr *configReaderImpl) validatePluginsConfig(apps []*pluginsAsConfig) error {
 	for i := range apps {
 		if apps[i].Apps == nil {
 			continue
 		}
 
 		for _, app := range apps[i].Apps {
-			if !plugins.IsAppInstalled(app.PluginID) {
-				return fmt.Errorf("app plugin not installed: %s", app.PluginID)
+			if _, exists := cr.pluginStore.Plugin(context.TODO(), app.PluginID); !exists {
+				return fmt.Errorf("plugin not installed: %q", app.PluginID)
 			}
 		}
 	}

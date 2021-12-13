@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { css } from 'emotion';
+import { css } from '@emotion/css';
 import { Button, DataLinkInput, stylesFactory, LegacyForms } from '@grafana/ui';
 import { VariableSuggestion } from '@grafana/data';
+import { DataSourcePicker } from '@grafana/runtime';
 import { DerivedFieldConfig } from '../types';
-import { DataSourcePicker } from 'app/core/components/Select/DataSourcePicker';
 import { usePrevious } from 'react-use';
 
 const { Switch, FormField } = LegacyForms;
@@ -18,6 +18,12 @@ const getStyles = stylesFactory(() => ({
   `,
   regexField: css`
     flex: 3;
+  `,
+  urlField: css`
+    flex: 1;
+  `,
+  urlDisplayLabelField: css`
+    flex: 1;
   `,
 }));
 
@@ -89,26 +95,34 @@ export const DerivedField = (props: Props) => {
         />
       </div>
 
-      <FormField
-        label={showInternalLink ? 'Query' : 'URL'}
-        labelWidth={5}
-        inputEl={
-          <DataLinkInput
-            placeholder={showInternalLink ? '${__value.raw}' : 'http://example.com/${__value.raw}'}
-            value={value.url || ''}
-            onChange={(newValue) =>
-              onChange({
-                ...value,
-                url: newValue,
-              })
-            }
-            suggestions={suggestions}
-          />
-        }
-        className={css`
-          width: 100%;
-        `}
-      />
+      <div className={styles.row}>
+        <FormField
+          label={showInternalLink ? 'Query' : 'URL'}
+          inputEl={
+            <DataLinkInput
+              placeholder={showInternalLink ? '${__value.raw}' : 'http://example.com/${__value.raw}'}
+              value={value.url || ''}
+              onChange={(newValue) =>
+                onChange({
+                  ...value,
+                  url: newValue,
+                })
+              }
+              suggestions={suggestions}
+            />
+          }
+          className={styles.urlField}
+        />
+        <FormField
+          className={styles.urlDisplayLabelField}
+          inputWidth={null}
+          label="URL Label"
+          type="text"
+          value={value.urlDisplayLabel}
+          onChange={handleChange('urlDisplayLabel')}
+          tooltip={'Use to override the button label when this derived field is found in a log.'}
+        />
+      </div>
 
       <div className={styles.row}>
         <Switch

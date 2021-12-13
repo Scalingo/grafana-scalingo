@@ -1,5 +1,5 @@
 import { AnyAction } from 'redux';
-import isEqual from 'lodash/isEqual';
+import { isEqual } from 'lodash';
 
 import {
   DEFAULT_RANGE,
@@ -8,6 +8,7 @@ import {
   ensureQueries,
   generateNewKeyAndAddRefIdIfMissing,
   getTimeRangeFromUrl,
+  ExploreGraphStyle,
 } from 'app/core/utils/explore';
 import { ExploreId, ExploreItemState } from 'app/types/explore';
 import { queryReducer, runQueries, setQueriesAction } from './query';
@@ -19,21 +20,13 @@ import {
   loadAndInitDatasource,
   createEmptyQueryResponse,
   getUrlStateFromPaneState,
+  storeGraphStyle,
 } from './utils';
 import { createAction, PayloadAction } from '@reduxjs/toolkit';
-import {
-  EventBusExtended,
-  DataQuery,
-  ExploreUrlState,
-  LogLevel,
-  LogsDedupStrategy,
-  TimeRange,
-  HistoryItem,
-  DataSourceApi,
-} from '@grafana/data';
+import { EventBusExtended, DataQuery, ExploreUrlState, TimeRange, HistoryItem, DataSourceApi } from '@grafana/data';
 // Types
 import { ThunkResult } from 'app/types';
-import { getTimeZone } from 'app/features/profile/state/selectors';
+import { getFiscalYearStartMonth, getTimeZone } from 'app/features/profile/state/selectors';
 import { getDataSourceSrv } from '@grafana/runtime';
 import { getRichHistory } from '../../../core/utils/richHistory';
 import { richHistoryUpdatedAction } from './main';
@@ -54,26 +47,6 @@ export interface ChangeSizePayload {
 export const changeSizeAction = createAction<ChangeSizePayload>('explore/changeSize');
 
 /**
- * Change deduplication strategy for logs.
- */
-export interface ChangeDedupStrategyPayload {
-  exploreId: ExploreId;
-  dedupStrategy: LogsDedupStrategy;
-}
-export const changeDedupStrategyAction = createAction<ChangeDedupStrategyPayload>('explore/changeDedupStrategyAction');
-
-/**
- * Highlight expressions in the log results
- */
-export interface HighlightLogsExpressionPayload {
-  exploreId: ExploreId;
-  expressions: string[];
-}
-export const highlightLogsExpressionAction = createAction<HighlightLogsExpressionPayload>(
-  'explore/highlightLogsExpression'
-);
-
-/**
  * Initialize Explore state with state from the URL and the React component.
  * Call this only on components for with the Explore state has not been initialized.
  */
@@ -88,12 +61,6 @@ export interface InitializeExplorePayload {
   originPanelId?: number | null;
 }
 export const initializeExploreAction = createAction<InitializeExplorePayload>('explore/initializeExplore');
-
-export interface ToggleLogLevelPayload {
-  exploreId: ExploreId;
-  hiddenLogLevels: LogLevel[];
-}
-export const toggleLogLevelAction = createAction<ToggleLogLevelPayload>('explore/toggleLogLevel');
 
 export interface SetUrlReplacedPayload {
   exploreId: ExploreId;
@@ -111,15 +78,19 @@ export function changeSize(
   return changeSizeAction({ exploreId, height, width });
 }
 
-/**
- * Change logs deduplication strategy.
- */
-export const changeDedupStrategy = (
-  exploreId: ExploreId,
-  dedupStrategy: LogsDedupStrategy
-): PayloadAction<ChangeDedupStrategyPayload> => {
-  return changeDedupStrategyAction({ exploreId, dedupStrategy });
-};
+interface ChangeGraphStylePayload {
+  exploreId: ExploreId;
+  graphStyle: ExploreGraphStyle;
+}
+
+const changeGraphStyleAction = createAction<ChangeGraphStylePayload>('explore/changeGraphStyle');
+
+export function changeGraphStyle(exploreId: ExploreId, graphStyle: ExploreGraphStyle): ThunkResult<void> {
+  return async (dispatch, getState) => {
+    storeGraphStyle(graphStyle);
+    dispatch(changeGraphStyleAction({ exploreId, graphStyle }));
+  };
+}
 
 /**
  * Initialize Explore state with state from the URL and the React component.
@@ -198,7 +169,8 @@ export function refreshExplore(exploreId: ExploreId, newUrlQuery: string): Thunk
     }
 
     const timeZone = getTimeZone(getState().user);
-    const range = getTimeRangeFromUrl(urlRange, timeZone);
+    const fiscalYearStartMonth = getFiscalYearStartMonth(getState().user);
+    const range = getTimeRangeFromUrl(urlRange, timeZone, fiscalYearStartMonth);
 
     // commit changes based on the diff of new url vs old url
 
@@ -244,23 +216,9 @@ export const paneReducer = (state: ExploreItemState = makeExplorePaneState(), ac
     return { ...state, containerWidth };
   }
 
-  if (highlightLogsExpressionAction.match(action)) {
-    const { expressions: newExpressions } = action.payload;
-    const { logsHighlighterExpressions: currentExpressions } = state;
-
-    return {
-      ...state,
-      // Prevents re-renders. As logsHighlighterExpressions [] comes from datasource, we cannot control if it returns new array or not.
-      logsHighlighterExpressions: isEqual(newExpressions, currentExpressions) ? currentExpressions : newExpressions,
-    };
-  }
-
-  if (changeDedupStrategyAction.match(action)) {
-    const { dedupStrategy } = action.payload;
-    return {
-      ...state,
-      dedupStrategy,
-    };
+  if (changeGraphStyleAction.match(action)) {
+    const { graphStyle } = action.payload;
+    return { ...state, graphStyle };
   }
 
   if (initializeExploreAction.match(action)) {
@@ -279,15 +237,7 @@ export const paneReducer = (state: ExploreItemState = makeExplorePaneState(), ac
       history,
       datasourceMissing: !datasourceInstance,
       queryResponse: createEmptyQueryResponse(),
-      logsHighlighterExpressions: undefined,
-    };
-  }
-
-  if (toggleLogLevelAction.match(action)) {
-    const { hiddenLogLevels } = action.payload;
-    return {
-      ...state,
-      hiddenLogLevels: Array.from(hiddenLogLevels),
+      cache: [],
     };
   }
 

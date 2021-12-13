@@ -74,6 +74,7 @@ exports[`Render should render users table 1`] = `
         className="width-2 text-center"
       >
         <img
+          alt="User avatar"
           className="filter-table__avatar"
           src="url/to/avatar"
         />
@@ -115,12 +116,15 @@ exports[`Render should render users table 1`] = `
         className="width-8"
       >
         <OrgRolePicker
+          aria-label="Role"
+          disabled={false}
           onChange={[Function]}
           value="Admin"
         />
       </td>
       <td>
         <Button
+          aria-label="Delete user"
           icon="times"
           onClick={[Function]}
           size="sm"
@@ -143,6 +147,7 @@ exports[`Render should render users table 1`] = `
         className="width-2 text-center"
       >
         <img
+          alt="User avatar"
           className="filter-table__avatar"
           src="url/to/avatar"
         />
@@ -184,12 +189,15 @@ exports[`Render should render users table 1`] = `
         className="width-8"
       >
         <OrgRolePicker
+          aria-label="Role"
+          disabled={false}
           onChange={[Function]}
           value="Admin"
         />
       </td>
       <td>
         <Button
+          aria-label="Delete user"
           icon="times"
           onClick={[Function]}
           size="sm"
@@ -212,6 +220,7 @@ exports[`Render should render users table 1`] = `
         className="width-2 text-center"
       >
         <img
+          alt="User avatar"
           className="filter-table__avatar"
           src="url/to/avatar"
         />
@@ -253,12 +262,15 @@ exports[`Render should render users table 1`] = `
         className="width-8"
       >
         <OrgRolePicker
+          aria-label="Role"
+          disabled={false}
           onChange={[Function]}
           value="Admin"
         />
       </td>
       <td>
         <Button
+          aria-label="Delete user"
           icon="times"
           onClick={[Function]}
           size="sm"
@@ -281,6 +293,7 @@ exports[`Render should render users table 1`] = `
         className="width-2 text-center"
       >
         <img
+          alt="User avatar"
           className="filter-table__avatar"
           src="url/to/avatar"
         />
@@ -322,12 +335,15 @@ exports[`Render should render users table 1`] = `
         className="width-8"
       >
         <OrgRolePicker
+          aria-label="Role"
+          disabled={false}
           onChange={[Function]}
           value="Admin"
         />
       </td>
       <td>
         <Button
+          aria-label="Delete user"
           icon="times"
           onClick={[Function]}
           size="sm"
@@ -350,6 +366,7 @@ exports[`Render should render users table 1`] = `
         className="width-2 text-center"
       >
         <img
+          alt="User avatar"
           className="filter-table__avatar"
           src="url/to/avatar"
         />
@@ -391,12 +408,15 @@ exports[`Render should render users table 1`] = `
         className="width-8"
       >
         <OrgRolePicker
+          aria-label="Role"
+          disabled={false}
           onChange={[Function]}
           value="Admin"
         />
       </td>
       <td>
         <Button
+          aria-label="Delete user"
           icon="times"
           onClick={[Function]}
           size="sm"
@@ -419,6 +439,7 @@ exports[`Render should render users table 1`] = `
         className="width-2 text-center"
       >
         <img
+          alt="User avatar"
           className="filter-table__avatar"
           src="url/to/avatar"
         />
@@ -460,12 +481,15 @@ exports[`Render should render users table 1`] = `
         className="width-8"
       >
         <OrgRolePicker
+          aria-label="Role"
+          disabled={false}
           onChange={[Function]}
           value="Admin"
         />
       </td>
       <td>
         <Button
+          aria-label="Delete user"
           icon="times"
           onClick={[Function]}
           size="sm"

@@ -265,7 +265,7 @@ func canSaveByDashboardID(c *models.ReqContext, dashboardID int64) (bool, error)
 	}
 
 	if dashboardID != 0 {
-		guard := guardian.New(dashboardID, c.OrgId, c.SignedInUser)
+		guard := guardian.New(c.Req.Context(), dashboardID, c.OrgId, c.SignedInUser)
 		if canEdit, err := guard.CanEdit(); err != nil || !canEdit {
 			return false, err
 		}
@@ -287,4 +287,20 @@ func canSave(c *models.ReqContext, repo annotations.Repository, annotationID int
 	}
 
 	return nil
+}
+
+func GetAnnotationTags(c *models.ReqContext) response.Response {
+	query := &annotations.TagsQuery{
+		OrgID: c.OrgId,
+		Tag:   c.Query("tag"),
+		Limit: c.QueryInt64("limit"),
+	}
+
+	repo := annotations.GetRepository()
+	result, err := repo.FindTags(query)
+	if err != nil {
+		return response.Error(500, "Failed to find annotation tags", err)
+	}
+
+	return response.JSON(200, annotations.GetAnnotationTagsResponse{Result: result})
 }

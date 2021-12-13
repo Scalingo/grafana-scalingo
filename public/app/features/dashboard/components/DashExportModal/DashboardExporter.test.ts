@@ -1,16 +1,13 @@
-import _ from 'lodash';
+import { find } from 'lodash';
 import config from 'app/core/config';
-import { DashboardExporter } from './DashboardExporter';
+import { DashboardExporter, LibraryElementExport } from './DashboardExporter';
 import { DashboardModel } from '../../state/DashboardModel';
-import { PanelPluginMeta } from '@grafana/data';
+import { DataSourceInstanceSettings, DataSourceRef, PanelPluginMeta } from '@grafana/data';
 import { variableAdapters } from '../../../variables/adapters';
 import { createConstantVariableAdapter } from '../../../variables/constant/adapter';
 import { createQueryVariableAdapter } from '../../../variables/query/adapter';
 import { createDataSourceVariableAdapter } from '../../../variables/datasource/adapter';
-
-function getStub(arg: string) {
-  return Promise.resolve(stubs[arg || 'gfdb']);
-}
+import { LibraryElementKind } from '../../../library-panels/types';
 
 jest.mock('app/core/store', () => {
   return {
@@ -21,9 +18,16 @@ jest.mock('app/core/store', () => {
 
 jest.mock('@grafana/runtime', () => ({
   ...((jest.requireActual('@grafana/runtime') as unknown) as object),
-  getDataSourceSrv: () => ({
-    get: jest.fn((arg) => getStub(arg)),
-  }),
+  getDataSourceSrv: () => {
+    return {
+      get: (v: any) => {
+        const s = getStubInstanceSettings(v);
+        // console.log('GET', v, s);
+        return Promise.resolve(s);
+      },
+      getInstanceSettings: getStubInstanceSettings,
+    };
+  },
   config: {
     buildInfo: {},
     panels: {},
@@ -47,7 +51,7 @@ describe('given dashboard with repeated panels', () => {
           {
             name: 'apps',
             type: 'query',
-            datasource: 'gfdb',
+            datasource: { uid: 'gfdb', type: 'testdb' },
             current: { value: 'Asd', text: 'Asd' },
             options: [{ value: 'Asd', text: 'Asd' }],
           },
@@ -76,18 +80,27 @@ describe('given dashboard with repeated panels', () => {
         ],
       },
       panels: [
-        { id: 6, datasource: 'gfdb', type: 'graph' },
+        { id: 6, datasource: { uid: 'gfdb', type: 'testdb' }, type: 'graph' },
         { id: 7 },
         {
           id: 8,
-          datasource: '-- Mixed --',
-          targets: [{ datasource: 'other' }],
+          datasource: { uid: '-- Mixed --', type: 'mixed' },
+          targets: [{ datasource: { uid: 'other', type: 'other' } }],
         },
-        { id: 9, datasource: '$ds' },
+        { id: 9, datasource: { uid: '$ds', type: 'other2' } },
+        {
+          id: 17,
+          datasource: { uid: '$ds', type: 'other2' },
+          type: 'graph',
+          libraryPanel: {
+            name: 'Library Panel 2',
+            uid: 'ah8NqyDPs',
+          },
+        },
         {
           id: 2,
           repeat: 'apps',
-          datasource: 'gfdb',
+          datasource: { uid: 'gfdb', type: 'testdb' },
           type: 'graph',
         },
         { id: 3, repeat: null, repeatPanelId: 2 },
@@ -95,21 +108,30 @@ describe('given dashboard with repeated panels', () => {
           id: 4,
           collapsed: true,
           panels: [
-            { id: 10, datasource: 'gfdb', type: 'table' },
+            { id: 10, datasource: { uid: 'gfdb', type: 'testdb' }, type: 'table' },
             { id: 11 },
             {
               id: 12,
-              datasource: '-- Mixed --',
-              targets: [{ datasource: 'other' }],
+              datasource: { uid: '-- Mixed --', type: 'mixed' },
+              targets: [{ datasource: { uid: 'other', type: 'other' } }],
             },
-            { id: 13, datasource: '$ds' },
+            { id: 13, datasource: { uid: '$uid', type: 'other' } },
             {
               id: 14,
               repeat: 'apps',
-              datasource: 'gfdb',
+              datasource: { uid: 'gfdb', type: 'testdb' },
               type: 'heatmap',
             },
             { id: 15, repeat: null, repeatPanelId: 14 },
+            {
+              id: 16,
+              datasource: { uid: 'gfdb', type: 'testdb' },
+              type: 'graph',
+              libraryPanel: {
+                name: 'Library Panel',
+                uid: 'jL6MrxCMz',
+              },
+            },
           ],
         },
       ],
@@ -145,16 +167,16 @@ describe('given dashboard with repeated panels', () => {
 
   it('should replace datasource refs', () => {
     const panel = exported.panels[0];
-    expect(panel.datasource).toBe('${DS_GFDB}');
+    expect(panel.datasource.uid).toBe('${DS_GFDB}');
   });
 
   it('should replace datasource refs in collapsed row', () => {
-    const panel = exported.panels[5].panels[0];
-    expect(panel.datasource).toBe('${DS_GFDB}');
+    const panel = exported.panels[6].panels[0];
+    expect(panel.datasource.uid).toBe('${DS_GFDB}');
   });
 
   it('should replace datasource in variable query', () => {
-    expect(exported.templating.list[0].datasource).toBe('${DS_GFDB}');
+    expect(exported.templating.list[0].datasource.uid).toBe('${DS_GFDB}');
     expect(exported.templating.list[0].options.length).toBe(0);
     expect(exported.templating.list[0].current.value).toBe(undefined);
     expect(exported.templating.list[0].current.text).toBe(undefined);
@@ -171,7 +193,7 @@ describe('given dashboard with repeated panels', () => {
   });
 
   it('should add datasource to required', () => {
-    const require: any = _.find(exported.__requires, { name: 'TestDB' });
+    const require: any = find(exported.__requires, { name: 'TestDB' });
     expect(require.name).toBe('TestDB');
     expect(require.id).toBe('testdb');
     expect(require.type).toBe('datasource');
@@ -179,52 +201,52 @@ describe('given dashboard with repeated panels', () => {
   });
 
   it('should not add built in datasources to required', () => {
-    const require: any = _.find(exported.__requires, { name: 'Mixed' });
+    const require: any = find(exported.__requires, { name: 'Mixed' });
     expect(require).toBe(undefined);
   });
 
   it('should add datasources used in mixed mode', () => {
-    const require: any = _.find(exported.__requires, { name: 'OtherDB' });
+    const require: any = find(exported.__requires, { name: 'OtherDB' });
     expect(require).not.toBe(undefined);
   });
 
   it('should add graph panel to required', () => {
-    const require: any = _.find(exported.__requires, { name: 'Graph' });
+    const require: any = find(exported.__requires, { name: 'Graph' });
     expect(require.name).toBe('Graph');
     expect(require.id).toBe('graph');
     expect(require.version).toBe('1.1.0');
   });
 
   it('should add table panel to required', () => {
-    const require: any = _.find(exported.__requires, { name: 'Table' });
+    const require: any = find(exported.__requires, { name: 'Table' });
     expect(require.name).toBe('Table');
     expect(require.id).toBe('table');
     expect(require.version).toBe('1.1.1');
   });
 
   it('should add heatmap panel to required', () => {
-    const require: any = _.find(exported.__requires, { name: 'Heatmap' });
+    const require: any = find(exported.__requires, { name: 'Heatmap' });
     expect(require.name).toBe('Heatmap');
     expect(require.id).toBe('heatmap');
     expect(require.version).toBe('1.1.2');
   });
 
   it('should add grafana version', () => {
-    const require: any = _.find(exported.__requires, { name: 'Grafana' });
+    const require: any = find(exported.__requires, { name: 'Grafana' });
     expect(require.type).toBe('grafana');
     expect(require.id).toBe('grafana');
     expect(require.version).toBe('3.0.2');
   });
 
   it('should add constant template variables as inputs', () => {
-    const input: any = _.find(exported.__inputs, { name: 'VAR_PREFIX' });
+    const input: any = find(exported.__inputs, { name: 'VAR_PREFIX' });
     expect(input.type).toBe('constant');
     expect(input.label).toBe('prefix');
     expect(input.value).toBe('collectd');
   });
 
   it('should templatize constant variables', () => {
-    const variable: any = _.find(exported.templating.list, { name: 'prefix' });
+    const variable: any = find(exported.templating.list, { name: 'prefix' });
     expect(variable.query).toBe('${VAR_PREFIX}');
     expect(variable.current.text).toBe('${VAR_PREFIX}');
     expect(variable.current.value).toBe('${VAR_PREFIX}');
@@ -233,10 +255,44 @@ describe('given dashboard with repeated panels', () => {
   });
 
   it('should add datasources only use via datasource variable to requires', () => {
-    const require: any = _.find(exported.__requires, { name: 'OtherDB_2' });
+    const require: any = find(exported.__requires, { name: 'OtherDB_2' });
     expect(require.id).toBe('other2');
   });
+
+  it('should add library panels as elements', () => {
+    const element: LibraryElementExport = exported.__elements.find(
+      (element: LibraryElementExport) => element.uid === 'ah8NqyDPs'
+    );
+    expect(element.name).toBe('Library Panel 2');
+    expect(element.kind).toBe(LibraryElementKind.Panel);
+    expect(element.model).toEqual({
+      id: 17,
+      datasource: { type: 'other2', uid: '$ds' },
+      type: 'graph',
+    });
+  });
+
+  it('should add library panels in collapsed rows as elements', () => {
+    const element: LibraryElementExport = exported.__elements.find(
+      (element: LibraryElementExport) => element.uid === 'jL6MrxCMz'
+    );
+    expect(element.name).toBe('Library Panel');
+    expect(element.kind).toBe(LibraryElementKind.Panel);
+    expect(element.model).toEqual({
+      id: 16,
+      type: 'graph',
+      datasource: {
+        type: 'testdb',
+        uid: '${DS_GFDB}',
+      },
+    });
+  });
 });
+
+function getStubInstanceSettings(v: string | DataSourceRef): DataSourceInstanceSettings {
+  let key = (v as DataSourceRef)?.type ?? v;
+  return (stubs[(key as any) ?? 'gfdb'] ?? stubs['gfdb']) as any;
+}
 
 // Stub responses
 const stubs: { [key: string]: {} } = {};

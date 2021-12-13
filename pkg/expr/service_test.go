@@ -11,21 +11,39 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana/pkg/bus"
+	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/tsdb"
+	"github.com/grafana/grafana/pkg/services/secrets/fakes"
+	secretsManager "github.com/grafana/grafana/pkg/services/secrets/manager"
+	"github.com/grafana/grafana/pkg/setting"
 	"github.com/stretchr/testify/require"
 )
 
 func TestService(t *testing.T) {
 	dsDF := data.NewFrame("test",
-		data.NewField("time", nil, []*time.Time{utp(1)}),
+		data.NewField("time", nil, []time.Time{time.Unix(1, 0)}),
 		data.NewField("value", nil, []*float64{fp(2)}))
 
-	registerEndPoint(dsDF)
+	me := &mockEndpoint{
+		Frames: []*data.Frame{dsDF},
+	}
 
-	s := Service{}
+	cfg := setting.NewCfg()
 
-	queries := []backend.DataQuery{
+	secretsService := secretsManager.SetupTestService(t, fakes.NewFakeSecretsStore())
+
+	s := Service{
+		cfg:            cfg,
+		dataService:    me,
+		secretsService: secretsService,
+	}
+
+	bus.AddHandlerCtx("test", func(_ context.Context, query *models.GetDataSourceQuery) error {
+		query.Result = &models.DataSource{Id: 1, OrgId: 1, Type: "test", JsonData: simplejson.New()}
+		return nil
+	})
+
+	queries := []Query{
 		{
 			RefID: "A",
 			JSON:  json.RawMessage(`{ "datasource": "test", "datasourceId": 1, "orgId": 1, "intervalMs": 1000, "maxDataPoints": 1000 }`),
@@ -36,7 +54,7 @@ func TestService(t *testing.T) {
 		},
 	}
 
-	req := &backend.QueryDataRequest{Queries: queries}
+	req := &Request{Queries: queries}
 
 	pl, err := s.BuildPipeline(req)
 	require.NoError(t, err)
@@ -45,7 +63,7 @@ func TestService(t *testing.T) {
 	require.NoError(t, err)
 
 	bDF := data.NewFrame("",
-		data.NewField("Time", nil, []*time.Time{utp(1)}),
+		data.NewField("Time", nil, []time.Time{time.Unix(1, 0)}),
 		data.NewField("B", nil, []*float64{fp(4)}))
 	bDF.RefID = "B"
 
@@ -74,11 +92,6 @@ func TestService(t *testing.T) {
 	}
 }
 
-func utp(sec int64) *time.Time {
-	t := time.Unix(sec, 0)
-	return &t
-}
-
 func fp(f float64) *float64 {
 	return &f
 }
@@ -87,27 +100,10 @@ type mockEndpoint struct {
 	Frames data.Frames
 }
 
-func (me *mockEndpoint) Query(ctx context.Context, ds *models.DataSource, query *tsdb.TsdbQuery) (*tsdb.Response, error) {
-	return &tsdb.Response{
-		Results: map[string]*tsdb.QueryResult{
-			"A": {
-				Dataframes: tsdb.NewDecodedDataFrames(me.Frames),
-			},
-		},
-	}, nil
-}
-
-func registerEndPoint(df ...*data.Frame) {
-	me := &mockEndpoint{
-		Frames: df,
+func (me *mockEndpoint) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+	resp := backend.NewQueryDataResponse()
+	resp.Responses["A"] = backend.DataResponse{
+		Frames: me.Frames,
 	}
-	endpoint := func(dsInfo *models.DataSource) (tsdb.TsdbQueryEndpoint, error) {
-		return me, nil
-	}
-
-	tsdb.RegisterTsdbQueryEndpoint("test", endpoint)
-	bus.AddHandler("test", func(query *models.GetDataSourceQuery) error {
-		query.Result = &models.DataSource{Id: 1, OrgId: 1, Type: "test"}
-		return nil
-	})
+	return resp, nil
 }

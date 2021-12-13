@@ -5,10 +5,10 @@ import { TableCellDisplayMode, TableCellProps } from './types';
 import tinycolor from 'tinycolor2';
 import { TableStyles } from './styles';
 import { FilterActions } from './FilterActions';
-import { getTextColorForBackground } from '../../utils';
+import { getTextColorForBackground, getCellLinks } from '../../utils';
 
 export const DefaultCell: FC<TableCellProps> = (props) => {
-  const { field, cell, tableStyles, cellProps } = props;
+  const { field, cell, tableStyles, row, cellProps } = props;
 
   const displayValue = field.display!(cell.value);
 
@@ -22,9 +22,16 @@ export const DefaultCell: FC<TableCellProps> = (props) => {
   const cellStyle = getCellStyle(tableStyles, field, displayValue);
   const showFilters = field.config.filterable;
 
+  const { link, onClick } = getCellLinks(field, row);
+
   return (
     <div {...cellProps} className={cellStyle}>
-      <div className={tableStyles.cellText}>{value}</div>
+      {!link && <div className={tableStyles.cellText}>{value}</div>}
+      {link && (
+        <a href={link.href} onClick={onClick} target={link.target} title={link.title} className={tableStyles.cellLink}>
+          {value}
+        </a>
+      )}
       {showFilters && cell.value !== undefined && <FilterActions {...props} />}
     </div>
   );
@@ -33,6 +40,12 @@ export const DefaultCell: FC<TableCellProps> = (props) => {
 function getCellStyle(tableStyles: TableStyles, field: Field, displayValue: DisplayValue) {
   if (field.config.custom?.displayMode === TableCellDisplayMode.ColorText) {
     return tableStyles.buildCellContainerStyle(displayValue.color);
+  }
+
+  if (field.config.custom?.displayMode === TableCellDisplayMode.ColorBackgroundSolid) {
+    const bgColor = tinycolor(displayValue.color);
+    const textColor = getTextColorForBackground(displayValue.color!);
+    return tableStyles.buildCellContainerStyle(textColor, bgColor.toRgbString());
   }
 
   if (field.config.custom?.displayMode === TableCellDisplayMode.ColorBackground) {

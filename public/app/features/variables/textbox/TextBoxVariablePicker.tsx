@@ -37,7 +37,7 @@ export function TextBoxVariablePicker({ variable, onVariableChange }: Props): Re
     }
 
     variableAdapters.get(variable.type).updateOptions(variable);
-  }, [dispatch, variable, updatedValue]);
+  }, [variable, updatedValue, dispatch, onVariableChange]);
 
   const onChange = useCallback((event: ChangeEvent<HTMLInputElement>) => setUpdatedValue(event.target.value), [
     setUpdatedValue,
@@ -46,9 +46,20 @@ export function TextBoxVariablePicker({ variable, onVariableChange }: Props): Re
   const onBlur = (e: FocusEvent<HTMLInputElement>) => updateVariable();
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.keyCode === 13) {
+      event.preventDefault();
       updateVariable();
     }
   };
 
-  return <Input type="text" value={updatedValue} onChange={onChange} onBlur={onBlur} onKeyDown={onKeyDown} />;
+  return (
+    <Input
+      type="text"
+      value={updatedValue}
+      onChange={onChange}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
+      placeholder="Enter variable value"
+      id={variable.id}
+    />
+  );
 }

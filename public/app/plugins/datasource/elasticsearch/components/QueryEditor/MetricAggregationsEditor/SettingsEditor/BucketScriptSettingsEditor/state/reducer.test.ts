@@ -48,7 +48,7 @@ describe('BucketScript Settings Reducer', () => {
       pipelineAgg: '',
     };
 
-    reducerTester()
+    reducerTester<PipelineVariable[]>()
       .givenReducer(reducer, [firstVar, secondVar])
       .whenActionIsDispatched(removePipelineVariable(0))
       .thenStateShouldEqual([secondVar]);
@@ -70,9 +70,9 @@ describe('BucketScript Settings Reducer', () => {
       name: 'new name',
     };
 
-    reducerTester()
+    reducerTester<PipelineVariable[]>()
       .givenReducer(reducer, [firstVar, secondVar])
-      .whenActionIsDispatched(renamePipelineVariable(expectedSecondVar.name, 1))
+      .whenActionIsDispatched(renamePipelineVariable({ newName: expectedSecondVar.name, index: 1 }))
       .thenStateShouldEqual([firstVar, expectedSecondVar]);
   });
 
@@ -92,9 +92,9 @@ describe('BucketScript Settings Reducer', () => {
       pipelineAgg: 'some new agg',
     };
 
-    reducerTester()
+    reducerTester<PipelineVariable[]>()
       .givenReducer(reducer, [firstVar, secondVar])
-      .whenActionIsDispatched(changePipelineVariableMetric(expectedSecondVar.pipelineAgg, 1))
+      .whenActionIsDispatched(changePipelineVariableMetric({ newMetric: expectedSecondVar.pipelineAgg, index: 1 }))
       .thenStateShouldEqual([firstVar, expectedSecondVar]);
   });
 
@@ -110,7 +110,7 @@ describe('BucketScript Settings Reducer', () => {
       },
     ];
 
-    reducerTester()
+    reducerTester<PipelineVariable[]>()
       .givenReducer(reducer, initialState)
       .whenActionIsDispatched({ type: 'THIS ACTION SHOULD NOT HAVE ANY EFFECT IN THIS REDUCER' })
       .thenStateShouldEqual(initialState);

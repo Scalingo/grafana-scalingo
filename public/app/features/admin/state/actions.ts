@@ -1,8 +1,7 @@
-import { updateLocation } from 'app/core/actions';
 import config from 'app/core/config';
 import { dateTimeFormat, dateTimeFormatTimeAgo } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
-import { ThunkResult, LdapUser, UserSession, UserDTO } from 'app/types';
+import { getBackendSrv, locationService } from '@grafana/runtime';
+import { ThunkResult, LdapUser, UserSession, UserDTO, AccessControlAction, UserFilter } from 'app/types';
 
 import {
   userAdminPageLoadedAction,
@@ -20,8 +19,12 @@ import {
   usersFetched,
   queryChanged,
   pageChanged,
+  filterChanged,
+  usersFetchBegin,
+  usersFetchEnd,
 } from './reducers';
 import { debounce } from 'lodash';
+import { contextSrv } from 'app/core/core';
 
 // UserAdminPage
 
@@ -74,8 +77,7 @@ export function setUserPassword(userId: number, password: string): ThunkResult<v
 export function disableUser(userId: number): ThunkResult<void> {
   return async (dispatch) => {
     await getBackendSrv().post(`/api/admin/users/${userId}/disable`);
-    // dispatch(loadAdminUserPage(userId));
-    dispatch(updateLocation({ path: '/admin/users' }));
+    locationService.push('/admin/users');
   };
 }
 
@@ -89,7 +91,7 @@ export function enableUser(userId: number): ThunkResult<void> {
 export function deleteUser(userId: number): ThunkResult<void> {
   return async (dispatch) => {
     await getBackendSrv().delete(`/api/admin/users/${userId}`);
-    dispatch(updateLocation({ path: '/admin/users' }));
+    locationService.push('/admin/users');
   };
 }
 
@@ -136,6 +138,10 @@ export function deleteOrgUser(userId: number, orgId: number): ThunkResult<void> 
 
 export function loadUserSessions(userId: number): ThunkResult<void> {
   return async (dispatch) => {
+    if (!contextSrv.hasPermission(AccessControlAction.UsersAuthTokenList)) {
+      return;
+    }
+
     const tokens = await getBackendSrv().get(`/api/admin/users/${userId}/auth-tokens`);
     tokens.reverse();
     const sessions = tokens.map((session: UserSession) => {
@@ -176,7 +182,8 @@ export function revokeAllSessions(userId: number): ThunkResult<void> {
 export function loadLdapSyncStatus(): ThunkResult<void> {
   return async (dispatch) => {
     // Available only in enterprise
-    if (config.licenseInfo.hasLicense) {
+    const canReadLDAPStatus = contextSrv.hasPermission(AccessControlAction.LDAPStatusRead);
+    if (config.licenseInfo.hasLicense && canReadLDAPStatus) {
       const syncStatus = await getBackendSrv().get(`/api/admin/ldap-sync-status`);
       dispatch(ldapSyncStatusLoadedAction(syncStatus));
     }
@@ -194,6 +201,10 @@ export function syncLdapUser(userId: number): ThunkResult<void> {
 
 export function loadLdapState(): ThunkResult<void> {
   return async (dispatch) => {
+    if (!contextSrv.hasPermission(AccessControlAction.LDAPStatusRead)) {
+      return;
+    }
+
     try {
       const connectionInfo = await getBackendSrv().get(`/api/admin/ldap/status`);
       dispatch(ldapConnectionInfoLoadedAction(connectionInfo));
@@ -247,13 +258,27 @@ export function clearUserMappingInfo(): ThunkResult<void> {
 
 // UserListAdminPage
 
+const getFilters = (filters: UserFilter[]) => {
+  return filters
+    .map((filter) => {
+      if (Array.isArray(filter.value)) {
+        return filter.value.map((v) => `${filter.name}=${v.value}`).join('&');
+      }
+      return `${filter.name}=${filter.value}`;
+    })
+    .join('&');
+};
+
 export function fetchUsers(): ThunkResult<void> {
   return async (dispatch, getState) => {
     try {
-      const { perPage, page, query } = getState().userListAdmin;
-      const result = await getBackendSrv().get(`/api/users/search?perpage=${perPage}&page=${page}&query=${query}`);
+      const { perPage, page, query, filters } = getState().userListAdmin;
+      const result = await getBackendSrv().get(
+        `/api/users/search?perpage=${perPage}&page=${page}&query=${query}&${getFilters(filters)}`
+      );
       dispatch(usersFetched(result));
     } catch (error) {
+      usersFetchEnd();
       console.error(error);
     }
   };
@@ -263,13 +288,23 @@ const fetchUsersWithDebounce = debounce((dispatch) => dispatch(fetchUsers()), 50
 
 export function changeQuery(query: string): ThunkResult<void> {
   return async (dispatch) => {
+    dispatch(usersFetchBegin());
     dispatch(queryChanged(query));
+    fetchUsersWithDebounce(dispatch);
+  };
+}
+
+export function changeFilter(filter: UserFilter): ThunkResult<void> {
+  return async (dispatch) => {
+    dispatch(usersFetchBegin());
+    dispatch(filterChanged(filter));
     fetchUsersWithDebounce(dispatch);
   };
 }
 
 export function changePage(page: number): ThunkResult<void> {
   return async (dispatch) => {
+    dispatch(usersFetchBegin());
     dispatch(pageChanged(page));
     dispatch(fetchUsers());
   };

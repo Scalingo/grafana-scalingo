@@ -3,7 +3,7 @@ import { ReplaySubject } from 'rxjs';
 import { Provider } from 'react-redux';
 import configureMockStore from 'redux-mock-store';
 import { act, render, screen } from '@testing-library/react';
-import { getDefaultTimeRange, LoadingState, PanelData, PanelPlugin, PanelProps } from '@grafana/data';
+import { EventBusSrv, getDefaultTimeRange, LoadingState, PanelData, PanelPlugin, PanelProps } from '@grafana/data';
 
 import { PanelChrome, Props } from './PanelChrome';
 import { DashboardModel, PanelModel } from '../state';
@@ -30,8 +30,10 @@ function setupTestContext(options: Partial<Props>) {
     timeRange: jest.fn(),
   } as unknown) as TimeSrv;
   setTimeSrv(timeSrv);
+
   const defaults: Props = {
     panel: ({
+      id: 123,
       hasTitle: jest.fn(),
       replaceVariables: jest.fn(),
       events: { subscribe: jest.fn() },
@@ -42,6 +44,7 @@ function setupTestContext(options: Partial<Props>) {
     dashboard: ({
       panelInitialized: jest.fn(),
       getTimezone: () => 'browser',
+      events: new EventBusSrv(),
     } as unknown) as DashboardModel,
     plugin: ({
       meta: { skipDataQuery: false },
@@ -52,6 +55,7 @@ function setupTestContext(options: Partial<Props>) {
     isInView: false,
     width: 100,
     height: 100,
+    onInstanceStateChange: () => {},
   };
 
   const props = { ...defaults, ...options };

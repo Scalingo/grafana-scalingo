@@ -18,8 +18,8 @@ Default Version: v8.3.2
 ```
 git clone git@github.com:Scalingo/grafana-scalingo
 cd grafana-scalingo
-git remote add <app name> git@scalingo.com:<app name>.git
-git push <app name> master
+git remote add scalingo git@scalingo.com:<app name>.git
+git push scalingo master
 ```
 
 ## How to update to the latest Grafana version

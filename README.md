@@ -11,7 +11,7 @@ To login, use the environment variables value defined in:
 
 Default Version: v8.3.2
 
-[![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://my.scalingo.com/deploy?source=https://github.com/Scalingo/grafana-scalingo)
+[![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://dashboard.scalingo.com/create/app?source=https://github.com/Scalingo/grafana-scalingo)
 
 ## How to update when new version is released:
 

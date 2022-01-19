@@ -3,6 +3,7 @@ import { pick } from 'lodash';
 
 import { SelectableValue } from '@grafana/data';
 import { Button, ConfirmModal, RadioButtonGroup } from '@grafana/ui';
+import { EditorHeader, InlineSelect, FlexItem } from '@grafana/experimental';
 
 import { CloudWatchDatasource } from '../datasource';
 import {
@@ -12,9 +13,6 @@ import {
   MetricEditorMode,
   MetricQueryType,
 } from '../types';
-import EditorHeader from './ui/EditorHeader';
-import InlineSelect from './ui/InlineSelect';
-import FlexItem from './ui/FlexItem';
 import { useRegions } from '../hooks';
 
 interface QueryHeaderProps {
@@ -84,9 +82,10 @@ const QueryHeader: React.FC<QueryHeaderProps> = ({ query, sqlCodeEditorIsDirty, 
         isLoading={regionIsLoading}
       />
 
-      <InlineSelect value={queryMode} options={apiModes} onChange={onQueryModeChange} />
+      <InlineSelect aria-label="Query mode" value={queryMode} options={apiModes} onChange={onQueryModeChange} />
 
       <InlineSelect
+        aria-label="Metric editor mode"
         value={metricEditorModes.find((m) => m.value === metricQueryType)}
         options={metricEditorModes}
         onChange={({ value }) => {

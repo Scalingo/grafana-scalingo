@@ -18,10 +18,14 @@ type Store interface {
 	Plugins(ctx context.Context, pluginTypes ...Type) []PluginDTO
 
 	// Add adds a plugin to the store.
-	Add(ctx context.Context, pluginID, version string, opts AddOpts) error
+	Add(ctx context.Context, pluginID, version string) error
+	// AddWithFactory adds a plugin to the store.
+	AddWithFactory(ctx context.Context, pluginID string, factory backendplugin.PluginFactoryFunc, resolver PluginPathResolver) error
 	// Remove removes a plugin from the store.
 	Remove(ctx context.Context, pluginID string) error
 }
+
+type PluginPathResolver func() (string, error)
 
 type AddOpts struct {
 	PluginInstallDir, PluginZipURL, PluginRepoURL string
@@ -30,10 +34,10 @@ type AddOpts struct {
 // Loader is responsible for loading plugins from the file system.
 type Loader interface {
 	// Load will return a list of plugins found in the provided file system paths.
-	Load(paths []string, ignore map[string]struct{}) ([]*Plugin, error)
+	Load(ctx context.Context, class Class, paths []string, ignore map[string]struct{}) ([]*Plugin, error)
 	// LoadWithFactory will return a plugin found in the provided file system path and use the provided factory to
 	// construct the plugin backend client.
-	LoadWithFactory(path string, factory backendplugin.PluginFactoryFunc) (*Plugin, error)
+	LoadWithFactory(ctx context.Context, class Class, path string, factory backendplugin.PluginFactoryFunc) (*Plugin, error)
 }
 
 // Installer is responsible for managing plugins (add / remove) on the file system.
@@ -55,21 +59,20 @@ type Client interface {
 	backend.QueryDataHandler
 	backend.CheckHealthHandler
 	backend.StreamHandler
+	backend.CallResourceHandler
 
-	// CallResource calls a plugin resource.
-	CallResource(pCtx backend.PluginContext, ctx *models.ReqContext, path string)
 	// CollectMetrics collects metrics from a plugin.
 	CollectMetrics(ctx context.Context, pluginID string) (*backend.CollectMetricsResult, error)
+}
+
+// BackendFactoryProvider provides a backend factory for a provided plugin.
+type BackendFactoryProvider interface {
+	BackendFactory(ctx context.Context, p *Plugin) backendplugin.PluginFactoryFunc
 }
 
 type RendererManager interface {
 	// Renderer returns a renderer plugin.
 	Renderer() *Plugin
-}
-
-type CoreBackendRegistrar interface {
-	// LoadAndRegister loads and registers a Core backend plugin
-	LoadAndRegister(pluginID string, factory backendplugin.PluginFactoryFunc) error
 }
 
 type StaticRouteResolver interface {
@@ -87,9 +90,9 @@ type PluginLoaderAuthorizer interface {
 
 type PluginDashboardManager interface {
 	// GetPluginDashboards gets dashboards for a certain org/plugin.
-	GetPluginDashboards(orgID int64, pluginID string) ([]*PluginDashboardInfoDTO, error)
+	GetPluginDashboards(ctx context.Context, orgID int64, pluginID string) ([]*PluginDashboardInfoDTO, error)
 	// LoadPluginDashboard loads a plugin dashboard.
-	LoadPluginDashboard(pluginID, path string) (*models.Dashboard, error)
+	LoadPluginDashboard(ctx context.Context, pluginID, path string) (*models.Dashboard, error)
 	// ImportDashboard imports a dashboard.
 	ImportDashboard(ctx context.Context, pluginID, path string, orgID, folderID int64, dashboardModel *simplejson.Json,
 		overwrite bool, inputs []ImportDashboardInput, user *models.SignedInUser) (PluginDashboardInfoDTO,

@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strconv"
 
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
@@ -21,7 +23,11 @@ func GetCurrentOrg(c *models.ReqContext) response.Response {
 
 // GET /api/orgs/:orgId
 func GetOrgByID(c *models.ReqContext) response.Response {
-	return getOrgHelper(c.Req.Context(), c.ParamsInt64(":orgId"))
+	orgId, err := strconv.ParseInt(web.Params(c.Req)[":orgId"], 10, 64)
+	if err != nil {
+		return response.Error(http.StatusBadRequest, "orgId is invalid", err)
+	}
+	return getOrgHelper(c.Req.Context(), orgId)
 }
 
 // GET /api/orgs/name/:name
@@ -78,7 +84,11 @@ func getOrgHelper(ctx context.Context, orgID int64) response.Response {
 }
 
 // POST /api/orgs
-func (hs *HTTPServer) CreateOrg(c *models.ReqContext, cmd models.CreateOrgCommand) response.Response {
+func (hs *HTTPServer) CreateOrg(c *models.ReqContext) response.Response {
+	cmd := models.CreateOrgCommand{}
+	if err := web.Bind(c.Req, &cmd); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
 	acEnabled := hs.Cfg.FeatureToggles["accesscontrol"]
 	if !acEnabled && !(setting.AllowUserOrgCreate || c.IsGrafanaAdmin) {
 		return response.Error(403, "Access denied", nil)
@@ -101,13 +111,26 @@ func (hs *HTTPServer) CreateOrg(c *models.ReqContext, cmd models.CreateOrgComman
 }
 
 // PUT /api/org
-func UpdateCurrentOrg(c *models.ReqContext, form dtos.UpdateOrgForm) response.Response {
+func UpdateCurrentOrg(c *models.ReqContext) response.Response {
+	form := dtos.UpdateOrgForm{}
+	if err := web.Bind(c.Req, &form); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
 	return updateOrgHelper(c.Req.Context(), form, c.OrgId)
 }
 
 // PUT /api/orgs/:orgId
-func UpdateOrg(c *models.ReqContext, form dtos.UpdateOrgForm) response.Response {
-	return updateOrgHelper(c.Req.Context(), form, c.ParamsInt64(":orgId"))
+func UpdateOrg(c *models.ReqContext) response.Response {
+	form := dtos.UpdateOrgForm{}
+	if err := web.Bind(c.Req, &form); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
+
+	orgId, err := strconv.ParseInt(web.Params(c.Req)[":orgId"], 10, 64)
+	if err != nil {
+		return response.Error(http.StatusBadRequest, "orgId is invalid", err)
+	}
+	return updateOrgHelper(c.Req.Context(), form, orgId)
 }
 
 func updateOrgHelper(ctx context.Context, form dtos.UpdateOrgForm, orgID int64) response.Response {
@@ -123,13 +146,25 @@ func updateOrgHelper(ctx context.Context, form dtos.UpdateOrgForm, orgID int64) 
 }
 
 // PUT /api/org/address
-func UpdateCurrentOrgAddress(c *models.ReqContext, form dtos.UpdateOrgAddressForm) response.Response {
+func UpdateCurrentOrgAddress(c *models.ReqContext) response.Response {
+	form := dtos.UpdateOrgAddressForm{}
+	if err := web.Bind(c.Req, &form); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
 	return updateOrgAddressHelper(c.Req.Context(), form, c.OrgId)
 }
 
 // PUT /api/orgs/:orgId/address
-func UpdateOrgAddress(c *models.ReqContext, form dtos.UpdateOrgAddressForm) response.Response {
-	return updateOrgAddressHelper(c.Req.Context(), form, c.ParamsInt64(":orgId"))
+func UpdateOrgAddress(c *models.ReqContext) response.Response {
+	form := dtos.UpdateOrgAddressForm{}
+	if err := web.Bind(c.Req, &form); err != nil {
+		return response.Error(http.StatusBadRequest, "bad request data", err)
+	}
+	orgId, err := strconv.ParseInt(web.Params(c.Req)[":orgId"], 10, 64)
+	if err != nil {
+		return response.Error(http.StatusBadRequest, "orgId is invalid", err)
+	}
+	return updateOrgAddressHelper(c.Req.Context(), form, orgId)
 }
 
 func updateOrgAddressHelper(ctx context.Context, form dtos.UpdateOrgAddressForm, orgID int64) response.Response {
@@ -154,7 +189,10 @@ func updateOrgAddressHelper(ctx context.Context, form dtos.UpdateOrgAddressForm,
 
 // DELETE /api/orgs/:orgId
 func DeleteOrgByID(c *models.ReqContext) response.Response {
-	orgID := c.ParamsInt64(":orgId")
+	orgID, err := strconv.ParseInt(web.Params(c.Req)[":orgId"], 10, 64)
+	if err != nil {
+		return response.Error(http.StatusBadRequest, "orgId is invalid", err)
+	}
 	// before deleting an org, check if user does not belong to the current org
 	if c.OrgId == orgID {
 		return response.Error(400, "Can not delete org for current user", nil)

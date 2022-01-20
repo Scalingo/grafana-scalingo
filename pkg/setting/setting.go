@@ -143,6 +143,8 @@ var (
 	GoogleTagManagerId      string
 	RudderstackDataPlaneUrl string
 	RudderstackWriteKey     string
+	RudderstackSdkUrl       string
+	RudderstackConfigUrl    string
 
 	// LDAP
 	LDAPEnabled           bool
@@ -317,6 +319,7 @@ type Cfg struct {
 	JWTAuthCacheTTL      time.Duration
 	JWTAuthKeyFile       string
 	JWTAuthJWKSetFile    string
+	JWTAuthAutoSignUp    bool
 
 	// Dataproxy
 	SendUserHeader                 bool
@@ -431,6 +434,11 @@ func (cfg Cfg) IsLiveConfigEnabled() bool {
 	return cfg.FeatureToggles["live-config"]
 }
 
+// IsLiveConfigEnabled returns true if live should be able to save configs to SQL tables
+func (cfg Cfg) IsDashboardPreviesEnabled() bool {
+	return cfg.FeatureToggles["dashboardPreviews"]
+}
+
 // IsTrimDefaultsEnabled returns whether the standalone trim dashboard default feature is enabled.
 func (cfg Cfg) IsTrimDefaultsEnabled() bool {
 	return cfg.FeatureToggles["trimDefaults"]
@@ -450,6 +458,10 @@ func (cfg Cfg) IsHTTPRequestHistogramDisabled() bool {
 
 func (cfg Cfg) IsNewNavigationEnabled() bool {
 	return cfg.FeatureToggles["newNavigation"]
+}
+
+func (cfg Cfg) IsServiceAccountEnabled() bool {
+	return cfg.FeatureToggles["service-accounts"]
 }
 
 type CommandLineArgs struct {
@@ -945,6 +957,8 @@ func (cfg *Cfg) Load(args CommandLineArgs) error {
 	GoogleTagManagerId = analytics.Key("google_tag_manager_id").String()
 	RudderstackWriteKey = analytics.Key("rudderstack_write_key").String()
 	RudderstackDataPlaneUrl = analytics.Key("rudderstack_data_plane_url").String()
+	RudderstackSdkUrl = analytics.Key("rudderstack_sdk_url").String()
+	RudderstackConfigUrl = analytics.Key("rudderstack_config_url").String()
 	cfg.ReportingEnabled = analytics.Key("reporting_enabled").MustBool(true)
 	cfg.ReportingDistributor = analytics.Key("reporting_distributor").MustString("grafana-labs")
 	if len(cfg.ReportingDistributor) >= 100 {
@@ -1295,6 +1309,7 @@ func readAuthSettings(iniFile *ini.File, cfg *Cfg) (err error) {
 	cfg.JWTAuthCacheTTL = authJWT.Key("cache_ttl").MustDuration(time.Minute * 60)
 	cfg.JWTAuthKeyFile = valueAsString(authJWT, "key_file", "")
 	cfg.JWTAuthJWKSetFile = valueAsString(authJWT, "jwk_set_file", "")
+	cfg.JWTAuthAutoSignUp = authJWT.Key("auto_sign_up").MustBool(false)
 
 	authProxy := iniFile.Section("auth.proxy")
 	AuthProxyEnabled = authProxy.Key("enabled").MustBool(false)
@@ -1400,17 +1415,6 @@ func (cfg *Cfg) readRenderingSettings(iniFile *ini.File) error {
 	cfg.ImagesDir = filepath.Join(cfg.DataPath, "png")
 	cfg.CSVsDir = filepath.Join(cfg.DataPath, "csv")
 
-	return nil
-}
-
-func (cfg *Cfg) readFeatureToggles(iniFile *ini.File) error {
-	// Read and populate feature toggles list
-	featureTogglesSection := iniFile.Section("feature_toggles")
-	cfg.FeatureToggles = make(map[string]bool)
-	featuresTogglesStr := valueAsString(featureTogglesSection, "enable", "")
-	for _, feature := range util.SplitString(featuresTogglesStr) {
-		cfg.FeatureToggles[feature] = true
-	}
 	return nil
 }
 

@@ -1,14 +1,14 @@
-import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { within } from '@testing-library/dom';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
 
-import { Playlist } from './types';
 import { PlaylistForm } from './PlaylistForm';
+import { Playlist } from './types';
 
 function getTestContext({ name, interval, items }: Partial<Playlist> = {}) {
   const onSubmitMock = jest.fn();
-  const playlist = ({ name, items, interval } as unknown) as Playlist;
+  const playlist = { name, items, interval } as unknown as Playlist;
   const { rerender } = render(<PlaylistForm onSubmit={onSubmitMock} playlist={playlist} />);
 
   return { onSubmitMock, playlist, rerender };

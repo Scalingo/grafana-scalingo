@@ -1,13 +1,16 @@
-import React from 'react';
-import { NamedColorsPalette } from './NamedColorsPalette';
-import { PopoverContentProps } from '../Tooltip/Tooltip';
-import SpectrumPalette from './SpectrumPalette';
-import { Themeable2 } from '../../types/theme';
-import { warnAboutColorPickerPropsDeprecation } from './warnAboutColorPickerPropsDeprecation';
 import { css } from '@emotion/css';
-import { GrafanaTheme2, colorManipulator } from '@grafana/data';
-import { stylesFactory, withTheme2 } from '../../themes';
 import { FocusScope } from '@react-aria/focus';
+import React from 'react';
+
+import { GrafanaTheme2, colorManipulator } from '@grafana/data';
+
+import { stylesFactory, withTheme2 } from '../../themes';
+import { Themeable2 } from '../../types/theme';
+import { PopoverContentProps } from '../Tooltip';
+
+import { NamedColorsPalette } from './NamedColorsPalette';
+import SpectrumPalette from './SpectrumPalette';
+import { warnAboutColorPickerPropsDeprecation } from './warnAboutColorPickerPropsDeprecation';
 
 export type ColorPickerChangeHandler = (color: string) => void;
 
@@ -104,9 +107,9 @@ class UnThemedColorPickerPopover<T extends CustomPickersDescriptor> extends Reac
       <>
         {Object.keys(customPickers).map((key) => {
           return (
-            <div className={this.getTabClassName(key)} onClick={this.onTabChange(key)} key={key}>
+            <button className={this.getTabClassName(key)} onClick={this.onTabChange(key)} key={key}>
               {customPickers[key].name}
-            </div>
+            </button>
           );
         })}
       </>
@@ -118,7 +121,11 @@ class UnThemedColorPickerPopover<T extends CustomPickersDescriptor> extends Reac
     const styles = getStyles(theme);
     return (
       <FocusScope contain restoreFocus autoFocus>
-        <div className={styles.colorPickerPopover}>
+        {/*
+          tabIndex=-1 is needed here to support highlighting text within the picker when using FocusScope
+          see https://github.com/adobe/react-spectrum/issues/1604#issuecomment-781574668
+        */}
+        <div tabIndex={-1} className={styles.colorPickerPopover}>
           <div className={styles.colorPickerPopoverTabs}>
             <button className={this.getTabClassName('palette')} onClick={this.onTabChange('palette')}>
               Colors

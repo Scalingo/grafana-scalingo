@@ -481,6 +481,56 @@ Object {
 }
 `;
 
+exports[`Graph Migrations transforms should preserve "constant" transform 1`] = `
+Object {
+  "defaults": Object {
+    "custom": Object {
+      "drawStyle": "points",
+      "spanNulls": false,
+    },
+  },
+  "overrides": Array [
+    Object {
+      "matcher": Object {
+        "id": "byName",
+        "options": "out",
+      },
+      "properties": Array [
+        Object {
+          "id": "custom.transform",
+          "value": "constant",
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`Graph Migrations transforms should preserve "negative-Y" transform 1`] = `
+Object {
+  "defaults": Object {
+    "custom": Object {
+      "drawStyle": "points",
+      "spanNulls": false,
+    },
+  },
+  "overrides": Array [
+    Object {
+      "matcher": Object {
+        "id": "byName",
+        "options": "out",
+      },
+      "properties": Array [
+        Object {
+          "id": "custom.transform",
+          "value": "negative-Y",
+        },
+      ],
+    },
+  ],
+}
+`;
+
 exports[`Graph Migrations twoYAxis 1`] = `
 Object {
   "alert": undefined,
@@ -564,5 +614,30 @@ Object {
       "sort": "none",
     },
   },
+}
+`;
+
+exports[`Graph Migrations x axis should hide x axis 1`] = `
+Object {
+  "defaults": Object {
+    "custom": Object {
+      "drawStyle": "points",
+      "spanNulls": false,
+    },
+  },
+  "overrides": Array [
+    Object {
+      "matcher": Object {
+        "id": "byType",
+        "options": "time",
+      },
+      "properties": Array [
+        Object {
+          "id": "custom.axisPlacement",
+          "value": "hidden",
+        },
+      ],
+    },
+  ],
 }
 `;

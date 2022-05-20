@@ -10,7 +10,7 @@ weight = 100
 > **Note:** Fine-grained access control is in beta, and you can expect changes in future releases.
 
 Fine-grained access control provides a standardized way of granting, changing, and revoking access when it comes to viewing and modifying Grafana resources, such as users and reports.
-Fine-grained access control works alongside the current [Grafana permissions]({{< relref "../../permissions/_index.md" >}}), and it allows you granular control of users’ actions.
+Fine-grained access control works alongside the current Grafana permissions, and it allows you granular control of users’ actions. For more information about Grafana permissions, refer to [About users and permissions]({{< relref "../../administration/manage-users-and-permissions/about-users-and-permissions.md" >}}).
 
 To learn more about how fine-grained access control works, refer to [Roles]({{< relref "./roles.md" >}}) and [Permissions]({{< relref "./permissions.md" >}}).
 To use the fine-grained access control system, refer to [Fine-grained access control usage scenarios]({{< relref "./usage-scenarios.md" >}}).
@@ -28,7 +28,7 @@ Refer to [Assign roles]({{< relref "./roles.md#assign-roles" >}}) to learn about
 Fine-grained access control is available for the following capabilities:
 
 - [Use Explore mode]({{< relref "../../explore/_index.md" >}})
-- [Manage users]({{< relref "../../manage-users/_index.md" >}})
+- [Manage users]({{< relref "../../administration/manage-users-and-permissions/manage-server-users/_index.md" >}})
 - [Manage LDAP authentication]({{< relref "../../auth/ldap/_index.md" >}})
 - [Manage data sources]({{< relref "../../datasources/_index.md" >}})
 - [Manage data source permissions]({{< relref "../datasource_permissions.md" >}})
@@ -36,6 +36,10 @@ Fine-grained access control is available for the following capabilities:
 - [Provision Grafana]({{< relref "../../administration/provisioning/_index.md" >}})
 - [Manage reports]({{< relref "../reporting.md" >}})
 - [View server information]({{< relref "../../administration/view-server/_index.md" >}})
+- [Manage teams]({{< relref "../../administration/manage-users-and-permissions/manage-teams/_index.md" >}})
+- [Manage dashboards and folders]({{< relref "../../dashboards/_index.md" >}})
+- [Manage annotations]({{< relref "../../visualizations/annotations.md" >}})
+- [Alerting]({{< relref "../../alerting/unified-alerting/_index.md">}})
 
 To learn about specific endpoints where you can use fine-grained access control, refer to [Permissions]({{< relref "./permissions.md" >}}) and to the relevant [API]({{< relref "../../http_api/_index.md" >}}) documentation.
 
@@ -58,8 +62,13 @@ enable = accesscontrol
 
 You can use `GF_FEATURE_TOGGLES_ENABLE = accesscontrol` environment variable to override the config file configuration and enable fine-grained access control.
 
-Refer to [Configuring with environment variables]({{< relref "../../administration/configuration.md#configure-with-environment-variables" >}}) for more information.
+Refer to [Configuring with environment variables]({{< relref "../../administration/configuration.md#/#override-configuration-with-environment-variables" >}}) for more information.
 
 ### Verify if enabled
 
 You can verify if fine-grained access control is enabled or not by sending an HTTP request to the [Check endpoint]({{< relref "../../http_api/access_control.md#check-if-enabled" >}}).
+
+## Caveats
+
+If you have created a folder with unique identifier (uid) set to "general", you will not be able to manage its permissions with fine-grained access control.
+Any [folder permissions]({{< relref "../../administration/manage-users-and-permissions/manage-dashboard-permissions/_index.md" >}}) set for this folder will be disregarded when fine-grained access control is enabled.

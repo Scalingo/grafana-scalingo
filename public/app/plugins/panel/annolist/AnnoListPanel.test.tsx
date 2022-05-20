@@ -1,17 +1,19 @@
-import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
-
-import { AnnoListPanel, Props } from './AnnoListPanel';
-import { AnnotationEvent, FieldConfigSource, getDefaultTimeRange, LoadingState } from '@grafana/data';
-import { AnnoOptions } from './types';
-import { backendSrv } from '../../../core/services/backend_srv';
 import userEvent from '@testing-library/user-event';
-import { silenceConsoleOutput } from '../../../../test/core/utils/silenceConsoleOutput';
-import { setDashboardSrv } from '../../../features/dashboard/services/DashboardSrv';
+import React from 'react';
+
+import { AnnotationEvent, FieldConfigSource, getDefaultTimeRange, LoadingState } from '@grafana/data';
 import { locationService } from '@grafana/runtime';
 
+import { silenceConsoleOutput } from '../../../../test/core/utils/silenceConsoleOutput';
+import { backendSrv } from '../../../core/services/backend_srv';
+import { setDashboardSrv } from '../../../features/dashboard/services/DashboardSrv';
+
+import { AnnoListPanel, Props } from './AnnoListPanel';
+import { AnnoOptions } from './types';
+
 jest.mock('@grafana/runtime', () => ({
-  ...((jest.requireActual('@grafana/runtime') as unknown) as object),
+  ...(jest.requireActual('@grafana/runtime') as unknown as object),
   getBackendSrv: () => backendSrv,
 }));
 
@@ -68,7 +70,7 @@ async function setupTestContext({
       removeAllListeners: jest.fn(),
       newScopedBus: jest.fn(),
     },
-    fieldConfig: ({} as unknown) as FieldConfigSource,
+    fieldConfig: {} as unknown as FieldConfigSource,
     height: 400,
     id: 1,
     onChangeTimeRange: jest.fn(),
@@ -265,9 +267,6 @@ describe('AnnoListPanel', () => {
 
         getMock.mockClear();
         expect(screen.getByRole('img')).toBeInTheDocument();
-        userEvent.hover(screen.getByRole('img'));
-
-        expect(screen.getByText(/result email/i)).toBeInTheDocument();
       });
     });
   });

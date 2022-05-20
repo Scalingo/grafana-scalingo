@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/events"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/setting"
@@ -15,67 +14,63 @@ import (
 // MainOrgName is the name of the main organization.
 const MainOrgName = "Main Org."
 
-func init() {
-	bus.AddHandler("sql", GetOrgById)
-	bus.AddHandler("sql", CreateOrg)
-	bus.AddHandler("sql", UpdateOrg)
-	bus.AddHandler("sql", UpdateOrgAddress)
-	bus.AddHandler("sql", GetOrgByName)
-	bus.AddHandler("sql", SearchOrgs)
-	bus.AddHandler("sql", DeleteOrg)
-}
+func (ss *SQLStore) SearchOrgs(ctx context.Context, query *models.SearchOrgsQuery) error {
+	return ss.WithDbSession(ctx, func(dbSession *DBSession) error {
+		query.Result = make([]*models.OrgDTO, 0)
+		sess := dbSession.Table("org")
+		if query.Query != "" {
+			sess.Where("name LIKE ?", query.Query+"%")
+		}
+		if query.Name != "" {
+			sess.Where("name=?", query.Name)
+		}
 
-func SearchOrgs(ctx context.Context, query *models.SearchOrgsQuery) error {
-	query.Result = make([]*models.OrgDTO, 0)
-	sess := x.Table("org")
-	if query.Query != "" {
-		sess.Where("name LIKE ?", query.Query+"%")
-	}
-	if query.Name != "" {
-		sess.Where("name=?", query.Name)
-	}
+		if len(query.Ids) > 0 {
+			sess.In("id", query.Ids)
+		}
 
-	if len(query.Ids) > 0 {
-		sess.In("id", query.Ids)
-	}
+		if query.Limit > 0 {
+			sess.Limit(query.Limit, query.Limit*query.Page)
+		}
 
-	if query.Limit > 0 {
-		sess.Limit(query.Limit, query.Limit*query.Page)
-	}
-
-	sess.Cols("id", "name")
-	err := sess.Find(&query.Result)
-	return err
-}
-
-func GetOrgById(ctx context.Context, query *models.GetOrgByIdQuery) error {
-	var org models.Org
-	exists, err := x.Id(query.Id).Get(&org)
-	if err != nil {
+		sess.Cols("id", "name")
+		err := sess.Find(&query.Result)
 		return err
-	}
-
-	if !exists {
-		return models.ErrOrgNotFound
-	}
-
-	query.Result = &org
-	return nil
+	})
 }
 
-func GetOrgByName(ctx context.Context, query *models.GetOrgByNameQuery) error {
-	var org models.Org
-	exists, err := x.Where("name=?", query.Name).Get(&org)
-	if err != nil {
-		return err
-	}
+func (ss *SQLStore) GetOrgById(ctx context.Context, query *models.GetOrgByIdQuery) error {
+	return ss.WithDbSession(ctx, func(dbSession *DBSession) error {
+		var org models.Org
+		exists, err := dbSession.ID(query.Id).Get(&org)
+		if err != nil {
+			return err
+		}
 
-	if !exists {
-		return models.ErrOrgNotFound
-	}
+		if !exists {
+			return models.ErrOrgNotFound
+		}
 
-	query.Result = &org
-	return nil
+		query.Result = &org
+		return nil
+	})
+}
+
+func (ss *SQLStore) GetOrgByNameHandler(ctx context.Context, query *models.GetOrgByNameQuery) error {
+	return ss.WithDbSession(ctx, func(dbSession *DBSession) error {
+		var org models.Org
+		exists, err := dbSession.Where("name=?", query.Name).Get(&org)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			return models.ErrOrgNotFound
+		}
+
+		query.Result = &org
+		return nil
+	})
 }
 
 // GetOrgByName gets an organization by name.
@@ -164,8 +159,8 @@ func CreateOrg(ctx context.Context, cmd *models.CreateOrgCommand) error {
 	return nil
 }
 
-func UpdateOrg(ctx context.Context, cmd *models.UpdateOrgCommand) error {
-	return inTransaction(func(sess *DBSession) error {
+func (ss *SQLStore) UpdateOrg(ctx context.Context, cmd *models.UpdateOrgCommand) error {
+	return ss.WithTransactionalDbSession(ctx, func(sess *DBSession) error {
 		if isNameTaken, err := isOrgNameTaken(cmd.Name, cmd.OrgId, sess); err != nil {
 			return err
 		} else if isNameTaken {
@@ -197,8 +192,8 @@ func UpdateOrg(ctx context.Context, cmd *models.UpdateOrgCommand) error {
 	})
 }
 
-func UpdateOrgAddress(ctx context.Context, cmd *models.UpdateOrgAddressCommand) error {
-	return inTransaction(func(sess *DBSession) error {
+func (ss *SQLStore) UpdateOrgAddress(ctx context.Context, cmd *models.UpdateOrgAddressCommand) error {
+	return ss.WithTransactionalDbSession(ctx, func(sess *DBSession) error {
 		org := models.Org{
 			Address1: cmd.Address1,
 			Address2: cmd.Address2,
@@ -224,8 +219,8 @@ func UpdateOrgAddress(ctx context.Context, cmd *models.UpdateOrgAddressCommand) 
 	})
 }
 
-func DeleteOrg(ctx context.Context, cmd *models.DeleteOrgCommand) error {
-	return inTransaction(func(sess *DBSession) error {
+func (ss *SQLStore) DeleteOrg(ctx context.Context, cmd *models.DeleteOrgCommand) error {
+	return ss.WithTransactionalDbSession(ctx, func(sess *DBSession) error {
 		if res, err := sess.Query("SELECT 1 from org WHERE id=?", cmd.Id); err != nil {
 			return err
 		} else if len(res) != 1 {

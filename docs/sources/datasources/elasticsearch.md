@@ -11,6 +11,17 @@ weight = 325
 Grafana ships with advanced support for Elasticsearch. You can do many types of simple or complex Elasticsearch queries to
 visualize logs or metrics stored in Elasticsearch. You can also annotate your graphs with log events stored in Elasticsearch.
 
+Supported Elasticsearch versions:
+
+- v2.0+ (deprecated)
+- v5.0+ (deprecated)
+- v6.0+ (deprecated)
+- v7.0-v7.9+ (deprecated)
+- v7.10+
+- v8.0+ (experimental)
+
+> **Note:** Deprecated versions (v2.0+, v5.0+, v6.0+, and v7.0-v7.9+) will be removed in the next major release.
+
 ## Adding the data source
 
 1. Open the side menu by clicking the Grafana icon in the top header.
@@ -143,13 +154,13 @@ types of template variables.
 
 ### Query variable
 
-The Elasticsearch data source supports two types of queries you can use in the _Query_ field of _Query_ variables. The query is written using a custom JSON string.
+The Elasticsearch data source supports two types of queries you can use in the _Query_ field of _Query_ variables. The query is written using a custom JSON string. The field should be mapped as a [keyword](https://www.elastic.co/guide/en/elasticsearch/reference/current/keyword.html#keyword) in the Elasticsearch index mapping. If it is [multi-field](https://www.elastic.co/guide/en/elasticsearch/reference/current/multi-fields.html) with both a `text` and `keyword` type, then use `"field":"fieldname.keyword"`(sometimes`fieldname.raw`) to specify the keyword field in your query.
 
-| Query                                                                | Description                                                                                                                                                           |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `{"find": "fields", "type": "keyword"}`                              | Returns a list of field names with the index type `keyword`.                                                                                                          |
-| `{"find": "terms", "field": "@hostname", "size": 1000}`              | Returns a list of values for a field using term aggregation. Query will use current dashboard time range as time range for query.                                     |
-| `{"find": "terms", "field": "@hostname", "query": '<lucene query>'}` | Returns a list of values for a field using term aggregation and a specified lucene query filter. Query will use current dashboard time range as time range for query. |
+| Query                                                               | Description                                                                                                                                                                   |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{"find": "fields", "type": "keyword"}`                             | Returns a list of field names with the index type `keyword`.                                                                                                                  |
+| `{"find": "terms", "field": "hostname.keyword", "size": 1000}`      | Returns a list of values for a keyword using term aggregation. Query will use current dashboard time range as time range query.                                               |
+| `{"find": "terms", "field": "hostname", "query": '<lucene query>'}` | Returns a list of values for a keyword field using term aggregation and a specified lucene query filter. Query will use current dashboard time range as time range for query. |
 
 There is a default size limit of 500 on terms queries. Set the size property in your query to set a custom limit.
 You can use other variables inside the query. Example query definition for a variable named `$host`.

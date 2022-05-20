@@ -1,9 +1,10 @@
 import { DataFrameDTO, FieldConfig } from './dataFrame';
-import { DataTransformerConfig } from './transformations';
-import { ApplyFieldOverrideOptions } from './fieldOverrides';
-import { PanelPluginDataSupport } from '.';
-import { DataTopic } from './query';
 import { DataFrameType } from './dataFrameTypes';
+import { ApplyFieldOverrideOptions } from './fieldOverrides';
+import { DataTopic } from './query';
+import { DataTransformerConfig } from './transformations';
+
+import { PanelPluginDataSupport } from '.';
 
 export type KeyValue<T = any> = Record<string, T>;
 
@@ -20,7 +21,8 @@ export enum LoadingState {
 }
 
 // Should be kept in sync with grafana-plugin-sdk-go/data/frame_meta.go
-export type PreferredVisualisationType = 'graph' | 'table' | 'logs' | 'trace' | 'nodeGraph';
+export const preferredVisualizationTypes = ['graph', 'table', 'logs', 'trace', 'nodeGraph'] as const;
+export type PreferredVisualisationType = typeof preferredVisualizationTypes[number];
 
 /**
  * @public

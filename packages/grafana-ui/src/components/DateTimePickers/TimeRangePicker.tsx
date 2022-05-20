@@ -1,16 +1,9 @@
-// Libraries
-import React, { memo, FormEvent, createRef, useState, ReactElement } from 'react';
 import { css } from '@emotion/css';
+import { useDialog } from '@react-aria/dialog';
+import { FocusScope } from '@react-aria/focus';
+import { useOverlay } from '@react-aria/overlays';
+import React, { memo, FormEvent, createRef, useState, ReactElement } from 'react';
 
-// Components
-import { Tooltip } from '../Tooltip/Tooltip';
-import { TimePickerContent } from './TimeRangePicker/TimePickerContent';
-
-// Utils & Services
-import { stylesFactory } from '../../themes/stylesFactory';
-import { withTheme, useTheme } from '../../themes/ThemeContext';
-
-// Types
 import {
   isDateTime,
   rangeUtil,
@@ -21,12 +14,16 @@ import {
   TimeZone,
   dateMath,
 } from '@grafana/data';
-import { Themeable } from '../../types';
-import { quickOptions } from './options';
-import { ButtonGroup, ToolbarButton } from '../Button';
 import { selectors } from '@grafana/e2e-selectors';
-import { useOverlay } from '@react-aria/overlays';
-import { FocusScope } from '@react-aria/focus';
+
+import { withTheme, useTheme } from '../../themes/ThemeContext';
+import { stylesFactory } from '../../themes/stylesFactory';
+import { Themeable } from '../../types';
+import { ButtonGroup, ToolbarButton } from '../Button';
+import { Tooltip } from '../Tooltip/Tooltip';
+
+import { TimePickerContent } from './TimeRangePicker/TimePickerContent';
+import { quickOptions } from './options';
 
 /** @public */
 export interface TimeRangePickerProps extends Themeable {
@@ -86,6 +83,7 @@ export function UnthemedTimeRangePicker(props: TimeRangePickerProps): ReactEleme
 
   const ref = createRef<HTMLElement>();
   const { overlayProps } = useOverlay({ onClose, isDismissable: true, isOpen }, ref);
+  const { dialogProps } = useDialog({}, ref);
 
   const styles = getStyles(theme);
   const hasAbsolute = isDateTime(value.raw.from) || isDateTime(value.raw.to);
@@ -103,7 +101,7 @@ export function UnthemedTimeRangePicker(props: TimeRangePickerProps): ReactEleme
         />
       )}
 
-      <Tooltip content={<TimePickerTooltip timeRange={value} timeZone={timeZone} />} placement="bottom">
+      <Tooltip content={<TimePickerTooltip timeRange={value} timeZone={timeZone} />} placement="bottom" interactive>
         <ToolbarButton
           data-testid={selectors.components.TimePicker.openButton}
           aria-label={`Time range picker with current time range ${formattedRange(value, timeZone)} selected`}
@@ -118,7 +116,7 @@ export function UnthemedTimeRangePicker(props: TimeRangePickerProps): ReactEleme
       </Tooltip>
       {isOpen && (
         <FocusScope contain autoFocus restoreFocus>
-          <section ref={ref} {...overlayProps}>
+          <section ref={ref} {...overlayProps} {...dialogProps}>
             <TimePickerContent
               timeZone={timeZone}
               fiscalYearStartMonth={fiscalYearStartMonth}

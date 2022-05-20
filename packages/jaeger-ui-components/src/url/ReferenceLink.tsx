@@ -13,7 +13,9 @@
 // limitations under the License.
 
 import React from 'react';
+
 import { TraceSpanReference } from '../types/trace';
+
 import ExternalLinkContext from './externalLinkContext';
 
 type ReferenceLinkProps = {
@@ -41,6 +43,7 @@ export default function ReferenceLink(props: ReferenceLinkProps) {
         if (!createLinkToExternalSpan) {
           throw new Error("ExternalLinkContext does not have a value, you probably forgot to setup it's provider");
         }
+
         return (
           <a
             href={createLinkToExternalSpan(reference.traceID, reference.spanID)}

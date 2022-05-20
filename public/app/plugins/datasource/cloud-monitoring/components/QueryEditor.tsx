@@ -1,15 +1,19 @@
-import React, { PureComponent } from 'react';
 import { css } from '@emotion/css';
+import React, { PureComponent } from 'react';
+
 import { QueryEditorProps, toOption } from '@grafana/data';
 import { Button, Select } from '@grafana/ui';
-import { MetricQueryEditor, SLOQueryEditor, QueryEditorRow } from './';
-import { CloudMonitoringQuery, MetricQuery, QueryType, SLOQuery, EditorMode } from '../types';
-import { SELECT_WIDTH, QUERY_TYPES } from '../constants';
+
+import { QUERY_TYPES, SELECT_WIDTH } from '../constants';
+import CloudMonitoringDatasource from '../datasource';
+import { CloudMonitoringQuery, EditorMode, MetricQuery, QueryType, SLOQuery, CloudMonitoringOptions } from '../types';
+
 import { defaultQuery } from './MetricQueryEditor';
 import { defaultQuery as defaultSLOQuery } from './SLO/SLOQueryEditor';
-import CloudMonitoringDatasource from '../datasource';
 
-export type Props = QueryEditorProps<CloudMonitoringDatasource, CloudMonitoringQuery>;
+import { MetricQueryEditor, QueryEditorRow, SLOQueryEditor } from './';
+
+export type Props = QueryEditorProps<CloudMonitoringDatasource, CloudMonitoringQuery, CloudMonitoringOptions>;
 
 export class QueryEditor extends PureComponent<Props> {
   async UNSAFE_componentWillMount() {
@@ -73,6 +77,7 @@ export class QueryEditor extends PureComponent<Props> {
               </Button>
             )
           }
+          htmlFor={`${query.refId}-query-type`}
         >
           <Select
             menuShouldPortal
@@ -83,6 +88,7 @@ export class QueryEditor extends PureComponent<Props> {
               onChange({ ...query, sloQuery, queryType: value! });
               onRunQuery();
             }}
+            inputId={`${query.refId}-query-type`}
           />
         </QueryEditorRow>
 
@@ -102,6 +108,7 @@ export class QueryEditor extends PureComponent<Props> {
 
         {queryType === QueryType.SLO && (
           <SLOQueryEditor
+            refId={query.refId}
             variableOptionGroup={variableOptionGroup}
             customMetaData={customMetaData}
             onChange={(query: SLOQuery) => this.onQueryChange('sloQuery', query)}

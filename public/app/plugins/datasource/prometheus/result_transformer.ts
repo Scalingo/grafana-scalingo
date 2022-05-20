@@ -1,3 +1,6 @@
+import { descending, deviation } from 'd3';
+import { partition, groupBy } from 'lodash';
+
 import {
   ArrayDataFrame,
   ArrayVector,
@@ -17,10 +20,11 @@ import {
   DataQueryRequest,
   PreferredVisualisationType,
   CoreApp,
+  DataFrameType,
 } from '@grafana/data';
 import { FetchResponse, getDataSourceSrv, getTemplateSrv } from '@grafana/runtime';
-import { partition, groupBy } from 'lodash';
-import { descending, deviation } from 'd3';
+
+import { renderLegendFormat } from './legend';
 import {
   ExemplarTraceIdDestination,
   isExemplarData,
@@ -33,7 +37,6 @@ import {
   PromValue,
   TransformOptions,
 } from './types';
-import { renderLegendFormat } from './legend';
 
 const POSITIVE_INFINITY_SAMPLE_VALUE = '+Inf';
 const NEGATIVE_INFINITY_SAMPLE_VALUE = '-Inf';
@@ -44,8 +47,11 @@ interface TimeAndValue {
 }
 
 const isTableResult = (dataFrame: DataFrame, options: DataQueryRequest<PromQuery>): boolean => {
-  // We want to process instant results in Explore as table
-  if ((options.app === CoreApp.Explore && dataFrame.meta?.custom?.resultType) === 'vector') {
+  // We want to process vector and scalar results in Explore as table
+  if (
+    options.app === CoreApp.Explore &&
+    (dataFrame.meta?.custom?.resultType === 'vector' || dataFrame.meta?.custom?.resultType === 'scalar')
+  ) {
     return true;
   }
 
@@ -68,13 +74,8 @@ export function transformV2(
   const [tableFrames, framesWithoutTable] = partition<DataFrame>(response.data, (df) => isTableResult(df, request));
   const processedTableFrames = transformDFToTable(tableFrames);
 
-  const [heatmapResults, framesWithoutTableAndHeatmaps] = partition<DataFrame>(framesWithoutTable, (df) =>
-    isHeatmapResult(df, request)
-  );
-  const processedHeatmapFrames = transformToHistogramOverTime(heatmapResults.sort(sortSeriesByLabel));
-
-  const [exemplarFrames, framesWithoutTableHeatmapsAndExemplars] = partition<DataFrame>(
-    framesWithoutTableAndHeatmaps,
+  const [exemplarFrames, framesWithoutTableAndExemplars] = partition<DataFrame>(
+    framesWithoutTable,
     (df) => df.meta?.custom?.resultType === 'exemplar'
   );
 
@@ -95,6 +96,15 @@ export function transformV2(
 
     return { ...dataFrame, meta: { ...dataFrame.meta, dataTopic: DataTopic.Annotations } };
   });
+
+  const [heatmapResults, framesWithoutTableHeatmapsAndExemplars] = partition<DataFrame>(
+    framesWithoutTableAndExemplars,
+    (df) => isHeatmapResult(df, request)
+  );
+
+  const processedHeatmapFrames = mergeHeatmapFrames(
+    transformToHistogramOverTime(heatmapResults.sort(sortSeriesByLabel))
+  );
 
   // Everything else is processed as time_series result and graph preferredVisualisationType
   const otherFrames = framesWithoutTableHeatmapsAndExemplars.map((dataFrame) => {
@@ -269,9 +279,7 @@ export function transform(
 
   // When format is heatmap use the already created data frames and transform it more
   if (options.format === 'heatmap') {
-    dataFrame.sort(sortSeriesByLabel);
-    const seriesList = transformToHistogramOverTime(dataFrame);
-    return seriesList;
+    return mergeHeatmapFrames(transformToHistogramOverTime(dataFrame.sort(sortSeriesByLabel)));
   }
 
   // Return matrix or vector result as DataFrame[]
@@ -528,6 +536,33 @@ export function getOriginalMetricName(labelData: { [key: string]: string }) {
     .map((label) => `${label[0]}="${label[1]}"`)
     .join(',');
   return `${metricName}{${labelPart}}`;
+}
+
+function mergeHeatmapFrames(frames: DataFrame[]): DataFrame[] {
+  if (frames.length === 0) {
+    return [];
+  }
+
+  const timeField = frames[0].fields.find((field) => field.type === FieldType.time)!;
+  const countFields = frames.map((frame) => {
+    let field = frame.fields.find((field) => field.type === FieldType.number)!;
+
+    return {
+      ...field,
+      name: field.config.displayNameFromDS!,
+    };
+  });
+
+  return [
+    {
+      ...frames[0],
+      meta: {
+        ...frames[0].meta,
+        type: DataFrameType.HeatmapBuckets,
+      },
+      fields: [timeField!, ...countFields],
+    },
+  ];
 }
 
 function transformToHistogramOverTime(seriesList: DataFrame[]) {

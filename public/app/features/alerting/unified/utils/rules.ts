@@ -1,4 +1,19 @@
+import { capitalize } from 'lodash';
+
 import { AlertState } from '@grafana/data';
+import {
+  Alert,
+  AlertingRule,
+  CloudRuleIdentifier,
+  CombinedRuleGroup,
+  GrafanaRuleIdentifier,
+  PrometheusRuleIdentifier,
+  PromRuleWithLocation,
+  RecordingRule,
+  Rule,
+  RuleIdentifier,
+  RuleNamespace,
+} from 'app/types/unified-alerting';
 import {
   GrafanaAlertState,
   PromAlertingRuleState,
@@ -8,22 +23,11 @@ import {
   RulerRecordingRuleDTO,
   RulerRuleDTO,
 } from 'app/types/unified-alerting-dto';
-import {
-  Alert,
-  AlertingRule,
-  CloudRuleIdentifier,
-  GrafanaRuleIdentifier,
-  PrometheusRuleIdentifier,
-  PromRuleWithLocation,
-  RecordingRule,
-  Rule,
-  RuleIdentifier,
-  RuleNamespace,
-} from 'app/types/unified-alerting';
-import { AsyncRequestState } from './redux';
-import { RULER_NOT_SUPPORTED_MSG } from './constants';
-import { capitalize } from 'lodash';
+
 import { State } from '../components/StateTag';
+
+import { RULER_NOT_SUPPORTED_MSG } from './constants';
+import { AsyncRequestState } from './redux';
 
 export function isAlertingRule(rule: Rule | undefined): rule is AlertingRule {
   return typeof rule === 'object' && rule.type === PromRuleType.Alerting;
@@ -50,7 +54,7 @@ export function alertInstanceKey(alert: Alert): string {
 }
 
 export function isRulerNotSupportedResponse(resp: AsyncRequestState<any>) {
-  return resp.error && resp.error?.message === RULER_NOT_SUPPORTED_MSG;
+  return resp.error && resp.error?.message?.includes(RULER_NOT_SUPPORTED_MSG);
 }
 
 export function isGrafanaRuleIdentifier(identifier: RuleIdentifier): identifier is GrafanaRuleIdentifier {
@@ -115,4 +119,14 @@ export function getFirstActiveAt(promRule: AlertingRule) {
     }
     return prev;
   }, null as Date | null);
+}
+
+/**
+ * A rule group is "federated" when it has at least one "source_tenants" entry, federated rule groups will evaluate rules in multiple tenants
+ * Non-federated rules do not have this property
+ *
+ * see https://grafana.com/docs/metrics-enterprise/latest/tenant-management/tenant-federation/#cross-tenant-alerting-and-recording-rule-federation
+ */
+export function isFederatedRuleGroup(group: CombinedRuleGroup) {
+  return Array.isArray(group.source_tenants);
 }

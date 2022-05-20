@@ -1,10 +1,11 @@
-import { RegistryItemWithOptions } from '../utils/Registry';
-import { PanelData } from '../types';
-import { GrafanaTheme2 } from '../themes';
-import { PanelOptionsEditorBuilder } from '../utils';
-import { ReactNode } from 'react';
 import { PluggableMap } from 'ol';
 import BaseLayer from 'ol/layer/Base';
+import { ReactNode } from 'react';
+
+import { GrafanaTheme2 } from '../themes';
+import { PanelData } from '../types';
+import { PanelOptionsEditorBuilder } from '../utils';
+import { RegistryItemWithOptions } from '../utils/Registry';
 
 /**
  * @alpha
@@ -62,7 +63,7 @@ export interface MapLayerOptions<TConfig = any> {
   // Layer opacity (0-1)
   opacity?: number;
 
-  //Check tooltip
+  // Check tooltip (defaults to true)
   tooltip?: boolean;
 }
 

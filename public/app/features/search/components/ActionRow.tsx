@@ -1,12 +1,14 @@
-import React, { FC, ChangeEvent, FormEvent } from 'react';
 import { css } from '@emotion/css';
-import { HorizontalGroup, RadioButtonGroup, stylesFactory, useTheme, Checkbox, InlineSwitch } from '@grafana/ui';
+import React, { FC, ChangeEvent, FormEvent } from 'react';
+
 import { GrafanaTheme, SelectableValue } from '@grafana/data';
+import { config } from '@grafana/runtime';
+import { HorizontalGroup, RadioButtonGroup, stylesFactory, useTheme, Checkbox, InlineSwitch } from '@grafana/ui';
 import { SortPicker } from 'app/core/components/Select/SortPicker';
 import { TagFilter } from 'app/core/components/TagFilter/TagFilter';
 import { SearchSrv } from 'app/core/services/search_srv';
+
 import { DashboardQuery, SearchLayout } from '../types';
-import { config } from '@grafana/runtime';
 
 export const layoutOptions = [
   { value: SearchLayout.Folders, icon: 'folder', ariaLabel: 'View by folders' },
@@ -17,7 +19,7 @@ const searchSrv = new SearchSrv();
 
 interface Props {
   onLayoutChange: (layout: SearchLayout) => void;
-  onShowPreviewsChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  setShowPreviews: (newValue: boolean) => void;
   onSortChange: (value: SelectableValue) => void;
   onStarredFilterChange?: (event: FormEvent<HTMLInputElement>) => void;
   onTagFilterChange: (tags: string[]) => void;
@@ -29,7 +31,7 @@ interface Props {
 
 export const ActionRow: FC<Props> = ({
   onLayoutChange,
-  onShowPreviewsChange,
+  setShowPreviews,
   onSortChange,
   onStarredFilterChange = () => {},
   onTagFilterChange,
@@ -56,7 +58,7 @@ export const ActionRow: FC<Props> = ({
               label="Show previews"
               showLabel
               value={showPreviews}
-              onChange={onShowPreviewsChange}
+              onChange={(ev: ChangeEvent<HTMLInputElement>) => setShowPreviews(ev.target.checked)}
               transparent
             />
           )}

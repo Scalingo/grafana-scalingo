@@ -1,12 +1,14 @@
-import { DataQueryRequest, DataQueryResponseData, toDataFrame } from '@grafana/data';
 import { from } from 'rxjs';
-import { AzureMonitorQuery, AzureQueryType } from './types';
-import { VariableSupport } from './variables';
+
+import { DataQueryRequest, DataQueryResponseData, toDataFrame } from '@grafana/data';
+
 import createMockDatasource from './__mocks__/datasource';
 import { invalidSubscriptionError } from './__mocks__/errors';
+import { AzureMonitorQuery, AzureQueryType } from './types';
+import { VariableSupport } from './variables';
 
 jest.mock('@grafana/runtime', () => ({
-  ...((jest.requireActual('@grafana/runtime') as unknown) as object),
+  ...(jest.requireActual('@grafana/runtime') as unknown as object),
   getTemplateSrv: () => ({
     replace: (val: string) => {
       return val;
@@ -444,7 +446,7 @@ describe('VariableSupport', () => {
         })
       );
       const mockRequest = {
-        targets: [('Namespaces(subscriptionId, resourceGroup)' as unknown) as AzureMonitorQuery],
+        targets: ['Namespaces(subscriptionId, resourceGroup)' as unknown as AzureMonitorQuery],
       } as DataQueryRequest<AzureMonitorQuery>;
       const observables = variableSupport.query(mockRequest);
       observables.subscribe((result: DataQueryResponseData) => {
@@ -467,6 +469,34 @@ describe('VariableSupport', () => {
       const observables = variableSupport.query(mockRequest);
       observables.subscribe((result: DataQueryResponseData) => {
         expect(result.data).toEqual([]);
+        done();
+      });
+    });
+
+    it('should return None when there is no data', (done) => {
+      const variableSupport = new VariableSupport(
+        createMockDatasource({
+          azureLogAnalyticsDatasource: {
+            defaultSubscriptionId: 'defaultSubscriptionId',
+          },
+          getMetricNames: jest.fn().mockResolvedValueOnce([]),
+        })
+      );
+      const mockRequest = {
+        targets: [
+          {
+            refId: 'A',
+            queryType: AzureQueryType.GrafanaTemplateVariableFn,
+            grafanaTemplateVariableFn: {
+              kind: 'MetricNamesQuery',
+              rawQuery: 'metricNames(resourceGroup, metricDefinition, resourceName, metricNamespace)',
+            },
+          } as AzureMonitorQuery,
+        ],
+      } as DataQueryRequest<AzureMonitorQuery>;
+      const observables = variableSupport.query(mockRequest);
+      observables.subscribe((result: DataQueryResponseData) => {
+        expect(result.data.length).toBe(0);
         done();
       });
     });

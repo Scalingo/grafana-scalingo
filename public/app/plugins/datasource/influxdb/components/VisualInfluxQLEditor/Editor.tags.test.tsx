@@ -1,10 +1,12 @@
-import React from 'react';
-import { InfluxQuery } from '../../types';
-import InfluxDatasource from '../../datasource';
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Editor } from './Editor';
+import React from 'react';
+
+import InfluxDatasource from '../../datasource';
 import * as mockedMeta from '../../influxQLMetadataQuery';
+import { InfluxQuery } from '../../types';
+
+import { Editor } from './Editor';
 
 jest.mock('../../influxQLMetadataQuery', () => {
   return {
@@ -86,9 +88,9 @@ describe('InfluxDB InfluxQL Visual Editor field-filtering', () => {
   it('should not send fields in tag-structures to metadata queries', async () => {
     const onChange = jest.fn();
     const onRunQuery = jest.fn();
-    const datasource: InfluxDatasource = ({
+    const datasource: InfluxDatasource = {
       metricFindQuery: () => Promise.resolve([]),
-    } as unknown) as InfluxDatasource;
+    } as unknown as InfluxDatasource;
     render(<Editor query={query} datasource={datasource} onChange={onChange} onRunQuery={onRunQuery} />);
 
     // when the editor-widget mounts, it calls getTagKeysForMeasurementAndTags

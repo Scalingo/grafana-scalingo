@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/data"
+
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/services/ngalert/eval"
 	"github.com/grafana/grafana/pkg/services/ngalert/metrics"
@@ -36,10 +37,11 @@ type evalAppliedInfo struct {
 func TestWarmStateCache(t *testing.T) {
 	evaluationTime, err := time.Parse("2006-01-02", "2021-03-25")
 	require.NoError(t, err)
-	_, dbstore := tests.SetupTestEnv(t, 1)
+	ctx := context.Background()
+	ng, dbstore := tests.SetupTestEnv(t, 1)
 
 	const mainOrgID int64 = 1
-	rule := tests.CreateTestAlertRule(t, dbstore, 600, mainOrgID)
+	rule := tests.CreateTestAlertRule(t, ctx, dbstore, 600, mainOrgID)
 
 	expectedEntries := []*state.State{
 		{
@@ -81,7 +83,7 @@ func TestWarmStateCache(t *testing.T) {
 		CurrentStateEnd:   evaluationTime.Add(1 * time.Minute),
 	}
 
-	_ = dbstore.SaveAlertInstance(saveCmd1)
+	_ = dbstore.SaveAlertInstance(ctx, saveCmd1)
 
 	saveCmd2 := &models.SaveAlertInstanceCommand{
 		RuleOrgID:         rule.OrgID,
@@ -92,7 +94,7 @@ func TestWarmStateCache(t *testing.T) {
 		CurrentStateSince: evaluationTime.Add(-1 * time.Minute),
 		CurrentStateEnd:   evaluationTime.Add(1 * time.Minute),
 	}
-	_ = dbstore.SaveAlertInstance(saveCmd2)
+	_ = dbstore.SaveAlertInstance(ctx, saveCmd2)
 
 	schedCfg := schedule.SchedulerCfg{
 		C:            clock.NewMock(),
@@ -104,8 +106,8 @@ func TestWarmStateCache(t *testing.T) {
 		Metrics:                 testMetrics.GetSchedulerMetrics(),
 		AdminConfigPollInterval: 10 * time.Minute, // do not poll in unit tests.
 	}
-	st := state.NewManager(schedCfg.Logger, testMetrics.GetStateMetrics(), nil, dbstore, dbstore)
-	st.Warm()
+	st := state.NewManager(schedCfg.Logger, testMetrics.GetStateMetrics(), nil, dbstore, dbstore, ng.SQLStore)
+	st.Warm(ctx)
 
 	t.Run("instance cache has expected entries", func(t *testing.T) {
 		for _, entry := range expectedEntries {
@@ -121,13 +123,14 @@ func TestWarmStateCache(t *testing.T) {
 }
 
 func TestAlertingTicker(t *testing.T) {
-	_, dbstore := tests.SetupTestEnv(t, 1)
+	ctx := context.Background()
+	ng, dbstore := tests.SetupTestEnv(t, 1)
 
 	alerts := make([]*models.AlertRule, 0)
 
 	const mainOrgID int64 = 1
 	// create alert rule under main org with one second interval
-	alerts = append(alerts, tests.CreateTestAlertRule(t, dbstore, 1, mainOrgID))
+	alerts = append(alerts, tests.CreateTestAlertRule(t, ctx, dbstore, 1, mainOrgID))
 
 	const disabledOrgID int64 = 3
 
@@ -155,14 +158,12 @@ func TestAlertingTicker(t *testing.T) {
 			disabledOrgID: {},
 		},
 	}
-	st := state.NewManager(schedCfg.Logger, testMetrics.GetStateMetrics(), nil, dbstore, dbstore)
+	st := state.NewManager(schedCfg.Logger, testMetrics.GetStateMetrics(), nil, dbstore, dbstore, ng.SQLStore)
 	appUrl := &url.URL{
 		Scheme: "http",
 		Host:   "localhost",
 	}
 	sched := schedule.NewScheduler(schedCfg, nil, appUrl, st)
-
-	ctx := context.Background()
 
 	go func() {
 		err := sched.Run(ctx)
@@ -178,7 +179,7 @@ func TestAlertingTicker(t *testing.T) {
 
 	// add alert rule under main org with three seconds interval
 	var threeSecInterval int64 = 3
-	alerts = append(alerts, tests.CreateTestAlertRule(t, dbstore, threeSecInterval, mainOrgID))
+	alerts = append(alerts, tests.CreateTestAlertRule(t, ctx, dbstore, threeSecInterval, mainOrgID))
 	t.Logf("alert rule: %v added with interval: %d", alerts[1].GetKey(), threeSecInterval)
 
 	expectedAlertRulesEvaluated = []models.AlertRuleKey{alerts[0].GetKey()}
@@ -200,7 +201,7 @@ func TestAlertingTicker(t *testing.T) {
 	})
 
 	key := alerts[0].GetKey()
-	err := dbstore.DeleteAlertRuleByUID(alerts[0].OrgID, alerts[0].UID)
+	err := dbstore.DeleteAlertRulesByUID(ctx, alerts[0].OrgID, alerts[0].UID)
 	require.NoError(t, err)
 	t.Logf("alert rule: %v deleted", key)
 
@@ -221,7 +222,7 @@ func TestAlertingTicker(t *testing.T) {
 	})
 
 	// create alert rule with one second interval
-	alerts = append(alerts, tests.CreateTestAlertRule(t, dbstore, 1, mainOrgID))
+	alerts = append(alerts, tests.CreateTestAlertRule(t, ctx, dbstore, 1, mainOrgID))
 
 	expectedAlertRulesEvaluated = []models.AlertRuleKey{alerts[2].GetKey()}
 	t.Run(fmt.Sprintf("on 7th tick alert rules: %s should be evaluated", concatenate(expectedAlertRulesEvaluated)), func(t *testing.T) {
@@ -230,7 +231,7 @@ func TestAlertingTicker(t *testing.T) {
 	})
 
 	// create alert rule with one second interval under disabled org
-	alerts = append(alerts, tests.CreateTestAlertRule(t, dbstore, 1, disabledOrgID))
+	alerts = append(alerts, tests.CreateTestAlertRule(t, ctx, dbstore, 1, disabledOrgID))
 
 	expectedAlertRulesEvaluated = []models.AlertRuleKey{alerts[2].GetKey()}
 	t.Run(fmt.Sprintf("on 8th tick alert rules: %s should be evaluated", concatenate(expectedAlertRulesEvaluated)), func(t *testing.T) {

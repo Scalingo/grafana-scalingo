@@ -1,13 +1,14 @@
 import 'whatwg-fetch'; // fetch polyfill needed for PhantomJs rendering
 import { Observable, of } from 'rxjs';
 import { delay } from 'rxjs/operators';
-import { AppEvents, DataQueryErrorType, EventBusExtended } from '@grafana/data';
 
-import { BackendSrv } from '../services/backend_srv';
-import { ContextSrv, User } from '../services/context_srv';
+import { AppEvents, DataQueryErrorType, EventBusExtended } from '@grafana/data';
 import { BackendSrvRequest, FetchError } from '@grafana/runtime';
+
 import { TokenRevokedModal } from '../../features/users/TokenRevokedModal';
 import { ShowModalReactEvent } from '../../types/events';
+import { BackendSrv } from '../services/backend_srv';
+import { ContextSrv, User } from '../services/context_srv';
 
 const getTestContext = (overides?: object) => {
   const defaults = {
@@ -36,18 +37,18 @@ const getTestContext = (overides?: object) => {
     return of(mockedResponse);
   });
 
-  const appEventsMock: EventBusExtended = ({
+  const appEventsMock: EventBusExtended = {
     emit: jest.fn(),
     publish: jest.fn(),
-  } as any) as EventBusExtended;
+  } as any as EventBusExtended;
 
-  const user: User = ({
+  const user: User = {
     isSignedIn: props.isSignedIn,
     orgId: props.orgId,
-  } as any) as User;
-  const contextSrvMock: ContextSrv = ({
+  } as any as User;
+  const contextSrvMock: ContextSrv = {
     user,
-  } as any) as ContextSrv;
+  } as any as ContextSrv;
   const logoutMock = jest.fn();
   const parseRequestOptionsMock = jest.fn().mockImplementation((options) => options);
 
@@ -264,10 +265,15 @@ describe('backendSrv', () => {
               data: {
                 message: 'Something failed',
                 error: 'Error',
+                traceID: 'bogus-trace-id',
               },
             } as FetchError
           );
-          expect(appEventsMock.emit).toHaveBeenCalledWith(AppEvents.alertError, ['Something failed', '']);
+          expect(appEventsMock.emit).toHaveBeenCalledWith(AppEvents.alertError, [
+            'Something failed',
+            '',
+            'bogus-trace-id',
+          ]);
         });
       });
     });

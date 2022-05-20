@@ -1,18 +1,20 @@
-import React, { useEffect, useState, useMemo } from 'react';
 import { css } from '@emotion/css';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useDispatch } from 'react-redux';
+
 import { GrafanaTheme2 } from '@grafana/data';
 import { Alert, Button, ConfirmModal, TextArea, HorizontalGroup, Field, Form, useStyles2 } from '@grafana/ui';
+
 import { useAlertManagerSourceName } from '../../hooks/useAlertManagerSourceName';
-import { AlertManagerPicker } from '../AlertManagerPicker';
-import { GRAFANA_RULES_SOURCE_NAME, isVanillaPrometheusAlertManagerDataSource } from '../../utils/datasource';
-import { useDispatch } from 'react-redux';
+import { useUnifiedAlertingSelector } from '../../hooks/useUnifiedAlertingSelector';
 import {
   deleteAlertManagerConfigAction,
   fetchAlertManagerConfigAction,
   updateAlertManagerConfigAction,
 } from '../../state/actions';
-import { useUnifiedAlertingSelector } from '../../hooks/useUnifiedAlertingSelector';
+import { GRAFANA_RULES_SOURCE_NAME, isVanillaPrometheusAlertManagerDataSource } from '../../utils/datasource';
 import { initialAsyncRequestState } from '../../utils/redux';
+import { AlertManagerPicker } from '../AlertManagerPicker';
 
 interface FormValues {
   configJSON: string;
@@ -29,8 +31,11 @@ export default function AlertmanagerConfig(): JSX.Element {
 
   const configRequests = useUnifiedAlertingSelector((state) => state.amConfigs);
 
-  const { result: config, loading: isLoadingConfig, error: loadingError } =
-    (alertManagerSourceName && configRequests[alertManagerSourceName]) || initialAsyncRequestState;
+  const {
+    result: config,
+    loading: isLoadingConfig,
+    error: loadingError,
+  } = (alertManagerSourceName && configRequests[alertManagerSourceName]) || initialAsyncRequestState;
 
   useEffect(() => {
     if (alertManagerSourceName) {

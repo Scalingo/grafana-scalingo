@@ -845,71 +845,19 @@ export const bigResponse = new MutableDataFrame({
     {
       name: 'startTime',
       values: [
-        1619712655875.4539,
-        1619712655875.4502,
-        1619712655875.592,
-        1619712655875.653,
-        1619712655875.731,
-        1619712655875.712,
-        1619712655875.6428,
-        1619712655875.5771,
-        1619712655875.5168,
-        1619712655875.488,
-        1619712655875.939,
-        1619712655875.959,
-        1619712655876.0051,
-        1619712655875.991,
-        1619712655875.9539,
-        1619712655875.9338,
-        1619712655875.917,
-        1619712655875.442,
-        1619712655876.365,
-        1619712655876.3809,
-        1619712655876.359,
-        1619712655876.331,
-        1619712655876.62,
-        1619712655876.629,
-        1619712655876.616,
-        1619712655876.592,
-        1619712655875.052,
-        1619712655874.819,
-        1619712655874.7021,
-        1619712655874.591,
+        1619712655875.4539, 1619712655875.4502, 1619712655875.592, 1619712655875.653, 1619712655875.731,
+        1619712655875.712, 1619712655875.6428, 1619712655875.5771, 1619712655875.5168, 1619712655875.488,
+        1619712655875.939, 1619712655875.959, 1619712655876.0051, 1619712655875.991, 1619712655875.9539,
+        1619712655875.9338, 1619712655875.917, 1619712655875.442, 1619712655876.365, 1619712655876.3809,
+        1619712655876.359, 1619712655876.331, 1619712655876.62, 1619712655876.629, 1619712655876.616, 1619712655876.592,
+        1619712655875.052, 1619712655874.819, 1619712655874.7021, 1619712655874.591,
       ],
     },
     {
       name: 'duration',
       values: [
-        0.004,
-        0.016,
-        0.039,
-        0.047,
-        0.063,
-        0.087,
-        0.163,
-        0.303,
-        0.384,
-        0.421,
-        0.012,
-        0.021,
-        0.033,
-        0.048,
-        0.092,
-        0.169,
-        0.197,
-        0.689,
-        0.012,
-        0.196,
-        0.225,
-        0.255,
-        0.007,
-        0.167,
-        0.189,
-        0.217,
-        13.918,
-        14.723,
-        14.984,
-        18.208,
+        0.004, 0.016, 0.039, 0.047, 0.063, 0.087, 0.163, 0.303, 0.384, 0.421, 0.012, 0.021, 0.033, 0.048, 0.092, 0.169,
+        0.197, 0.689, 0.012, 0.196, 0.225, 0.255, 0.007, 0.167, 0.189, 0.217, 13.918, 14.723, 14.984, 18.208,
       ],
     },
     {
@@ -1976,6 +1924,32 @@ export const otlpDataFrameFromResponse = new MutableDataFrame({
       },
     },
     {
+      name: 'references',
+      type: 'other',
+      config: {},
+      labels: undefined,
+      values: [
+        [
+          {
+            spanID: 'spanId',
+            traceID: 'traceId',
+            tags: [
+              { key: 'key', value: 'Value' },
+              { key: 'intValue', value: 4 },
+            ],
+          },
+          {
+            spanID: 'spanId2',
+            traceID: 'traceId2',
+            tags: [],
+          },
+        ],
+      ],
+      state: {
+        displayName: 'references',
+      },
+    },
+    {
       name: 'tags',
       type: 'other',
       config: {},
@@ -2160,6 +2134,32 @@ export const otlpDataFrameToResponse = new MutableDataFrame({
         displayName: 'tags',
       },
     },
+    {
+      name: 'references',
+      type: 'other',
+      config: {},
+      labels: undefined,
+      values: [
+        [
+          {
+            spanID: 'spanId',
+            traceID: 'traceId',
+            tags: [
+              { key: 'key', value: 'Value' },
+              { key: 'intValue', value: 4 },
+            ],
+          },
+          {
+            spanID: 'spanId2',
+            traceID: 'traceId2',
+            tags: [],
+          },
+        ],
+      ],
+      state: {
+        displayName: 'references',
+      },
+    },
   ],
   first: ['60ba2abb44f13eae'],
   length: 1,
@@ -2178,6 +2178,81 @@ export const otlpResponse = {
           { key: 'client-uuid', value: { stringValue: '39fb01637a579639' } },
         ],
       },
+      instrumentationLibrarySpans: [
+        {
+          spans: [
+            {
+              traceId: 'AAAAAAAAAABguiq7RPE+rg==',
+              spanId: 'cmteMBAvwNA=',
+              parentSpanId: 'OY8PIaPbma4=',
+              name: 'HTTP GET - root',
+              kind: 'SPAN_KIND_CLIENT',
+              startTimeUnixNano: 1627471657255809000,
+              endTimeUnixNano: 1627471657256268000,
+              attributes: [
+                { key: 'http.status_code', value: { intValue: 200 } },
+                { key: 'http.method', value: { stringValue: 'GET' } },
+                { key: 'http.url', value: { stringValue: '/' } },
+                { key: 'component', value: { stringValue: 'net/http' } },
+              ],
+              links: [
+                {
+                  spanId: 'spanId',
+                  traceId: 'traceId',
+                  attributes: [
+                    {
+                      key: 'key',
+                      value: {
+                        stringValue: 'Value',
+                      },
+                    },
+                    {
+                      key: 'intValue',
+                      value: {
+                        intValue: 4,
+                      },
+                    },
+                  ],
+                },
+                {
+                  spanId: 'spanId2',
+                  traceId: 'traceId2',
+                  attributes: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+export const tempoSearchResponse = {
+  traces: [
+    {
+      traceID: 'e641dcac1c3a0565',
+      rootServiceName: 'c10d7ca4e3a00354',
+      startTimeUnixNano: '1643356828724000000',
+      durationMs: 65,
+    },
+    {
+      traceID: 'c2983496a2b12544',
+      rootServiceName: '<root span not yet received>',
+      startTimeUnixNano: '1643342166678000000',
+      durationMs: 93,
+    },
+  ],
+  metrics: {
+    inspectedTraces: 2,
+    inspectedBytes: '83720',
+  },
+};
+
+export const badOTLPResponse = {
+  batches: [
+    {
+      resource: {},
       instrumentationLibrarySpans: [
         {
           spans: [

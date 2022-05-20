@@ -1,6 +1,8 @@
-import { InlineField, TextArea } from '@grafana/ui';
 import { css } from '@emotion/css';
 import React, { ChangeEvent, FC } from 'react';
+
+import { InlineField, TextArea } from '@grafana/ui';
+
 import { ExpressionQuery } from '../types';
 
 interface Props {
@@ -12,7 +14,7 @@ interface Props {
 const mathPlaceholder =
   'Math operations on one more queries, you reference the query by ${refId} ie. $A, $B, $C etc\n' +
   'Example: $A + $B\n' +
-  'Available functions: abs(), log(), is_number(), is_inf(), is_nan(), is_null()';
+  'Available functions: abs(), log(), is_number(), round(), ceil(), floor(), is_inf(), is_nan(), is_null(), ';
 
 export const Math: FC<Props> = ({ labelWidth, onChange, query }) => {
   const onExpressionChange = (event: ChangeEvent<HTMLTextAreaElement>) => {

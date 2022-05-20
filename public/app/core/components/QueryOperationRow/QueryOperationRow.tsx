@@ -1,9 +1,11 @@
-import React, { useCallback, useState } from 'react';
-import { Icon, ReactUtils, stylesFactory, useTheme } from '@grafana/ui';
-import { GrafanaTheme } from '@grafana/data';
 import { css, cx } from '@emotion/css';
-import { useUpdateEffect } from 'react-use';
+import React, { useCallback, useState } from 'react';
 import { Draggable } from 'react-beautiful-dnd';
+import { useUpdateEffect } from 'react-use';
+
+import { GrafanaTheme } from '@grafana/data';
+import { reportInteraction } from '@grafana/runtime';
+import { Icon, ReactUtils, stylesFactory, useTheme } from '@grafana/ui';
 
 interface QueryOperationRowProps {
   index: number;
@@ -46,6 +48,24 @@ export const QueryOperationRow: React.FC<QueryOperationRowProps> = ({
   const onRowToggle = useCallback(() => {
     setIsContentVisible(!isContentVisible);
   }, [isContentVisible, setIsContentVisible]);
+
+  const reportDragMousePosition = useCallback((e) => {
+    // When drag detected react-beautiful-dnd will preventDefault the event
+    // Ref: https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/guides/how-we-use-dom-events.md#a-mouse-drag-has-started-and-the-user-is-now-dragging
+    if (e.defaultPrevented) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      var x = e.clientX - rect.left;
+      var y = e.clientY - rect.top;
+
+      // report relative mouse position within the header element
+      reportInteraction('query_row_reorder_drag_position', {
+        x: x / rect.width,
+        y: y / rect.height,
+        width: rect.width,
+        height: rect.height,
+      });
+    }
+  }, []);
 
   useUpdateEffect(() => {
     if (isContentVisible) {
@@ -106,7 +126,9 @@ export const QueryOperationRow: React.FC<QueryOperationRowProps> = ({
           return (
             <>
               <div ref={provided.innerRef} className={styles.wrapper} {...provided.draggableProps}>
-                <div {...dragHandleProps}>{rowHeader}</div>
+                <div {...dragHandleProps} onMouseMove={reportDragMousePosition}>
+                  {rowHeader}
+                </div>
                 {isContentVisible && <div className={styles.content}>{children}</div>}
               </div>
             </>
@@ -180,7 +202,8 @@ const getQueryOperationRowStyles = stylesFactory((theme: GrafanaTheme) => {
       text-overflow: ellipsis;
     `,
     content: css`
-      margin: ${theme.spacing.md};
+      margin-top: ${theme.spacing.inlineFormMargin};
+      margin-left: ${theme.spacing.lg};
     `,
     disabled: css`
       color: ${theme.colors.textWeak};

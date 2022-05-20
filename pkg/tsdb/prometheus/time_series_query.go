@@ -13,9 +13,9 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana/pkg/tsdb/intervalv2"
-	"github.com/opentracing/opentracing-go"
 	apiv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 //Internal interval and range variables
@@ -39,6 +39,8 @@ const (
 	varRateIntervalAlt = "${__rate_interval}"
 )
 
+const legendFormatAuto = "__auto"
+
 type TimeSeriesQueryType string
 
 const (
@@ -47,7 +49,7 @@ const (
 	ExemplarQueryType TimeSeriesQueryType = "exemplar"
 )
 
-func runQueries(ctx context.Context, client apiv1.API, queries []*PrometheusQuery) (*backend.QueryDataResponse, error) {
+func (s *Service) runQueries(ctx context.Context, client apiv1.API, queries []*PrometheusQuery) (*backend.QueryDataResponse, error) {
 	result := backend.QueryDataResponse{
 		Responses: backend.Responses{},
 	}
@@ -55,11 +57,11 @@ func runQueries(ctx context.Context, client apiv1.API, queries []*PrometheusQuer
 	for _, query := range queries {
 		plog.Debug("Sending query", "start", query.Start, "end", query.End, "step", query.Step, "query", query.Expr)
 
-		span, ctx := opentracing.StartSpanFromContext(ctx, "datasource.prometheus")
-		span.SetTag("expr", query.Expr)
-		span.SetTag("start_unixnano", query.Start.UnixNano())
-		span.SetTag("stop_unixnano", query.End.UnixNano())
-		defer span.Finish()
+		ctx, span := s.tracer.Start(ctx, "datasource.prometheus")
+		span.SetAttributes("expr", query.Expr, attribute.Key("expr").String(query.Expr))
+		span.SetAttributes("start_unixnano", query.Start, attribute.Key("start_unixnano").Int64(query.Start.UnixNano()))
+		span.SetAttributes("stop_unixnano", query.End, attribute.Key("stop_unixnano").Int64(query.End.UnixNano()))
+		defer span.End()
 
 		response := make(map[TimeSeriesQueryType]interface{})
 
@@ -106,6 +108,11 @@ func runQueries(ctx context.Context, client apiv1.API, queries []*PrometheusQuer
 			return &result, err
 		}
 
+		// The ExecutedQueryString can be viewed in QueryInspector in UI
+		for _, frame := range frames {
+			frame.Meta.ExecutedQueryString = "Expr: " + query.Expr + "\n" + "Step: " + query.Step.String()
+		}
+
 		result.Responses[query.RefId] = backend.DataResponse{
 			Frames: frames,
 		}
@@ -128,15 +135,18 @@ func (s *Service) executeTimeSeriesQuery(ctx context.Context, req *backend.Query
 		return &result, err
 	}
 
-	return runQueries(ctx, client, queries)
+	return s.runQueries(ctx, client, queries)
 }
 
 func formatLegend(metric model.Metric, query *PrometheusQuery) string {
-	var legend string
+	var legend = metric.String()
 
-	if query.LegendFormat == "" {
-		legend = metric.String()
-	} else {
+	if query.LegendFormat == legendFormatAuto {
+		// If we have labels set legend to empty string to utilize the auto naming system
+		if len(metric) > 0 {
+			legend = ""
+		}
+	} else if query.LegendFormat != "" {
 		result := legendFormat.ReplaceAllFunc([]byte(query.LegendFormat), func(in []byte) []byte {
 			labelName := strings.Replace(string(in), "{{", "", 1)
 			labelName = strings.Replace(labelName, "}}", "", 1)
@@ -314,43 +324,27 @@ func matrixToDataFrames(matrix model.Matrix, query *PrometheusQuery, frames data
 		for k, v := range v.Metric {
 			tags[string(k)] = string(v)
 		}
+		timeField := data.NewFieldFromFieldType(data.FieldTypeTime, len(v.Values))
+		valueField := data.NewFieldFromFieldType(data.FieldTypeNullableFloat64, len(v.Values))
 
-		baseTimestamp := alignTimeRange(query.Start, query.Step, query.UtcOffsetSec).UnixMilli()
-		endTimestamp := alignTimeRange(query.End, query.Step, query.UtcOffsetSec).UnixMilli()
-		// For each step we create 1 data point. This results in range / step + 1 data points.
-		datapointsCount := int((endTimestamp-baseTimestamp)/query.Step.Milliseconds()) + 1
+		for i, k := range v.Values {
+			timeField.Set(i, k.Timestamp.Time().UTC())
+			value := float64(k.Value)
 
-		timeField := data.NewFieldFromFieldType(data.FieldTypeTime, datapointsCount)
-		valueField := data.NewFieldFromFieldType(data.FieldTypeNullableFloat64, datapointsCount)
-		idx := 0
-
-		for _, pair := range v.Values {
-			timestamp := int64(pair.Timestamp)
-			value := float64(pair.Value)
-
-			for t := baseTimestamp; t < timestamp; t += query.Step.Milliseconds() {
-				timeField.Set(idx, time.Unix(0, t*1000000).UTC())
-				idx++
-			}
-
-			timeField.Set(idx, time.Unix(pair.Timestamp.Unix(), 0).UTC())
 			if !math.IsNaN(value) {
-				valueField.Set(idx, &value)
+				valueField.Set(i, &value)
 			}
-			baseTimestamp = timestamp + query.Step.Milliseconds()
-			idx++
-		}
-
-		for t := baseTimestamp; t <= endTimestamp; t += query.Step.Milliseconds() {
-			timeField.Set(idx, time.Unix(0, t*1000000).UTC())
-			idx++
 		}
 
 		name := formatLegend(v.Metric, query)
 		timeField.Name = data.TimeSeriesTimeFieldName
+		timeField.Config = &data.FieldConfig{Interval: float64(query.Step.Milliseconds())}
 		valueField.Name = data.TimeSeriesValueFieldName
-		valueField.Config = &data.FieldConfig{DisplayNameFromDS: name}
 		valueField.Labels = tags
+
+		if name != "" {
+			valueField.Config = &data.FieldConfig{DisplayNameFromDS: name}
+		}
 
 		frames = append(frames, newDataFrame(name, "matrix", timeField, valueField))
 	}
@@ -359,7 +353,7 @@ func matrixToDataFrames(matrix model.Matrix, query *PrometheusQuery, frames data
 }
 
 func scalarToDataFrames(scalar *model.Scalar, query *PrometheusQuery, frames data.Frames) data.Frames {
-	timeVector := []time.Time{time.Unix(scalar.Timestamp.Unix(), 0).UTC()}
+	timeVector := []time.Time{scalar.Timestamp.Time().UTC()}
 	values := []float64{float64(scalar.Value)}
 	name := fmt.Sprintf("%g", values[0])
 
@@ -378,7 +372,7 @@ func vectorToDataFrames(vector model.Vector, query *PrometheusQuery, frames data
 	for _, v := range vector {
 		name := formatLegend(v.Metric, query)
 		tags := make(map[string]string, len(v.Metric))
-		timeVector := []time.Time{time.Unix(v.Timestamp.Unix(), 0).UTC()}
+		timeVector := []time.Time{v.Timestamp.Time().UTC()}
 		values := []float64{float64(v.Value)}
 
 		for k, v := range v.Metric {
@@ -407,7 +401,7 @@ func exemplarToDataFrames(response []apiv1.ExemplarQueryResult, query *Prometheu
 	for _, exemplarData := range response {
 		for _, exemplar := range exemplarData.Exemplars {
 			event := ExemplarEvent{}
-			exemplarTime := time.Unix(exemplar.Timestamp.Unix(), 0).UTC()
+			exemplarTime := exemplar.Timestamp.Time().UTC()
 			event.Time = exemplarTime
 			event.Value = float64(exemplar.Value)
 			event.Labels = make(map[string]string)

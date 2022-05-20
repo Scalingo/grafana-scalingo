@@ -1,6 +1,8 @@
-import { OrgRole, Unit } from '.';
+import { SelectableValue, WithAccessControlMetadata } from '@grafana/data';
 
-export interface OrgServiceAccount {
+import { ApiKey, OrgRole, Role } from '.';
+
+export interface OrgServiceAccount extends WithAccessControlMetadata {
   serviceAccountId: number;
   avatarUrl: string;
   email: string;
@@ -23,27 +25,38 @@ export interface ServiceAccount {
   orgId?: number;
 }
 
-export interface ServiceAccountDTO {
+export interface ServiceAccountDTO extends WithAccessControlMetadata {
   id: number;
-  login: string;
-  email: string;
+  orgId: number;
+  tokens: number;
   name: string;
-  isGrafanaAdmin: boolean;
-  isDisabled: boolean;
-  isAdmin?: boolean;
-  updatedAt?: string;
-  authLabels?: string[];
+  login: string;
   avatarUrl?: string;
-  orgId?: number;
-  licensedRole?: string;
-  permissions?: string[];
-  teams?: Unit[];
-  orgs?: Unit[];
+  createdAt: string;
+  isDisabled: boolean;
+  teams: string[];
+  role: OrgRole;
 }
 
-export interface ServiceAccountsState {
-  serviceAccounts: OrgServiceAccount[];
-  searchQuery: string;
-  searchPage: number;
+export interface ServiceAccountProfileState {
+  serviceAccount: ServiceAccountDTO;
   isLoading: boolean;
+  tokens: ApiKey[];
+}
+
+export type ServiceAccountFilter = Record<string, string | boolean | SelectableValue[]>;
+export interface ServiceAccountsState {
+  serviceAccounts: ServiceAccountDTO[];
+  isLoading: boolean;
+  roleOptions: Role[];
+  serviceAccountToRemove: ServiceAccountDTO | null;
+  builtInRoles: Record<string, Role[]>;
+
+  // search / filtering
+  query: string;
+  perPage: number;
+  page: number;
+  totalPages: number;
+  showPaging: boolean;
+  filters: ServiceAccountFilter[];
 }

@@ -2,41 +2,28 @@ package alerting
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/encryption"
+	"github.com/grafana/grafana/pkg/services/notifications"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
 type AlertNotificationService struct {
-	Bus               bus.Bus
-	SQLStore          *sqlstore.SQLStore
-	EncryptionService encryption.Internal
+	SQLStore            *sqlstore.SQLStore
+	EncryptionService   encryption.Internal
+	NotificationService *notifications.NotificationService
 }
 
-func ProvideService(bus bus.Bus, store *sqlstore.SQLStore, encryptionService encryption.Internal,
-) *AlertNotificationService {
+func ProvideService(store *sqlstore.SQLStore, encryptionService encryption.Internal,
+	notificationService *notifications.NotificationService) *AlertNotificationService {
 	s := &AlertNotificationService{
-		Bus:               bus,
-		SQLStore:          store,
-		EncryptionService: encryptionService,
+		SQLStore:            store,
+		EncryptionService:   encryptionService,
+		NotificationService: notificationService,
 	}
-
-	s.Bus.AddHandler(s.GetAlertNotifications)
-	s.Bus.AddHandler(s.CreateAlertNotificationCommand)
-	s.Bus.AddHandler(s.UpdateAlertNotification)
-	s.Bus.AddHandler(s.DeleteAlertNotification)
-	s.Bus.AddHandler(s.GetAllAlertNotifications)
-	s.Bus.AddHandler(s.GetOrCreateAlertNotificationState)
-	s.Bus.AddHandler(s.SetAlertNotificationStateToCompleteCommand)
-	s.Bus.AddHandler(s.SetAlertNotificationStateToPendingCommand)
-	s.Bus.AddHandler(s.GetAlertNotificationsWithUid)
-	s.Bus.AddHandler(s.UpdateAlertNotificationWithUid)
-	s.Bus.AddHandler(s.DeleteAlertNotificationWithUid)
-	s.Bus.AddHandler(s.GetAlertNotificationsWithUidToSend)
-	s.Bus.AddHandler(s.HandleNotificationTestCommand)
 
 	return s
 }
@@ -74,6 +61,7 @@ func (s *AlertNotificationService) UpdateAlertNotification(ctx context.Context, 
 
 	model := models.AlertNotification{
 		Id:       cmd.Id,
+		OrgId:    cmd.OrgId,
 		Name:     cmd.Name,
 		Type:     cmd.Type,
 		Settings: cmd.Settings,
@@ -134,7 +122,11 @@ func (s *AlertNotificationService) createNotifier(ctx context.Context, model *mo
 			return nil, err
 		}
 
-		if query.Result != nil && query.Result.SecureSettings != nil {
+		if query.Result == nil {
+			return nil, fmt.Errorf("unable to find the alert notification")
+		}
+
+		if query.Result.SecureSettings != nil {
 			var err error
 			secureSettingsMap, err = s.EncryptionService.DecryptJsonData(ctx, query.Result.SecureSettings, setting.SecretKey)
 			if err != nil {
@@ -153,7 +145,7 @@ func (s *AlertNotificationService) createNotifier(ctx context.Context, model *mo
 		return nil, err
 	}
 
-	notifier, err := InitNotifier(model, s.EncryptionService.GetDecryptedValue)
+	notifier, err := InitNotifier(model, s.EncryptionService.GetDecryptedValue, s.NotificationService)
 	if err != nil {
 		logger.Error("Failed to create notifier", "error", err.Error())
 		return nil, err

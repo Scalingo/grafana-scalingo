@@ -1,10 +1,12 @@
-import React, { FC } from 'react';
-import { Button, Field, Input, IconButton, InputControl, useStyles2, Select } from '@grafana/ui';
-import { GrafanaTheme2 } from '@grafana/data';
 import { css, cx } from '@emotion/css';
+import React, { FC } from 'react';
 import { useFormContext, useFieldArray } from 'react-hook-form';
-import { SilenceFormFields } from '../../types/silence-form';
+
+import { GrafanaTheme2 } from '@grafana/data';
+import { Button, Field, Input, IconButton, InputControl, useStyles2, Select } from '@grafana/ui';
 import { MatcherOperator } from 'app/plugins/datasource/alertmanager/types';
+
+import { SilenceFormFields } from '../../types/silence-form';
 import { matcherFieldOptions } from '../../utils/alertmanager';
 
 interface Props {
@@ -128,7 +130,7 @@ const getStyles = (theme: GrafanaTheme2) => {
       min-width: 140px;
     `,
     matchers: css`
-      max-width: 585px;
+      max-width: ${theme.breakpoints.values.sm}px;
       margin: ${theme.spacing(1)} 0;
       padding-top: ${theme.spacing(0.5)};
     `,

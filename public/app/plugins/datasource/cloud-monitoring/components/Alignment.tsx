@@ -1,11 +1,15 @@
 import React, { FC } from 'react';
+
 import { SelectableValue } from '@grafana/data';
+
 import { SELECT_WIDTH } from '../constants';
-import { CustomMetaData, MetricQuery, SLOQuery } from '../types';
-import { AlignmentFunction, AlignmentPeriod, AlignmentPeriodLabel, QueryEditorField, QueryEditorRow } from '.';
 import CloudMonitoringDatasource from '../datasource';
+import { CustomMetaData, MetricQuery, SLOQuery } from '../types';
+
+import { AlignmentFunction, AlignmentPeriod, AlignmentPeriodLabel, QueryEditorField, QueryEditorRow } from '.';
 
 export interface Props {
+  refId: string;
   onChange: (query: MetricQuery | SLOQuery) => void;
   query: MetricQuery;
   templateVariableOptions: Array<SelectableValue<string>>;
@@ -13,16 +17,30 @@ export interface Props {
   datasource: CloudMonitoringDatasource;
 }
 
-export const Alignment: FC<Props> = ({ templateVariableOptions, onChange, query, customMetaData, datasource }) => {
+export const Alignment: FC<Props> = ({
+  refId,
+  templateVariableOptions,
+  onChange,
+  query,
+  customMetaData,
+  datasource,
+}) => {
   return (
     <QueryEditorRow
       label="Alignment function"
       tooltip="The process of alignment consists of collecting all data points received in a fixed length of time, applying a function to combine those data points, and assigning a timestamp to the result."
       fillComponent={<AlignmentPeriodLabel datasource={datasource} customMetaData={customMetaData} />}
+      htmlFor={`${refId}-alignment-function`}
     >
-      <AlignmentFunction templateVariableOptions={templateVariableOptions} query={query} onChange={onChange} />
-      <QueryEditorField label="Alignment period">
+      <AlignmentFunction
+        inputId={`${refId}-alignment-function`}
+        templateVariableOptions={templateVariableOptions}
+        query={query}
+        onChange={onChange}
+      />
+      <QueryEditorField label="Alignment period" htmlFor={`${refId}-alignment-period`}>
         <AlignmentPeriod
+          inputId={`${refId}-alignment-period`}
           selectWidth={SELECT_WIDTH}
           templateVariableOptions={templateVariableOptions}
           query={query}

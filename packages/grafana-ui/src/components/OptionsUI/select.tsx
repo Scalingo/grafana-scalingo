@@ -1,5 +1,7 @@
 import React from 'react';
+
 import { FieldConfigEditorProps, SelectFieldConfigSettings, SelectableValue } from '@grafana/data';
+
 import { Select } from '../Select/Select';
 
 interface State<T> {
@@ -67,7 +69,8 @@ export class SelectValueEditor<T> extends React.PureComponent<Props<T>, State<T>
         value={current}
         defaultValue={value}
         allowCustomValue={settings?.allowCustomValue}
-        onChange={(e) => onChange(e.value)}
+        isClearable={settings?.isClearable}
+        onChange={(e) => onChange(e?.value)}
         options={options}
       />
     );

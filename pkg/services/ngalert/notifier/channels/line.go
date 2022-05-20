@@ -2,13 +2,14 @@ package channels
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"path"
 
-	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/notifications"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
 )
@@ -17,32 +18,48 @@ var (
 	LineNotifyURL string = "https://notify-api.line.me/api/notify"
 )
 
-// NewLineNotifier is the constructor for the LINE notifier
-func NewLineNotifier(model *NotificationChannelConfig, t *template.Template, fn GetDecryptedValueFn) (*LineNotifier, error) {
-	if model.Settings == nil {
-		return nil, receiverInitError{Cfg: *model, Reason: "no settings supplied"}
-	}
-	if model.SecureSettings == nil {
-		return nil, receiverInitError{Cfg: *model, Reason: "no secure settings supplied"}
-	}
+type LineConfig struct {
+	*NotificationChannelConfig
+	Token string
+}
 
-	token := fn(context.Background(), model.SecureSettings, "token", model.Settings.Get("token").MustString())
+func LineFactory(fc FactoryConfig) (NotificationChannel, error) {
+	cfg, err := NewLineConfig(fc.Config, fc.DecryptFunc)
+	if err != nil {
+		return nil, receiverInitError{
+			Reason: err.Error(),
+			Cfg:    *fc.Config,
+		}
+	}
+	return NewLineNotifier(cfg, fc.NotificationService, fc.Template), nil
+}
+
+func NewLineConfig(config *NotificationChannelConfig, decryptFunc GetDecryptedValueFn) (*LineConfig, error) {
+	token := decryptFunc(context.Background(), config.SecureSettings, "token", config.Settings.Get("token").MustString())
 	if token == "" {
-		return nil, receiverInitError{Cfg: *model, Reason: "could not find token in settings"}
+		return nil, errors.New("could not find token in settings")
 	}
+	return &LineConfig{
+		NotificationChannelConfig: config,
+		Token:                     token,
+	}, nil
+}
 
+// NewLineNotifier is the constructor for the LINE notifier
+func NewLineNotifier(config *LineConfig, ns notifications.WebhookSender, t *template.Template) *LineNotifier {
 	return &LineNotifier{
 		Base: NewBase(&models.AlertNotification{
-			Uid:                   model.UID,
-			Name:                  model.Name,
-			Type:                  model.Type,
-			DisableResolveMessage: model.DisableResolveMessage,
-			Settings:              model.Settings,
+			Uid:                   config.UID,
+			Name:                  config.Name,
+			Type:                  config.Type,
+			DisableResolveMessage: config.DisableResolveMessage,
+			Settings:              config.Settings,
 		}),
-		Token: token,
+		Token: config.Token,
 		log:   log.New("alerting.notifier.line"),
+		ns:    ns,
 		tmpl:  t,
-	}, nil
+	}
 }
 
 // LineNotifier is responsible for sending
@@ -51,6 +68,7 @@ type LineNotifier struct {
 	*Base
 	Token string
 	log   log.Logger
+	ns    notifications.WebhookSender
 	tmpl  *template.Template
 }
 
@@ -86,7 +104,7 @@ func (ln *LineNotifier) Notify(ctx context.Context, as ...*types.Alert) (bool, e
 		Body: form.Encode(),
 	}
 
-	if err := bus.Dispatch(ctx, cmd); err != nil {
+	if err := ln.ns.SendWebhookSync(ctx, cmd); err != nil {
 		ln.log.Error("Failed to send notification to LINE", "error", err, "body", body)
 		return false, err
 	}

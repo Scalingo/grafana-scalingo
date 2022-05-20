@@ -1,10 +1,11 @@
 import { useSelector } from 'react-redux';
+
 import { StoreState } from '../../../../types';
 
 const SUFFIX_REGEX = /\/api\/v[1|2]\/alerts/i;
 type AlertmanagerConfig = { url: string; status: string; actualUrl: string };
 
-export function useExternalAmSelector(): AlertmanagerConfig[] | undefined {
+export function useExternalAmSelector(): AlertmanagerConfig[] | [] {
   const discoveredAlertmanagers = useSelector(
     (state: StoreState) => state.unifiedAlerting.externalAlertmanagers.discoveredAlertmanagers.result?.data
   );

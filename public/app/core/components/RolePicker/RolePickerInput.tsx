@@ -1,9 +1,12 @@
-import React, { FormEvent, HTMLProps, MutableRefObject, useEffect, useRef } from 'react';
 import { css, cx } from '@emotion/css';
-import { useStyles2, getInputStyles, sharedInputStyle, styleMixins, Tooltip, Icon } from '@grafana/ui';
+import React, { FormEvent, HTMLProps, useEffect, useRef } from 'react';
+
 import { GrafanaTheme2 } from '@grafana/data';
-import { ValueContainer } from './ValueContainer';
+import { useStyles2, getInputStyles, sharedInputStyle, styleMixins, Tooltip, Icon } from '@grafana/ui';
+
 import { Role } from '../../../types';
+
+import { ValueContainer } from './ValueContainer';
 
 const stopPropagation = (event: React.MouseEvent<HTMLDivElement>) => event.stopPropagation();
 
@@ -36,7 +39,7 @@ export const RolePickerInput = ({
 
   useEffect(() => {
     if (isFocused) {
-      (inputRef as MutableRefObject<HTMLInputElement>).current?.focus();
+      inputRef.current?.focus();
     }
   });
 

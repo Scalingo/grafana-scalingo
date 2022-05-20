@@ -1,4 +1,15 @@
-import { AppEvents, DataSourceInstanceSettings, locationUtil } from '@grafana/data';
+import { DataSourceInstanceSettings, locationUtil } from '@grafana/data';
+import { getDataSourceSrv, locationService, getBackendSrv } from '@grafana/runtime';
+import { notifyApp } from 'app/core/actions';
+import { createErrorNotification } from 'app/core/copy/appNotification';
+import { dashboardWatcher } from 'app/features/live/dashboard/dashboardWatcher';
+import { DashboardDataDTO, DashboardDTO, FolderInfo, PermissionLevelString, ThunkResult } from 'app/types';
+
+import { LibraryElementExport } from '../../dashboard/components/DashExportModal/DashboardExporter';
+import { getLibraryPanel } from '../../library-panels/state/api';
+import { LibraryElementDTO, LibraryElementKind } from '../../library-panels/types';
+import { DashboardSearchHit } from '../../search/types';
+
 import {
   clearDashboard,
   fetchDashboard,
@@ -12,14 +23,6 @@ import {
   setJsonDashboard,
   setLibraryPanelInputs,
 } from './reducers';
-import { DashboardDataDTO, DashboardDTO, FolderInfo, PermissionLevelString, ThunkResult } from 'app/types';
-import { appEvents } from '../../../core/core';
-import { dashboardWatcher } from 'app/features/live/dashboard/dashboardWatcher';
-import { getDataSourceSrv, locationService, getBackendSrv } from '@grafana/runtime';
-import { DashboardSearchHit } from '../../search/types';
-import { getLibraryPanel } from '../../library-panels/state/api';
-import { LibraryElementDTO, LibraryElementKind } from '../../library-panels/types';
-import { LibraryElementExport } from '../../dashboard/components/DashExportModal/DashboardExporter';
 
 export function fetchGcomDashboard(id: string): ThunkResult<void> {
   return async (dispatch) => {
@@ -31,7 +34,7 @@ export function fetchGcomDashboard(id: string): ThunkResult<void> {
       dispatch(processElements(dashboard.json));
     } catch (error) {
       dispatch(fetchFailed());
-      appEvents.emit(AppEvents.alertError, [error.data.message || error]);
+      dispatch(notifyApp(createErrorNotification(error.data.message || error)));
     }
   };
 }

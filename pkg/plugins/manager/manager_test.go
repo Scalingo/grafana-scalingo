@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/grafana-azure-sdk-go/azsettings"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/plugins/backendplugin"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,9 +21,24 @@ const (
 	testPluginID = "test-plugin"
 )
 
+func TestPluginManager_Init(t *testing.T) {
+	t.Run("Plugin sources are loaded in order", func(t *testing.T) {
+		loader := &fakeLoader{}
+		pm := New(&plugins.Cfg{}, []PluginSource{
+			{Class: plugins.Bundled, Paths: []string{"path1"}},
+			{Class: plugins.Core, Paths: []string{"path2"}},
+			{Class: plugins.External, Paths: []string{"path3"}},
+		}, loader)
+
+		err := pm.Init()
+		require.NoError(t, err)
+		require.Equal(t, []string{"path1", "path2", "path3"}, loader.loadedPaths)
+	})
+}
+
 func TestPluginManager_loadPlugins(t *testing.T) {
 	t.Run("Managed backend plugin", func(t *testing.T) {
-		p, pc := createPlugin(testPluginID, "", plugins.External, true, true)
+		p, pc := createPlugin(t, testPluginID, "", plugins.External, true, true)
 
 		loader := &fakeLoader{
 			mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -49,7 +64,7 @@ func TestPluginManager_loadPlugins(t *testing.T) {
 	})
 
 	t.Run("Unmanaged backend plugin", func(t *testing.T) {
-		p, pc := createPlugin(testPluginID, "", plugins.External, false, true)
+		p, pc := createPlugin(t, testPluginID, "", plugins.External, false, true)
 
 		loader := &fakeLoader{
 			mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -75,7 +90,7 @@ func TestPluginManager_loadPlugins(t *testing.T) {
 	})
 
 	t.Run("Managed non-backend plugin", func(t *testing.T) {
-		p, pc := createPlugin(testPluginID, "", plugins.External, false, true)
+		p, pc := createPlugin(t, testPluginID, "", plugins.External, false, true)
 
 		loader := &fakeLoader{
 			mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -101,7 +116,7 @@ func TestPluginManager_loadPlugins(t *testing.T) {
 	})
 
 	t.Run("Unmanaged non-backend plugin", func(t *testing.T) {
-		p, pc := createPlugin(testPluginID, "", plugins.External, false, false)
+		p, pc := createPlugin(t, testPluginID, "", plugins.External, false, false)
 
 		loader := &fakeLoader{
 			mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -129,7 +144,7 @@ func TestPluginManager_loadPlugins(t *testing.T) {
 
 func TestPluginManager_Installer(t *testing.T) {
 	t.Run("Install", func(t *testing.T) {
-		p, pc := createPlugin(testPluginID, "1.0.0", plugins.External, true, true)
+		p, pc := createPlugin(t, testPluginID, "1.0.0", plugins.External, true, true)
 
 		l := &fakeLoader{
 			mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -172,7 +187,7 @@ func TestPluginManager_Installer(t *testing.T) {
 		})
 
 		t.Run("Update", func(t *testing.T) {
-			p, pc := createPlugin(testPluginID, "1.2.0", plugins.External, true, true)
+			p, pc := createPlugin(t, testPluginID, "1.2.0", plugins.External, true, true)
 
 			l := &fakeLoader{
 				mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -216,7 +231,7 @@ func TestPluginManager_Installer(t *testing.T) {
 	})
 
 	t.Run("Can't update core plugin", func(t *testing.T) {
-		p, pc := createPlugin(testPluginID, "", plugins.Core, true, true)
+		p, pc := createPlugin(t, testPluginID, "", plugins.Core, true, true)
 
 		loader := &fakeLoader{
 			mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -228,7 +243,7 @@ func TestPluginManager_Installer(t *testing.T) {
 		err := pm.loadPlugins(context.Background(), plugins.Core, "test/path")
 		require.NoError(t, err)
 
-		assert.Equal(t, 1, pc.startCount)
+		assert.Equal(t, 0, pc.startCount)
 		assert.Equal(t, 0, pc.stopCount)
 		assert.False(t, pc.exited)
 		assert.False(t, pc.decommissioned)
@@ -250,7 +265,7 @@ func TestPluginManager_Installer(t *testing.T) {
 	})
 
 	t.Run("Can't update bundled plugin", func(t *testing.T) {
-		p, pc := createPlugin(testPluginID, "", plugins.Bundled, true, true)
+		p, pc := createPlugin(t, testPluginID, "", plugins.Bundled, true, true)
 
 		loader := &fakeLoader{
 			mockedLoadedPlugins: []*plugins.Plugin{p},
@@ -281,6 +296,30 @@ func TestPluginManager_Installer(t *testing.T) {
 			err := pm.Remove(context.Background(), p.ID)
 			require.Equal(t, plugins.ErrUninstallCorePlugin, err)
 		})
+	})
+}
+
+func TestPluginManager_registeredPlugins(t *testing.T) {
+	t.Run("Decommissioned plugins are included in registeredPlugins", func(t *testing.T) {
+		pm := New(&plugins.Cfg{}, []PluginSource{}, &fakeLoader{})
+
+		decommissionedPlugin, _ := createPlugin(t, testPluginID, "", plugins.Core, false, true,
+			func(plugin *plugins.Plugin) {
+				err := plugin.Decommission()
+				require.NoError(t, err)
+			},
+		)
+		require.True(t, decommissionedPlugin.IsDecommissioned())
+
+		pm.store = map[string]*plugins.Plugin{
+			testPluginID: decommissionedPlugin,
+			"test-app":   {},
+		}
+
+		rps := pm.registeredPlugins()
+		require.Equal(t, 2, len(rps))
+		require.NotNil(t, rps[testPluginID])
+		require.NotNil(t, rps["test-app"])
 	})
 }
 
@@ -357,7 +396,7 @@ func TestPluginManager_lifecycle_managed(t *testing.T) {
 
 				t.Run("Unimplemented handlers", func(t *testing.T) {
 					t.Run("Collect metrics should return method not implemented error", func(t *testing.T) {
-						_, err = ctx.manager.CollectMetrics(context.Background(), testPluginID)
+						_, err = ctx.manager.CollectMetrics(context.Background(), &backend.CollectMetricsRequest{PluginContext: backend.PluginContext{PluginID: testPluginID}})
 						require.Equal(t, backendplugin.ErrMethodNotImplemented, err)
 					})
 
@@ -369,13 +408,13 @@ func TestPluginManager_lifecycle_managed(t *testing.T) {
 
 				t.Run("Implemented handlers", func(t *testing.T) {
 					t.Run("Collect metrics should return expected result", func(t *testing.T) {
-						ctx.pluginClient.CollectMetricsHandlerFunc = func(ctx context.Context) (*backend.CollectMetricsResult, error) {
+						ctx.pluginClient.CollectMetricsHandlerFunc = func(_ context.Context, _ *backend.CollectMetricsRequest) (*backend.CollectMetricsResult, error) {
 							return &backend.CollectMetricsResult{
 								PrometheusMetrics: []byte("hello"),
 							}, nil
 						}
 
-						res, err := ctx.manager.CollectMetrics(context.Background(), testPluginID)
+						res, err := ctx.manager.CollectMetrics(context.Background(), &backend.CollectMetricsRequest{PluginContext: backend.PluginContext{PluginID: testPluginID}})
 						require.NoError(t, err)
 						require.NotNil(t, res)
 						require.Equal(t, "hello", string(res.PrometheusMetrics))
@@ -417,6 +456,20 @@ func TestPluginManager_lifecycle_managed(t *testing.T) {
 					})
 				})
 			})
+		})
+	})
+
+	newScenario(t, true, func(t *testing.T, ctx *managerScenarioCtx) {
+		t.Run("Backend core plugin is registered but not started", func(t *testing.T) {
+			ctx.plugin.Class = plugins.Core
+			err := ctx.manager.registerAndStart(context.Background(), ctx.plugin)
+			require.NoError(t, err)
+			require.NotNil(t, ctx.plugin)
+			require.Equal(t, testPluginID, ctx.plugin.ID)
+			require.Equal(t, 0, ctx.pluginClient.startCount)
+			testPlugin, exists := ctx.manager.Plugin(context.Background(), testPluginID)
+			assert.True(t, exists)
+			require.NotNil(t, testPlugin)
 		})
 	})
 }
@@ -467,8 +520,7 @@ func TestPluginManager_lifecycle_unmanaged(t *testing.T) {
 func createManager(t *testing.T, cbs ...func(*PluginManager)) *PluginManager {
 	t.Helper()
 
-	requestValidator := &testPluginRequestValidator{}
-	pm := New(&plugins.Cfg{}, requestValidator, nil, &fakeLoader{}, &sqlstore.SQLStore{})
+	pm := New(&plugins.Cfg{}, nil, &fakeLoader{})
 
 	for _, cb := range cbs {
 		cb(pm)
@@ -477,7 +529,9 @@ func createManager(t *testing.T, cbs ...func(*PluginManager)) *PluginManager {
 	return pm
 }
 
-func createPlugin(pluginID, version string, class plugins.Class, managed, backend bool) (*plugins.Plugin, *fakePluginClient) {
+func createPlugin(t *testing.T, pluginID, version string, class plugins.Class, managed, backend bool, cbs ...func(*plugins.Plugin)) (*plugins.Plugin, *fakePluginClient) {
+	t.Helper()
+
 	p := &plugins.Plugin{
 		Class: class,
 		JSONData: plugins.JSONData{
@@ -502,6 +556,10 @@ func createPlugin(pluginID, version string, class plugins.Class, managed, backen
 
 	p.RegisterClient(pc)
 
+	for _, cb := range cbs {
+		cb(p)
+	}
+
 	return p, pc
 }
 
@@ -517,19 +575,20 @@ func newScenario(t *testing.T, managed bool, fn func(t *testing.T, ctx *managerS
 	cfg.AWSAllowedAuthProviders = []string{"keys", "credentials"}
 	cfg.AWSAssumeRoleEnabled = true
 
-	cfg.Azure.ManagedIdentityEnabled = true
-	cfg.Azure.Cloud = "AzureCloud"
-	cfg.Azure.ManagedIdentityClientId = "client-id"
+	cfg.Azure = &azsettings.AzureSettings{
+		ManagedIdentityEnabled:  true,
+		Cloud:                   "AzureCloud",
+		ManagedIdentityClientId: "client-id",
+	}
 
-	requestValidator := &testPluginRequestValidator{}
 	loader := &fakeLoader{}
-	manager := New(cfg, requestValidator, nil, loader, nil)
+	manager := New(cfg, nil, loader)
 	manager.pluginLoader = loader
 	ctx := &managerScenarioCtx{
 		manager: manager,
 	}
 
-	ctx.plugin, ctx.pluginClient = createPlugin(testPluginID, "", plugins.Core, managed, true)
+	ctx.plugin, ctx.pluginClient = createPlugin(t, testPluginID, "", plugins.External, managed, true)
 
 	fn(t, ctx)
 }
@@ -654,9 +713,9 @@ func (pc *fakePluginClient) kill() {
 	pc.exited = true
 }
 
-func (pc *fakePluginClient) CollectMetrics(ctx context.Context) (*backend.CollectMetricsResult, error) {
+func (pc *fakePluginClient) CollectMetrics(ctx context.Context, req *backend.CollectMetricsRequest) (*backend.CollectMetricsResult, error) {
 	if pc.CollectMetricsHandlerFunc != nil {
-		return pc.CollectMetricsHandlerFunc(ctx)
+		return pc.CollectMetricsHandlerFunc(ctx, req)
 	}
 
 	return nil, backendplugin.ErrMethodNotImplemented
@@ -696,12 +755,6 @@ func (pc *fakePluginClient) PublishStream(_ context.Context, _ *backend.PublishS
 
 func (pc *fakePluginClient) RunStream(_ context.Context, _ *backend.RunStreamRequest, _ *backend.StreamSender) error {
 	return backendplugin.ErrMethodNotImplemented
-}
-
-type testPluginRequestValidator struct{}
-
-func (t *testPluginRequestValidator) Validate(string, *http.Request) error {
-	return nil
 }
 
 type fakeLogger struct {

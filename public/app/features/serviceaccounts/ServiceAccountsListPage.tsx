@@ -1,94 +1,224 @@
-import React, { PureComponent } from 'react';
+import { css, cx } from '@emotion/css';
+import pluralize from 'pluralize';
+import React, { useEffect } from 'react';
 import { connect, ConnectedProps } from 'react-redux';
-import { HorizontalGroup, Pagination, VerticalGroup } from '@grafana/ui';
 
+import { GrafanaTheme2, OrgRole } from '@grafana/data';
+import { ConfirmModal, FilterInput, LinkButton, RadioButtonGroup, useStyles2 } from '@grafana/ui';
+import EmptyListCTA from 'app/core/components/EmptyListCTA/EmptyListCTA';
 import Page from 'app/core/components/Page/Page';
-import ServiceAccountsTable from './ServiceAccountsTable';
-import { OrgServiceAccount, OrgRole, StoreState } from 'app/types';
-import { loadServiceAccounts, removeServiceAccount, updateServiceAccount } from './state/actions';
+import PageLoader from 'app/core/components/PageLoader/PageLoader';
+import { contextSrv } from 'app/core/core';
 import { getNavModel } from 'app/core/selectors/navModel';
-import { getServiceAccounts, getServiceAccountsSearchPage, getServiceAccountsSearchQuery } from './state/selectors';
-import { setServiceAccountsSearchPage } from './state/reducers';
-export type Props = ConnectedProps<typeof connector>;
+import { StoreState, ServiceAccountDTO, AccessControlAction } from 'app/types';
 
-export interface State {}
+import ServiceAccountListItem from './ServiceAccountsListItem';
+import {
+  changeFilter,
+  changeQuery,
+  fetchACOptions,
+  fetchServiceAccounts,
+  removeServiceAccount,
+  updateServiceAccount,
+  setServiceAccountToRemove,
+} from './state/actions';
 
-const ITEMS_PER_PAGE = 30;
+interface OwnProps {}
 
-export class ServiceAccountsListPage extends PureComponent<Props, State> {
-  componentDidMount() {
-    this.fetchServiceAccounts();
-  }
-
-  async fetchServiceAccounts() {
-    return this.props.loadServiceAccounts();
-  }
-
-  onRoleChange = (role: OrgRole, serviceAccount: OrgServiceAccount) => {
-    const updatedServiceAccount = { ...serviceAccount, role: role };
-
-    this.props.updateServiceAccount(updatedServiceAccount);
-  };
-
-  getPaginatedServiceAccounts = (serviceAccounts: OrgServiceAccount[]) => {
-    const offset = (this.props.searchPage - 1) * ITEMS_PER_PAGE;
-    return serviceAccounts.slice(offset, offset + ITEMS_PER_PAGE);
-  };
-
-  renderTable() {
-    const { serviceAccounts } = this.props;
-    const paginatedServiceAccounts = this.getPaginatedServiceAccounts(serviceAccounts);
-    const totalPages = Math.ceil(serviceAccounts.length / ITEMS_PER_PAGE);
-
-    return (
-      <VerticalGroup spacing="md">
-        <h1>Service Accounts</h1>
-        <ServiceAccountsTable
-          serviceAccounts={paginatedServiceAccounts}
-          onRoleChange={(role, serviceAccount) => this.onRoleChange(role, serviceAccount)}
-          onRemoveServiceAccount={(serviceAccount) => this.props.removeServiceAccount(serviceAccount.serviceAccountId)}
-        />
-        <HorizontalGroup justify="flex-end">
-          <Pagination
-            onNavigate={setServiceAccountsSearchPage}
-            currentPage={this.props.searchPage}
-            numberOfPages={totalPages}
-            hideWhenSinglePage={true}
-          />
-        </HorizontalGroup>
-      </VerticalGroup>
-    );
-  }
-
-  render() {
-    const { navModel, hasFetched } = this.props;
-
-    return (
-      <Page navModel={navModel}>
-        <Page.Contents isLoading={!hasFetched}>
-          <>{hasFetched && this.renderTable()}</>
-        </Page.Contents>
-      </Page>
-    );
-  }
-}
+type Props = OwnProps & ConnectedProps<typeof connector>;
 
 function mapStateToProps(state: StoreState) {
   return {
     navModel: getNavModel(state.navIndex, 'serviceaccounts'),
-    serviceAccounts: getServiceAccounts(state.serviceAccounts),
-    searchQuery: getServiceAccountsSearchQuery(state.serviceAccounts),
-    searchPage: getServiceAccountsSearchPage(state.serviceAccounts),
-    hasFetched: state.serviceAccounts.isLoading,
+    ...state.serviceAccounts,
   };
 }
 
 const mapDispatchToProps = {
-  loadServiceAccounts,
+  fetchServiceAccounts,
+  fetchACOptions,
   updateServiceAccount,
   removeServiceAccount,
+  setServiceAccountToRemove,
+  changeFilter,
+  changeQuery,
 };
 
 const connector = connect(mapStateToProps, mapDispatchToProps);
+
+const ServiceAccountsListPage = ({
+  fetchServiceAccounts,
+  removeServiceAccount,
+  fetchACOptions,
+  updateServiceAccount,
+  setServiceAccountToRemove,
+  navModel,
+  serviceAccounts,
+  isLoading,
+  roleOptions,
+  builtInRoles,
+  changeFilter,
+  changeQuery,
+  query,
+  filters,
+  serviceAccountToRemove,
+}: Props) => {
+  const styles = useStyles2(getStyles);
+
+  useEffect(() => {
+    fetchServiceAccounts();
+    if (contextSrv.licensedAccessControlEnabled()) {
+      fetchACOptions();
+    }
+  }, [fetchServiceAccounts, fetchACOptions]);
+
+  const onRoleChange = (role: OrgRole, serviceAccount: ServiceAccountDTO) => {
+    const updatedServiceAccount = { ...serviceAccount, role: role };
+    updateServiceAccount(updatedServiceAccount);
+  };
+  return (
+    <Page navModel={navModel}>
+      <Page.Contents>
+        <h2>Service accounts</h2>
+        <div className="page-action-bar" style={{ justifyContent: 'flex-end' }}>
+          <FilterInput
+            placeholder="Search service account by name."
+            autoFocus={true}
+            value={query}
+            onChange={changeQuery}
+          />
+          <RadioButtonGroup
+            options={[
+              { label: 'All service accounts', value: false },
+              { label: 'Expired tokens', value: true },
+            ]}
+            onChange={(value) => changeFilter({ name: 'expiredTokens', value })}
+            value={filters.find((f) => f.name === 'expiredTokens')?.value}
+            className={styles.filter}
+          />
+          {serviceAccounts.length !== 0 && contextSrv.hasPermission(AccessControlAction.ServiceAccountsCreate) && (
+            <LinkButton href="org/serviceaccounts/create" variant="primary">
+              Add service account
+            </LinkButton>
+          )}
+        </div>
+        {isLoading && <PageLoader />}
+        {!isLoading && serviceAccounts.length === 0 && (
+          <>
+            <EmptyListCTA
+              title="You haven't created any service accounts yet."
+              buttonIcon="key-skeleton-alt"
+              buttonLink="org/serviceaccounts/create"
+              buttonTitle="Add service account"
+              buttonDisabled={!contextSrv.hasPermission(AccessControlAction.ServiceAccountsCreate)}
+              proTip="Remember, you can provide specific permissions for API access to other applications."
+              proTipLink=""
+              proTipLinkTitle=""
+              proTipTarget="_blank"
+            />
+          </>
+        )}
+        {!isLoading && serviceAccounts.length !== 0 && (
+          <>
+            <div className={cx(styles.table, 'admin-list-table')}>
+              <table className="filter-table form-inline filter-table--hover">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Account</th>
+                    <th>ID</th>
+                    <th>Roles</th>
+                    <th>Status</th>
+                    <th>Tokens</th>
+                    <th style={{ width: '34px' }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {serviceAccounts.map((serviceAccount: ServiceAccountDTO) => (
+                    <ServiceAccountListItem
+                      serviceAccount={serviceAccount}
+                      key={serviceAccount.id}
+                      builtInRoles={builtInRoles}
+                      roleOptions={roleOptions}
+                      onRoleChange={onRoleChange}
+                      onSetToRemove={setServiceAccountToRemove}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        {serviceAccountToRemove && (
+          <ConfirmModal
+            body={
+              <div>
+                Are you sure you want to delete &apos;{serviceAccountToRemove.name}&apos;
+                {Boolean(serviceAccountToRemove.tokens) &&
+                  ` and ${serviceAccountToRemove.tokens} accompanying ${pluralize(
+                    'token',
+                    serviceAccountToRemove.tokens
+                  )}`}
+                ?
+              </div>
+            }
+            confirmText="Delete"
+            title="Delete service account"
+            onDismiss={() => {
+              setServiceAccountToRemove(null);
+            }}
+            isOpen={true}
+            onConfirm={() => {
+              removeServiceAccount(serviceAccountToRemove.id);
+              setServiceAccountToRemove(null);
+            }}
+          />
+        )}
+      </Page.Contents>
+    </Page>
+  );
+};
+
+export const getStyles = (theme: GrafanaTheme2) => {
+  return {
+    table: css`
+      margin-top: ${theme.spacing(3)};
+    `,
+    filter: css`
+      margin: 0 ${theme.spacing(1)};
+    `,
+    iconRow: css`
+      svg {
+        margin-left: ${theme.spacing(0.5)};
+      }
+    `,
+    row: css`
+      display: flex;
+      align-items: center;
+      height: 100% !important;
+
+      a {
+        padding: ${theme.spacing(0.5)} 0 !important;
+      }
+    `,
+    unitTooltip: css`
+      display: flex;
+      flex-direction: column;
+    `,
+    unitItem: css`
+      cursor: pointer;
+      padding: ${theme.spacing(0.5)} 0;
+      margin-right: ${theme.spacing(1)};
+    `,
+    disabled: css`
+      color: ${theme.colors.text.disabled};
+    `,
+    link: css`
+      color: inherit;
+      cursor: pointer;
+      text-decoration: underline;
+    `,
+  };
+};
 
 export default connector(ServiceAccountsListPage);

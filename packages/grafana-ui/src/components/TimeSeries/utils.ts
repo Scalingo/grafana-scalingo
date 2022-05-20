@@ -1,4 +1,6 @@
 import { isNumber } from 'lodash';
+import uPlot from 'uplot';
+
 import {
   DashboardCursorSync,
   DataFrame,
@@ -13,8 +15,6 @@ import {
   getFieldDisplayName,
   getDisplayProcessor,
 } from '@grafana/data';
-
-import { UPlotConfigBuilder, UPlotConfigPrepFn } from '../uPlot/config/UPlotConfigBuilder';
 import {
   AxisPlacement,
   GraphDrawStyle,
@@ -23,12 +23,12 @@ import {
   VisibilityMode,
   ScaleDirection,
   ScaleOrientation,
-  VizLegendOptions,
   StackingMode,
 } from '@grafana/schema';
-import { collectStackingGroups, orderIdsByCalcs, preparePlotData } from '../uPlot/utils';
-import uPlot from 'uplot';
+
 import { buildScaleKey } from '../GraphNG/utils';
+import { UPlotConfigBuilder, UPlotConfigPrepFn } from '../uPlot/config/UPlotConfigBuilder';
+import { getStackingGroups, preparePlotData2 } from '../uPlot/utils';
 
 const defaultFormatter = (v: any) => (v == null ? '-' : v.toFixed(1));
 
@@ -38,7 +38,9 @@ const defaultConfig: GraphFieldConfig = {
   axisPlacement: AxisPlacement.Auto,
 };
 
-export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursorSync; legend?: VizLegendOptions }> = ({
+export const preparePlotConfigBuilder: UPlotConfigPrepFn<{
+  sync?: () => DashboardCursorSync;
+}> = ({
   frame,
   theme,
   timeZone,
@@ -47,13 +49,12 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
   sync,
   allFrames,
   renderers,
-  legend,
   tweakScale = (opts) => opts,
   tweakAxis = (opts) => opts,
 }) => {
   const builder = new UPlotConfigBuilder(timeZone);
 
-  builder.setPrepData((prepData) => preparePlotData(prepData, undefined, legend));
+  builder.setPrepData((frames) => preparePlotData2(frames[0], builder.getStackingGroups()));
 
   // X is the first field in the aligned frame
   const xField = frame.fields[0];
@@ -66,6 +67,10 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
   const xScaleKey = 'x';
   let xScaleUnit = '_x';
   let yScaleKey = '';
+
+  const xFieldAxisPlacement =
+    xField.config.custom?.axisPlacement !== AxisPlacement.Hidden ? AxisPlacement.Bottom : AxisPlacement.Hidden;
+  const xFieldAxisShow = xField.config.custom?.axisPlacement !== AxisPlacement.Hidden;
 
   if (xField.type === FieldType.time) {
     xScaleUnit = 'time';
@@ -83,7 +88,8 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
     builder.addAxis({
       scaleKey: xScaleKey,
       isTime: true,
-      placement: AxisPlacement.Bottom,
+      placement: xFieldAxisPlacement,
+      show: xFieldAxisShow,
       label: xField.config.custom?.axisLabel,
       timeZone,
       theme,
@@ -103,7 +109,8 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
 
     builder.addAxis({
       scaleKey: xScaleKey,
-      placement: AxisPlacement.Bottom,
+      placement: xFieldAxisPlacement,
+      show: xFieldAxisShow,
       label: xField.config.custom?.axisLabel,
       theme,
       grid: { show: xField.config.custom?.axisGridShow },
@@ -112,8 +119,6 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
 
   let customRenderedFields =
     renderers?.flatMap((r) => Object.values(r.fieldMap).filter((name) => r.indicesOnly.indexOf(name) === -1)) ?? [];
-
-  const stackingGroups: Map<string, number[]> = new Map();
 
   let indexByName: Map<string, number> | undefined;
 
@@ -263,9 +268,12 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
             series: [t, b],
             fill: undefined, // using null will have the band use fill options from `t`
           });
-        }
-        if (!fillOpacity) {
-          fillOpacity = 35; // default from flot
+
+          if (!fillOpacity) {
+            fillOpacity = 35; // default from flot
+          }
+        } else {
+          fillOpacity = 0;
         }
       }
     }
@@ -316,19 +324,11 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
         });
       }
     }
-    collectStackingGroups(field, stackingGroups, seriesIndex);
   }
 
-  if (stackingGroups.size !== 0) {
-    for (const [_, seriesIds] of stackingGroups.entries()) {
-      const seriesIdxs = orderIdsByCalcs({ ids: seriesIds, legend, frame });
-      for (let j = seriesIdxs.length - 1; j > 0; j--) {
-        builder.addBand({
-          series: [seriesIdxs[j], seriesIdxs[j - 1]],
-        });
-      }
-    }
-  }
+  let stackingGroups = getStackingGroups(frame);
+
+  builder.setStackingGroups(stackingGroups);
 
   // hook up custom/composite renderers
   renderers?.forEach((r) => {
@@ -399,7 +399,7 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
     },
   };
 
-  if (sync !== DashboardCursorSync.Off) {
+  if (sync && sync() !== DashboardCursorSync.Off) {
     const payload: DataHoverPayload = {
       point: {
         [xScaleKey]: null,
@@ -412,6 +412,10 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{ sync: DashboardCursor
       key: '__global_',
       filters: {
         pub: (type: string, src: uPlot, x: number, y: number, w: number, h: number, dataIdx: number) => {
+          if (sync && sync() === DashboardCursorSync.Off) {
+            return false;
+          }
+
           payload.rowIndex = dataIdx;
           if (x < 0 && y < 0) {
             payload.point[xScaleUnit] = null;

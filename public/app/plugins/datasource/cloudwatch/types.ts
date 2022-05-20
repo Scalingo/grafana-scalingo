@@ -1,5 +1,5 @@
-import { DataQuery, DataSourceRef, SelectableValue } from '@grafana/data';
 import { AwsAuthDataSourceSecureJsonData, AwsAuthDataSourceJsonData } from '@grafana/aws-sdk';
+import { DataQuery, DataSourceRef, SelectableValue } from '@grafana/data';
 
 export interface Dimensions {
   [key: string]: string | string[];
@@ -368,8 +368,28 @@ export interface MetricQuery {
   intervalMs?: number;
 }
 
-export interface MetricFindSuggestData {
-  text: string;
-  label: string;
-  value: string;
+export enum VariableQueryType {
+  Regions = 'regions',
+  Namespaces = 'namespaces',
+  Metrics = 'metrics',
+  DimensionKeys = 'dimensionKeys',
+  DimensionValues = 'dimensionValues',
+  EBSVolumeIDs = 'ebsVolumeIDs',
+  EC2InstanceAttributes = 'ec2InstanceAttributes',
+  ResourceArns = 'resourceARNs',
+  Statistics = 'statistics',
+}
+
+export interface VariableQuery extends DataQuery {
+  queryType: VariableQueryType;
+  namespace: string;
+  region: string;
+  metricName: string;
+  dimensionKey: string;
+  dimensionFilters: string;
+  ec2Filters: string;
+  instanceID: string;
+  attributeName: string;
+  resourceType: string;
+  tags: string;
 }

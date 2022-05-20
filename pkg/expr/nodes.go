@@ -254,8 +254,16 @@ func (dn *DSNode) Execute(ctx context.Context, vars mathexp.Vars, s *Service) (m
 			}
 		}
 
+		dataSource := dn.datasource.Type
 		for _, frame := range qr.Frames {
 			logger.Debug("expression datasource query (seriesSet)", "query", refID)
+			// Check for TimeSeriesTypeNot in InfluxDB queries. A data frame of this type will cause
+			// the WideToMany() function to error out, which results in unhealthy alerts.
+			// This check should be removed once inconsistencies in data source responses are solved.
+			if frame.TimeSeriesSchema().Type == data.TimeSeriesTypeNot && dataSource == models.DS_INFLUXDB {
+				logger.Warn("ignoring InfluxDB data frame due to missing numeric fields", "frame", frame)
+				continue
+			}
 			series, err := WideToMany(frame)
 			if err != nil {
 				return mathexp.Results{}, err
@@ -320,7 +328,11 @@ func extractNumberSet(frame *data.Frame) ([]mathexp.Number, error) {
 		}
 
 		n := mathexp.NewNumber("", labels)
+
+		// The new value fields' configs gets pointed to the one in the original frame
+		n.Frame.Fields[0].Config = frame.Fields[numericField].Config
 		n.SetValue(&val)
+
 		numbers[rowIdx] = n
 	}
 	return numbers, nil
@@ -350,6 +362,10 @@ func WideToMany(frame *data.Frame) ([]mathexp.Series, error) {
 		f := data.NewFrameOfFieldTypes(frame.Name, l, frame.Fields[tsSchema.TimeIndex].Type(), frame.Fields[valIdx].Type())
 		f.Fields[0].Name = frame.Fields[tsSchema.TimeIndex].Name
 		f.Fields[1].Name = frame.Fields[valIdx].Name
+
+		// The new value fields' configs gets pointed to the one in the original frame
+		f.Fields[1].Config = frame.Fields[valIdx].Config
+
 		if frame.Fields[valIdx].Labels != nil {
 			f.Fields[1].Labels = frame.Fields[valIdx].Labels.Copy()
 		}

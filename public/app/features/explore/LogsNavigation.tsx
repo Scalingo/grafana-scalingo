@@ -1,8 +1,10 @@
-import React, { memo, useState, useEffect, useRef } from 'react';
-import { isEqual } from 'lodash';
 import { css } from '@emotion/css';
+import { isEqual } from 'lodash';
+import React, { memo, useState, useEffect, useRef } from 'react';
+
 import { LogsSortOrder, AbsoluteTimeRange, TimeZone, DataQuery, GrafanaTheme2 } from '@grafana/data';
 import { Button, Icon, Spinner, useTheme2 } from '@grafana/ui';
+
 import { LogsNavigationPages } from './LogsNavigationPages';
 
 type Props = {
@@ -81,8 +83,8 @@ function LogsNavigation({
   }, [visibleRange, absoluteRange, logsSortOrder, queries, clearCache, addResultsToCache]);
 
   useEffect(() => {
-    return () => clearCache();
-    // We can't enforce the eslint rule here because we only want to run when component unmounts.
+    clearCache();
+    // We can't enforce the eslint rule here because we only want to run when component is mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

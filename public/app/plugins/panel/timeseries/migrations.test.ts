@@ -1,7 +1,9 @@
-import { PanelModel, FieldConfigSource } from '@grafana/data';
-import { graphPanelChangedHandler } from './migrations';
 import { cloneDeep } from 'lodash';
+
+import { PanelModel, FieldConfigSource } from '@grafana/data';
 import { TooltipDisplayMode, SortOrder } from '@grafana/schema';
+
+import { graphPanelChangedHandler } from './migrations';
 
 describe('Graph Migrations', () => {
   let prevFieldConfig: FieldConfigSource;
@@ -388,6 +390,40 @@ describe('Graph Migrations', () => {
       expect(panel2.options.tooltip.sort).toBe(SortOrder.Ascending);
       expect(panel3.options.tooltip.sort).toBe(SortOrder.Descending);
       expect(panel4.options.tooltip.sort).toBe(SortOrder.None);
+    });
+  });
+
+  describe('x axis', () => {
+    test('should hide x axis', () => {
+      const old: any = {
+        angular: {
+          xaxis: {
+            show: false,
+            mode: 'time',
+          },
+        },
+      };
+      const panel = {} as PanelModel;
+      panel.options = graphPanelChangedHandler(panel, 'graph', old, prevFieldConfig);
+      expect(panel.fieldConfig).toMatchSnapshot();
+    });
+  });
+
+  describe('transforms', () => {
+    test.each(['negative-Y', 'constant'])('should preserve %p transform', (transform) => {
+      const old: any = {
+        angular: {
+          seriesOverrides: [
+            {
+              alias: 'out',
+              transform,
+            },
+          ],
+        },
+      };
+      const panel = {} as PanelModel;
+      panel.options = graphPanelChangedHandler(panel, 'graph', old, prevFieldConfig);
+      expect(panel.fieldConfig).toMatchSnapshot();
     });
   });
 });

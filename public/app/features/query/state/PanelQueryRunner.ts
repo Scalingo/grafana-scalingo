@@ -1,15 +1,7 @@
-// Libraries
 import { cloneDeep } from 'lodash';
 import { MonoTypeOperatorFunction, Observable, of, ReplaySubject, Unsubscribable } from 'rxjs';
 import { map, mergeMap } from 'rxjs/operators';
 
-// Services & Utils
-import { getTemplateSrv } from '@grafana/runtime';
-import { getDatasourceSrv } from 'app/features/plugins/datasource_srv';
-import { preProcessPanelData, runRequest } from './runRequest';
-import { isSharedDashboardQuery, runSharedRequest } from '../../../plugins/datasource/dashboard';
-
-// Types
 import {
   applyFieldOverrides,
   compareArrayValues,
@@ -33,11 +25,17 @@ import {
   toDataFrame,
   transformDataFrame,
 } from '@grafana/data';
+import { getTemplateSrv } from '@grafana/runtime';
+import { StreamingDataFrame } from 'app/features/live/data/StreamingDataFrame';
+import { isStreamingDataFrame } from 'app/features/live/data/utils';
+import { getDatasourceSrv } from 'app/features/plugins/datasource_srv';
+
+import { isSharedDashboardQuery, runSharedRequest } from '../../../plugins/datasource/dashboard';
+import { PanelModel } from '../../dashboard/state';
+
 import { getDashboardQueryRunner } from './DashboardQueryRunner/DashboardQueryRunner';
 import { mergePanelAndDashData } from './mergePanelAndDashData';
-import { PanelModel } from '../../dashboard/state';
-import { isStreamingDataFrame } from 'app/features/live/data/utils';
-import { StreamingDataFrame } from 'app/features/live/data/StreamingDataFrame';
+import { preProcessPanelData, runRequest } from './runRequest';
 
 export interface QueryRunnerOptions<
   TQuery extends DataQuery = DataQuery,
@@ -183,6 +181,13 @@ export class PanelQueryRunner {
             return of(data);
           }
 
+          const replace = (option: string): string => {
+            return getTemplateSrv().replace(option, data?.request?.scopedVars);
+          };
+          transformations.forEach((transform: any) => {
+            transform.replace = replace;
+          });
+
           return transformDataFrame(transformations, data.series).pipe(map((series) => ({ ...data, series })));
         })
       );
@@ -269,7 +274,7 @@ export class PanelQueryRunner {
     const dataSupport = this.dataConfigSource.getDataSupport();
 
     if (dataSupport.alertStates || dataSupport.annotations) {
-      const panel = (this.dataConfigSource as unknown) as PanelModel;
+      const panel = this.dataConfigSource as unknown as PanelModel;
       panelData = mergePanelAndDashData(observable, getDashboardQueryRunner().getResult(panel.id));
     }
 

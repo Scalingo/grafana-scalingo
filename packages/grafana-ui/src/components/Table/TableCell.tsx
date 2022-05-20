@@ -1,7 +1,8 @@
 import React, { FC } from 'react';
 import { Cell } from 'react-table';
-import { GrafanaTableColumn, TableFilterActionCallback } from './types';
+
 import { TableStyles } from './styles';
+import { GrafanaTableColumn, TableFilterActionCallback } from './types';
 
 export interface Props {
   cell: Cell;
@@ -13,7 +14,7 @@ export interface Props {
 
 export const TableCell: FC<Props> = ({ cell, tableStyles, onCellFilterAdded, columnIndex, columnCount }) => {
   const cellProps = cell.getCellProps();
-  const field = ((cell.column as any) as GrafanaTableColumn).field;
+  const field = (cell.column as any as GrafanaTableColumn).field;
 
   if (!field.display) {
     return null;

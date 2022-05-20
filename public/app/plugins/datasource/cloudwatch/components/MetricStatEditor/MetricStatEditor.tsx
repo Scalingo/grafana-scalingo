@@ -1,6 +1,9 @@
 import React from 'react';
+
+import { SelectableValue } from '@grafana/data';
 import { EditorField, EditorFieldGroup, EditorRow, EditorRows } from '@grafana/experimental';
 import { Select, Switch } from '@grafana/ui';
+
 import { Dimensions } from '..';
 import { CloudWatchDatasource } from '../../datasource';
 import { useDimensionKeys, useMetrics, useNamespaces } from '../../hooks';
@@ -32,6 +35,24 @@ export function MetricStatEditor({
     onRunQuery();
   };
 
+  const onNamespaceChange = async (query: CloudWatchMetricsQuery) => {
+    const validatedQuery = await validateMetricName(query);
+    onQueryChange(validatedQuery);
+  };
+
+  const validateMetricName = async (query: CloudWatchMetricsQuery) => {
+    let { metricName, namespace, region } = query;
+    if (!metricName) {
+      return query;
+    }
+    await datasource.getMetrics(namespace, region).then((result: Array<SelectableValue<string>>) => {
+      if (!result.find((metric) => metric.value === metricName)) {
+        metricName = '';
+      }
+    });
+    return { ...query, metricName };
+  };
+
   return (
     <EditorRows>
       <EditorRow>
@@ -44,7 +65,7 @@ export function MetricStatEditor({
               options={namespaces}
               onChange={({ value: namespace }) => {
                 if (namespace) {
-                  onQueryChange({ ...query, namespace });
+                  onNamespaceChange({ ...query, namespace });
                 }
               }}
             />
@@ -52,7 +73,7 @@ export function MetricStatEditor({
           <EditorField label="Metric name" width={16}>
             <Select
               aria-label="Metric name"
-              value={query.metricName}
+              value={query.metricName || null}
               allowCustomValue
               options={metrics}
               onChange={({ value: metricName }) => {

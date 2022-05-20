@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,12 +19,12 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
-	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/infra/fs"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/plugins/backendplugin"
 	"github.com/grafana/grafana/pkg/plugins/manager/installer"
+	"github.com/grafana/grafana/pkg/services/pluginsettings"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util/errutil"
 	"github.com/grafana/grafana/pkg/util/proxyutil"
@@ -74,13 +75,17 @@ func (hs *HTTPServer) GetPluginList(c *models.ReqContext) response.Response {
 			Category:      pluginDef.Category,
 			Info:          pluginDef.Info,
 			Dependencies:  pluginDef.Dependencies,
-			LatestVersion: pluginDef.GrafanaComVersion,
-			HasUpdate:     pluginDef.GrafanaComHasUpdate,
-			DefaultNavUrl: pluginDef.DefaultNavURL,
+			DefaultNavUrl: path.Join(hs.Cfg.AppSubURL, pluginDef.DefaultNavURL),
 			State:         pluginDef.State,
 			Signature:     pluginDef.Signature,
 			SignatureType: pluginDef.SignatureType,
 			SignatureOrg:  pluginDef.SignatureOrg,
+		}
+
+		update, exists := hs.pluginsUpdateChecker.HasUpdate(c.Req.Context(), pluginDef.ID)
+		if exists {
+			listItem.LatestVersion = update
+			listItem.HasUpdate = true
 		}
 
 		if pluginSetting, exists := pluginSettingsMap[pluginDef.ID]; exists {
@@ -126,9 +131,7 @@ func (hs *HTTPServer) GetPluginSettingByID(c *models.ReqContext) response.Respon
 		Includes:      plugin.Includes,
 		BaseUrl:       plugin.BaseURL,
 		Module:        plugin.Module,
-		DefaultNavUrl: plugin.DefaultNavURL,
-		LatestVersion: plugin.GrafanaComVersion,
-		HasUpdate:     plugin.GrafanaComHasUpdate,
+		DefaultNavUrl: path.Join(hs.Cfg.AppSubURL, plugin.DefaultNavURL),
 		State:         plugin.State,
 		Signature:     plugin.Signature,
 		SignatureType: plugin.SignatureType,
@@ -140,15 +143,24 @@ func (hs *HTTPServer) GetPluginSettingByID(c *models.ReqContext) response.Respon
 		dto.Pinned = plugin.AutoEnabled
 	}
 
-	query := models.GetPluginSettingByIdQuery{PluginId: pluginID, OrgId: c.OrgId}
-	if err := bus.Dispatch(c.Req.Context(), &query); err != nil {
+	ps, err := hs.PluginSettings.GetPluginSettingByPluginID(c.Req.Context(), &pluginsettings.GetByPluginIDArgs{
+		PluginID: pluginID,
+		OrgID:    c.OrgId,
+	})
+	if err != nil {
 		if !errors.Is(err, models.ErrPluginSettingNotFound) {
-			return response.Error(500, "Failed to get login settings", nil)
+			return response.Error(http.StatusInternalServerError, "Failed to get plugin settings", nil)
 		}
 	} else {
-		dto.Enabled = query.Result.Enabled
-		dto.Pinned = query.Result.Pinned
-		dto.JsonData = query.Result.JsonData
+		dto.Enabled = ps.Enabled
+		dto.Pinned = ps.Pinned
+		dto.JsonData = ps.JSONData
+	}
+
+	update, exists := hs.pluginsUpdateChecker.HasUpdate(c.Req.Context(), plugin.ID)
+	if exists {
+		dto.LatestVersion = update
+		dto.HasUpdate = true
 	}
 
 	return response.JSON(200, dto)
@@ -167,27 +179,20 @@ func (hs *HTTPServer) UpdatePluginSetting(c *models.ReqContext) response.Respons
 
 	cmd.OrgId = c.OrgId
 	cmd.PluginId = pluginID
-	if err := bus.Dispatch(c.Req.Context(), &cmd); err != nil {
+	if err := hs.PluginSettings.UpdatePluginSetting(c.Req.Context(), &pluginsettings.UpdateArgs{
+		Enabled:                 cmd.Enabled,
+		Pinned:                  cmd.Pinned,
+		JSONData:                cmd.JsonData,
+		SecureJSONData:          cmd.SecureJsonData,
+		PluginVersion:           cmd.PluginVersion,
+		PluginID:                cmd.PluginId,
+		OrgID:                   cmd.OrgId,
+		EncryptedSecureJSONData: cmd.EncryptedSecureJsonData,
+	}); err != nil {
 		return response.Error(500, "Failed to update plugin setting", err)
 	}
 
 	return response.Success("Plugin settings updated")
-}
-
-func (hs *HTTPServer) GetPluginDashboards(c *models.ReqContext) response.Response {
-	pluginID := web.Params(c.Req)[":pluginId"]
-
-	list, err := hs.pluginDashboardManager.GetPluginDashboards(c.Req.Context(), c.OrgId, pluginID)
-	if err != nil {
-		var notFound plugins.NotFoundError
-		if errors.As(err, &notFound) {
-			return response.Error(404, notFound.Error(), nil)
-		}
-
-		return response.Error(500, "Failed to get plugin dashboards", err)
-	}
-
-	return response.JSON(200, list)
 }
 
 func (hs *HTTPServer) GetPluginMarkdown(c *models.ReqContext) response.Response {
@@ -217,62 +222,12 @@ func (hs *HTTPServer) GetPluginMarkdown(c *models.ReqContext) response.Response 
 	return resp
 }
 
-func (hs *HTTPServer) ImportDashboard(c *models.ReqContext) response.Response {
-	apiCmd := dtos.ImportDashboardCommand{}
-	if err := web.Bind(c.Req, &apiCmd); err != nil {
-		return response.Error(http.StatusBadRequest, "bad request data", err)
-	}
-	var err error
-	if apiCmd.PluginId == "" && apiCmd.Dashboard == nil {
-		return response.Error(422, "Dashboard must be set", nil)
-	}
-
-	limitReached, err := hs.QuotaService.QuotaReached(c, "dashboard")
-	if err != nil {
-		return response.Error(500, "failed to get quota", err)
-	}
-	if limitReached {
-		return response.Error(403, "Quota reached", nil)
-	}
-
-	trimDefaults := c.QueryBoolWithDefault("trimdefaults", true)
-	if trimDefaults && !hs.LoadSchemaService.IsDisabled() {
-		apiCmd.Dashboard, err = hs.LoadSchemaService.DashboardApplyDefaults(apiCmd.Dashboard)
-		if err != nil {
-			return response.Error(500, "Error while applying default value to the dashboard json", err)
-		}
-	}
-
-	dashInfo, dash, err := hs.pluginDashboardManager.ImportDashboard(c.Req.Context(), apiCmd.PluginId, apiCmd.Path, c.OrgId, apiCmd.FolderId,
-		apiCmd.Dashboard, apiCmd.Overwrite, apiCmd.Inputs, c.SignedInUser)
-	if err != nil {
-		return hs.dashboardSaveErrorToApiResponse(c.Req.Context(), err)
-	}
-
-	err = hs.LibraryPanelService.ImportLibraryPanelsForDashboard(c.Req.Context(), c.SignedInUser, dash, apiCmd.FolderId)
-	if err != nil {
-		return response.Error(500, "Error while importing library panels", err)
-	}
-
-	err = hs.LibraryPanelService.ConnectLibraryPanelsForDashboard(c.Req.Context(), c.SignedInUser, dash)
-	if err != nil {
-		return response.Error(500, "Error while connecting library panels", err)
-	}
-
-	return response.JSON(200, dashInfo)
-}
-
 // CollectPluginMetrics collect metrics from a plugin.
 //
 // /api/plugins/:pluginId/metrics
 func (hs *HTTPServer) CollectPluginMetrics(c *models.ReqContext) response.Response {
 	pluginID := web.Params(c.Req)[":pluginId"]
-	plugin, exists := hs.pluginStore.Plugin(c.Req.Context(), pluginID)
-	if !exists {
-		return response.Error(404, "Plugin not found", nil)
-	}
-
-	resp, err := hs.pluginClient.CollectMetrics(c.Req.Context(), plugin.ID)
+	resp, err := hs.pluginClient.CollectMetrics(c.Req.Context(), &backend.CollectMetricsRequest{PluginContext: backend.PluginContext{PluginID: pluginID}})
 	if err != nil {
 		return translatePluginRequestErrorToAPIError(err)
 	}
@@ -551,6 +506,31 @@ func (hs *HTTPServer) callPluginResource(c *models.ReqContext, pluginID, dsUID s
 	}
 	clonedReq.URL = urlPath
 
+	if dsUID != "" {
+		ds, err := hs.DataSourceCache.GetDatasourceByUID(c.Req.Context(), dsUID, c.SignedInUser, c.SkipCache)
+
+		if err != nil {
+			if errors.Is(err, models.ErrDataSourceNotFound) {
+				c.JsonApiErr(404, "Datasource not found", err)
+				return
+			}
+
+			c.JsonApiErr(500, "Failed to get datasource", err)
+			return
+		}
+
+		if hs.DataProxy.OAuthTokenService.IsOAuthPassThruEnabled(ds) {
+			if token := hs.DataProxy.OAuthTokenService.GetCurrentOAuthToken(c.Req.Context(), c.SignedInUser); token != nil {
+				clonedReq.Header.Add("Authorization", fmt.Sprintf("%s %s", token.Type(), token.AccessToken))
+
+				idToken, ok := token.Extra("id_token").(string)
+				if ok && idToken != "" {
+					clonedReq.Header.Add("X-ID-Token", idToken)
+				}
+			}
+		}
+	}
+
 	if err = hs.makePluginResourceRequest(c.Resp, clonedReq, pCtx); err != nil {
 		handleCallResourceError(err, c)
 	}
@@ -650,6 +630,9 @@ func (hs *HTTPServer) flushStream(stream callResourceClientResponseStream, w htt
 					w.Header().Add(k, v)
 				}
 			}
+
+			proxyutil.SetProxyResponseHeaders(w.Header())
+
 			w.WriteHeader(resp.Status)
 		}
 

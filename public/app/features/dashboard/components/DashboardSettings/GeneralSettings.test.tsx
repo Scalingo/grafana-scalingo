@@ -1,16 +1,18 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
+import { byRole } from 'testing-library-selector';
+
+import { selectors } from '@grafana/e2e-selectors';
 import { selectOptionInTest } from '@grafana/ui';
 
-import { byRole } from 'testing-library-selector';
-import { GeneralSettingsUnconnected as GeneralSettings, Props } from './GeneralSettings';
 import { DashboardModel } from '../../state';
-import { selectors } from '@grafana/e2e-selectors';
+
+import { GeneralSettingsUnconnected as GeneralSettings, Props } from './GeneralSettings';
 
 const setupTestContext = (options: Partial<Props>) => {
   const defaults: Props = {
-    dashboard: ({
+    dashboard: {
       title: 'test dashboard title',
       description: 'test dashboard description',
       timepicker: {
@@ -22,7 +24,7 @@ const setupTestContext = (options: Partial<Props>) => {
         folderTitle: 'test',
       },
       timezone: 'utc',
-    } as unknown) as DashboardModel,
+    } as unknown as DashboardModel,
     updateTimeZone: jest.fn(),
     updateWeekStart: jest.fn(),
   };

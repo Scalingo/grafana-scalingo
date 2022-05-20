@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useMountedState } from 'react-use';
 import uPlot from 'uplot';
+
 import {
   arrayUtils,
   CartesianCoords2D,
@@ -14,6 +15,7 @@ import {
   TimeZone,
 } from '@grafana/data';
 import { TooltipDisplayMode, SortOrder } from '@grafana/schema';
+
 import { useTheme2 } from '../../../themes/ThemeContext';
 import { Portal } from '../../Portal/Portal';
 import { SeriesTable, SeriesTableRowProps, VizTooltipContainer } from '../../VizTooltip';
@@ -26,7 +28,7 @@ interface TooltipPluginProps {
   config: UPlotConfigBuilder;
   mode?: TooltipDisplayMode;
   sortOrder?: SortOrder;
-  sync?: DashboardCursorSync;
+  sync?: () => DashboardCursorSync;
   // Allows custom tooltip content rendering. Exposes aligned data frame with relevant indexes for data inspection
   // Use field.state.origin indexes from alignedData frame field to get access to original data frame and field index.
   renderTooltip?: (alignedFrame: DataFrame, seriesIdx: number | null, datapointIdx: number | null) => React.ReactNode;
@@ -95,7 +97,7 @@ export const TooltipPlugin: React.FC<TooltipPluginProps> = ({
       u.root.parentElement?.addEventListener('blur', plotLeave);
       u.over.addEventListener('mouseleave', plotLeave);
 
-      if (sync === DashboardCursorSync.Crosshair) {
+      if (sync && sync() === DashboardCursorSync.Crosshair) {
         u.root.classList.add('shared-crosshair');
       }
     });
@@ -168,7 +170,7 @@ export const TooltipPlugin: React.FC<TooltipPluginProps> = ({
     };
   }, [config, setCoords, setIsActive, setFocusedPointIdx, setFocusedPointIdxs]);
 
-  if (focusedPointIdx === null || (!isActive && sync === DashboardCursorSync.Crosshair)) {
+  if (focusedPointIdx === null || (!isActive && sync && sync() === DashboardCursorSync.Crosshair)) {
     return null;
   }
 
@@ -214,7 +216,7 @@ export const TooltipPlugin: React.FC<TooltipPluginProps> = ({
       let series: SeriesTableRowProps[] = [];
       const frame = otherProps.data;
       const fields = frame.fields;
-      const sortIdx: Array<[number, number]> = [];
+      const sortIdx: any[] = [];
 
       for (let i = 0; i < fields.length; i++) {
         const field = frame.fields[i];
@@ -231,7 +233,8 @@ export const TooltipPlugin: React.FC<TooltipPluginProps> = ({
 
         const v = otherProps.data.fields[i].values.get(focusedPointIdxs[i]!);
         const display = field.display!(v);
-        sortIdx.push([series.length, v]);
+
+        sortIdx.push(v);
         series.push({
           color: display.color || FALLBACK_COLOR,
           label: getFieldDisplayName(field, frame),
@@ -241,7 +244,16 @@ export const TooltipPlugin: React.FC<TooltipPluginProps> = ({
       }
 
       if (sortOrder !== SortOrder.None) {
-        series.sort((a, b) => arrayUtils.sortValues(sortOrder)(a.value, b.value));
+        // create sort reference series array, as Array.sort() mutates the original array
+        const sortRef = [...series];
+        const sortFn = arrayUtils.sortValues(sortOrder);
+
+        series.sort((a, b) => {
+          // get compared values indices to retrieve raw values from sortIdx
+          const aIdx = sortRef.indexOf(a);
+          const bIdx = sortRef.indexOf(b);
+          return sortFn(sortIdx[aIdx], sortIdx[bIdx]);
+        });
       }
 
       tooltip = <SeriesTable series={series} timestamp={xVal} />;

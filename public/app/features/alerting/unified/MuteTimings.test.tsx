@@ -1,26 +1,25 @@
-import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react';
-import { locationService, setDataSourceSrv } from '@grafana/runtime';
-
+import userEvent from '@testing-library/user-event';
+import React from 'react';
 import { Provider } from 'react-redux';
 import { Router } from 'react-router-dom';
-import { fetchAlertManagerConfig, updateAlertManagerConfig } from './api/alertmanager';
-import { typeAsJestMock } from 'test/helpers/typeAsJestMock';
+import { byRole, byTestId, byText } from 'testing-library-selector';
+
+import { locationService, setDataSourceSrv } from '@grafana/runtime';
+import { AlertManagerCortexConfig, MuteTimeInterval } from 'app/plugins/datasource/alertmanager/types';
 import { configureStore } from 'app/store/configureStore';
 
+import MuteTimings from './MuteTimings';
+import { fetchAlertManagerConfig, updateAlertManagerConfig } from './api/alertmanager';
 import { mockDataSource, MockDataSourceSrv } from './mocks';
 import { DataSourceType } from './utils/datasource';
-import { AlertManagerCortexConfig, MuteTimeInterval } from 'app/plugins/datasource/alertmanager/types';
-import { byRole, byTestId, byText } from 'testing-library-selector';
-import userEvent from '@testing-library/user-event';
-import MuteTimings from './MuteTimings';
 
 jest.mock('./api/alertmanager');
 
 const mocks = {
   api: {
-    fetchAlertManagerConfig: typeAsJestMock(fetchAlertManagerConfig),
-    updateAlertManagerConfig: typeAsJestMock(updateAlertManagerConfig),
+    fetchAlertManagerConfig: jest.mocked(fetchAlertManagerConfig),
+    updateAlertManagerConfig: jest.mocked(updateAlertManagerConfig),
   },
 };
 

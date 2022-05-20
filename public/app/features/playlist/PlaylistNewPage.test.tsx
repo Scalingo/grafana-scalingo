@@ -1,11 +1,13 @@
-import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
 
-import { Playlist } from './types';
-import { PlaylistNewPage } from './PlaylistNewPage';
-import { backendSrv } from '../../core/services/backend_srv';
 import { locationService } from '@grafana/runtime';
+
+import { backendSrv } from '../../core/services/backend_srv';
+
+import { PlaylistNewPage } from './PlaylistNewPage';
+import { Playlist } from './types';
 
 jest.mock('./usePlaylist', () => ({
   // so we don't need to add dashboard items in test
@@ -21,7 +23,7 @@ jest.mock('@grafana/runtime', () => ({
 
 function getTestContext({ name, interval, items }: Partial<Playlist> = {}) {
   jest.clearAllMocks();
-  const playlist = ({ name, items, interval } as unknown) as Playlist;
+  const playlist = { name, items, interval } as unknown as Playlist;
   const queryParams = {};
   const route: any = {};
   const match: any = {};

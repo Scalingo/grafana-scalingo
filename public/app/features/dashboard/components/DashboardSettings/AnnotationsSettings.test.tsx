@@ -1,84 +1,52 @@
-import React from 'react';
-import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
 import { within } from '@testing-library/dom';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
+
 import { selectors } from '@grafana/e2e-selectors';
 import { setAngularLoader, setDataSourceSrv } from '@grafana/runtime';
+import { mockDataSource, MockDataSourceSrv } from 'app/features/alerting/unified/mocks';
+
 import { AnnotationsSettings } from './AnnotationsSettings';
 
 describe('AnnotationsSettings', () => {
   let dashboard: any;
-  const datasources: Record<string, any> = {
-    Grafana: {
-      name: 'Grafana',
-      meta: {
-        type: 'datasource',
+
+  const dataSources = {
+    grafana: mockDataSource(
+      {
         name: 'Grafana',
-        id: 'grafana',
-        info: {
-          logos: {
-            small: 'public/img/icn-datasource.svg',
-          },
-        },
+        uid: 'uid1',
+        type: 'grafana',
+        isDefault: true,
       },
-    },
-    Testdata: {
-      name: 'Testdata',
-      id: 4,
-      meta: {
-        type: 'datasource',
-        name: 'TestData',
-        id: 'testdata',
-        info: {
-          logos: {
-            small: 'public/app/plugins/datasource/testdata/img/testdata.svg',
-          },
-        },
+      { annotations: true }
+    ),
+    Testdata: mockDataSource(
+      {
+        name: 'Testdata',
+        uid: 'uid2',
+        type: 'testdata',
+        isDefault: true,
       },
-    },
-    Prometheus: {
-      name: 'Prometheus',
-      id: 33,
-      meta: {
-        type: 'datasource',
+      { annotations: true }
+    ),
+    Prometheus: mockDataSource(
+      {
         name: 'Prometheus',
-        id: 'prometheus',
-        info: {
-          logos: {
-            small: 'public/app/plugins/datasource/prometheus/img/prometheus_logo.svg',
-          },
-        },
+        uid: 'uid3',
+        type: 'prometheus',
       },
-    },
+      { annotations: true }
+    ),
   };
+
+  setDataSourceSrv(new MockDataSourceSrv(dataSources));
 
   const getTableBody = () => screen.getAllByRole('rowgroup')[1];
   const getTableBodyRows = () => within(getTableBody()).getAllByRole('row');
 
   beforeAll(() => {
-    setDataSourceSrv({
-      getList() {
-        return Object.values(datasources).map((d) => d);
-      },
-      getInstanceSettings(name: string) {
-        return name
-          ? {
-              name: datasources[name].name,
-              value: datasources[name].name,
-              meta: datasources[name].meta,
-            }
-          : {
-              name: datasources.Testdata.name,
-              value: datasources.Testdata.name,
-              meta: datasources.Testdata.meta,
-            };
-      },
-      get(name: string) {
-        return Promise.resolve(name ? datasources[name] : datasources.Testdata);
-      },
-    } as any);
-
     setAngularLoader({
       load: () => ({
         destroy: jest.fn(),
@@ -96,7 +64,7 @@ describe('AnnotationsSettings', () => {
         list: [
           {
             builtIn: 1,
-            datasource: 'Grafana',
+            datasource: { uid: 'uid1', type: 'grafana' },
             enable: true,
             hide: true,
             iconColor: 'rgba(0, 211, 255, 1)',
@@ -153,12 +121,12 @@ describe('AnnotationsSettings', () => {
     ).toBeInTheDocument();
   });
 
-  test('it renders a sortable table of annotations', () => {
+  test('it renders the anotation names or uid if annotation doesnt exist', async () => {
     const annotationsList = [
       ...dashboard.annotations.list,
       {
         builtIn: 0,
-        datasource: 'Prometheus',
+        datasource: { uid: 'uid3', type: 'prometheus' },
         enable: true,
         hide: true,
         iconColor: 'rgba(0, 211, 255, 1)',
@@ -167,7 +135,41 @@ describe('AnnotationsSettings', () => {
       },
       {
         builtIn: 0,
-        datasource: 'Prometheus',
+        datasource: { uid: 'deletedAnnotationId', type: 'prometheus' },
+        enable: true,
+        hide: true,
+        iconColor: 'rgba(0, 211, 255, 1)',
+        name: 'Annotation 2',
+        type: 'dashboard',
+      },
+    ];
+    const dashboardWithAnnotations = {
+      ...dashboard,
+      annotations: {
+        list: [...annotationsList],
+      },
+    };
+    render(<AnnotationsSettings dashboard={dashboardWithAnnotations} />);
+    // Check that we have the correct annotations
+    expect(screen.queryByText(/prometheus/i)).toBeInTheDocument();
+    expect(screen.queryByText(/deletedAnnotationId/i)).toBeInTheDocument();
+  });
+
+  test('it renders a sortable table of annotations', async () => {
+    const annotationsList = [
+      ...dashboard.annotations.list,
+      {
+        builtIn: 0,
+        datasource: { uid: 'uid3', type: 'prometheus' },
+        enable: true,
+        hide: true,
+        iconColor: 'rgba(0, 211, 255, 1)',
+        name: 'Annotation 2',
+        type: 'dashboard',
+      },
+      {
+        builtIn: 0,
+        datasource: { uid: 'uid3', type: 'prometheus' },
         enable: true,
         hide: true,
         iconColor: 'rgba(0, 211, 255, 1)',
@@ -207,7 +209,7 @@ describe('AnnotationsSettings', () => {
     expect(within(getTableBodyRows()[2]).queryByText(/annotations & alerts/i)).toBeInTheDocument();
   });
 
-  test('it renders a form for adding/editing annotations', () => {
+  test('it renders a form for adding/editing annotations', async () => {
     render(<AnnotationsSettings dashboard={dashboard} />);
 
     userEvent.click(screen.getByTestId(selectors.components.CallToActionCard.buttonV2('Add annotation query')));
@@ -224,7 +226,7 @@ describe('AnnotationsSettings', () => {
 
     userEvent.click(screen.getByText(/testdata/i));
 
-    expect(screen.queryByText(/prometheus/i)).toBeVisible();
+    expect(await screen.findByText(/Prometheus/i)).toBeVisible();
     expect(screen.queryAllByText(/testdata/i)).toHaveLength(2);
 
     userEvent.click(screen.getByText(/prometheus/i));

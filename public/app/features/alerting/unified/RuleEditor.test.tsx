@@ -1,25 +1,28 @@
-import { Matcher, render, waitFor } from '@testing-library/react';
-import { Provider } from 'react-redux';
-import { BackendSrv, locationService, setBackendSrv, setDataSourceSrv } from '@grafana/runtime';
-import { configureStore } from 'app/store/configureStore';
-import RuleEditor from './RuleEditor';
-import { Route, Router } from 'react-router-dom';
+import { Matcher, render, waitFor, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { Provider } from 'react-redux';
+import { Route, Router } from 'react-router-dom';
 import { byLabelText, byRole, byTestId, byText } from 'testing-library-selector';
+
+import { DataSourceInstanceSettings } from '@grafana/data';
+import { BackendSrv, locationService, setBackendSrv, setDataSourceSrv } from '@grafana/runtime';
 import { selectOptionInTest } from '@grafana/ui';
 import { contextSrv } from 'app/core/services/context_srv';
-import { mockDataSource, MockDataSourceSrv } from './mocks';
-import userEvent from '@testing-library/user-event';
-import { DataSourceInstanceSettings } from '@grafana/data';
-import { typeAsJestMock } from 'test/helpers/typeAsJestMock';
-import { getAllDataSources } from './utils/config';
-import { fetchRulerRules, fetchRulerRulesGroup, fetchRulerRulesNamespace, setRulerRuleGroup } from './api/ruler';
-import { DataSourceType, GRAFANA_RULES_SOURCE_NAME } from './utils/datasource';
 import { DashboardSearchHit } from 'app/features/search/types';
-import { getDefaultQueries } from './utils/rule-form';
+import { configureStore } from 'app/store/configureStore';
+import { GrafanaAlertStateDecision, PromApplication } from 'app/types/unified-alerting-dto';
+
+import { searchFolders } from '../../../../app/features/manage-dashboards/state/actions';
+
+import RuleEditor from './RuleEditor';
+import { fetchBuildInfo } from './api/buildInfo';
+import { fetchRulerRules, fetchRulerRulesGroup, fetchRulerRulesNamespace, setRulerRuleGroup } from './api/ruler';
 import { ExpressionEditorProps } from './components/rule-editor/ExpressionEditor';
-import * as api from 'app/features/manage-dashboards/state/actions';
-import { GrafanaAlertStateDecision } from 'app/types/unified-alerting-dto';
+import { mockDataSource, MockDataSourceSrv } from './mocks';
+import { getAllDataSources } from './utils/config';
+import { DataSourceType, GRAFANA_RULES_SOURCE_NAME } from './utils/datasource';
+import { getDefaultQueries } from './utils/rule-form';
 
 jest.mock('./components/rule-editor/ExpressionEditor', () => ({
   // eslint-disable-next-line react/display-name
@@ -28,8 +31,10 @@ jest.mock('./components/rule-editor/ExpressionEditor', () => ({
   ),
 }));
 
+jest.mock('./api/buildInfo');
 jest.mock('./api/ruler');
 jest.mock('./utils/config');
+jest.mock('../../../../app/features/manage-dashboards/state/actions');
 
 // there's no angular scope in test and things go terribly wrong when trying to render the query editor row.
 // lets just skip it
@@ -39,13 +44,14 @@ jest.mock('app/features/query/components/QueryEditorRow', () => ({
 }));
 
 const mocks = {
-  getAllDataSources: typeAsJestMock(getAllDataSources),
-
+  getAllDataSources: jest.mocked(getAllDataSources),
+  searchFolders: jest.mocked(searchFolders),
   api: {
-    fetchRulerRulesGroup: typeAsJestMock(fetchRulerRulesGroup),
-    setRulerRuleGroup: typeAsJestMock(setRulerRuleGroup),
-    fetchRulerRulesNamespace: typeAsJestMock(fetchRulerRulesNamespace),
-    fetchRulerRules: typeAsJestMock(fetchRulerRules),
+    fetchBuildInfo: jest.mocked(fetchBuildInfo),
+    fetchRulerRulesGroup: jest.mocked(fetchRulerRulesGroup),
+    setRulerRuleGroup: jest.mocked(setRulerRuleGroup),
+    fetchRulerRulesNamespace: jest.mocked(fetchRulerRulesNamespace),
+    fetchRulerRules: jest.mocked(fetchRulerRules),
   },
 };
 
@@ -81,6 +87,10 @@ const ui = {
     save: byRole('button', { name: 'Save' }),
     addAnnotation: byRole('button', { name: /Add info/ }),
     addLabel: byRole('button', { name: /Add label/ }),
+    // alert type buttons
+    grafanaManagedAlert: byRole('button', { name: /Grafana managed/ }),
+    lotexAlert: byRole('button', { name: /Mimir or Loki alert/ }),
+    lotexRecordingRule: byRole('button', { name: /Mimir or Loki recording rule/ }),
   },
 };
 
@@ -124,10 +134,21 @@ describe('RuleEditor', () => {
         },
       ],
     });
+    mocks.searchFolders.mockResolvedValue([]);
+
+    mocks.api.fetchBuildInfo.mockResolvedValue({
+      application: PromApplication.Cortex,
+      features: {
+        rulerApiEnabled: true,
+      },
+    });
 
     await renderRuleEditor();
+    await waitFor(() => expect(mocks.searchFolders).toHaveBeenCalled());
+
+    await waitFor(() => expect(mocks.api.fetchBuildInfo).toHaveBeenCalled());
     userEvent.type(await ui.inputs.name.find(), 'my great new rule');
-    await clickSelectOption(ui.inputs.alertType.get(), /Cortex\/Loki managed alert/);
+    userEvent.click(await ui.buttons.lotexAlert.get());
     const dataSourceSelect = ui.inputs.dataSource.get();
     userEvent.click(byRole('combobox').get(dataSourceSelect));
     await clickSelectOption(dataSourceSelect, 'Prom (default)');
@@ -151,22 +172,59 @@ describe('RuleEditor', () => {
     // save and check what was sent to backend
     userEvent.click(ui.buttons.save.get());
     await waitFor(() => expect(mocks.api.setRulerRuleGroup).toHaveBeenCalled());
-    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith('Prom', 'namespace2', {
-      name: 'group2',
-      rules: [
-        {
-          alert: 'my great new rule',
-          annotations: { description: 'some description', summary: 'some summary' },
-          labels: { severity: 'warn', team: 'the a-team' },
-          expr: 'up == 1',
-          for: '1m',
-        },
-      ],
-    });
+    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith(
+      { dataSourceName: 'Prom', apiVersion: 'legacy' },
+      'namespace2',
+      {
+        name: 'group2',
+        rules: [
+          {
+            alert: 'my great new rule',
+            annotations: { description: 'some description', summary: 'some summary' },
+            labels: { severity: 'warn', team: 'the a-team' },
+            expr: 'up == 1',
+            for: '1m',
+          },
+        ],
+      }
+    );
   });
 
   it('can create new grafana managed alert', async () => {
-    const searchFolderMock = jest.spyOn(api, 'searchFolders').mockResolvedValue([
+    const dataSources = {
+      default: mockDataSource(
+        {
+          type: 'prometheus',
+          name: 'Prom',
+          isDefault: true,
+        },
+        { alerting: true }
+      ),
+    };
+
+    setDataSourceSrv(new MockDataSourceSrv(dataSources));
+    mocks.getAllDataSources.mockReturnValue(Object.values(dataSources));
+    mocks.api.setRulerRuleGroup.mockResolvedValue();
+    mocks.api.fetchRulerRulesNamespace.mockResolvedValue([]);
+    mocks.api.fetchRulerRulesGroup.mockResolvedValue({
+      name: 'group2',
+      rules: [],
+    });
+    mocks.api.fetchRulerRules.mockResolvedValue({
+      namespace1: [
+        {
+          name: 'group1',
+          rules: [],
+        },
+      ],
+      namespace2: [
+        {
+          name: 'group2',
+          rules: [],
+        },
+      ],
+    });
+    mocks.searchFolders.mockResolvedValue([
       {
         title: 'Folder A',
         id: 1,
@@ -177,25 +235,25 @@ describe('RuleEditor', () => {
       },
     ] as DashboardSearchHit[]);
 
-    const dataSources = {
-      default: mockDataSource({
-        type: 'prometheus',
-        name: 'Prom',
-        isDefault: true,
-      }),
-    };
-
-    setDataSourceSrv(new MockDataSourceSrv(dataSources));
-    mocks.api.setRulerRuleGroup.mockResolvedValue();
-    mocks.api.fetchRulerRulesNamespace.mockResolvedValue([]);
+    mocks.api.fetchBuildInfo.mockResolvedValue({
+      application: PromApplication.Prometheus,
+      features: {
+        rulerApiEnabled: false,
+      },
+    });
 
     // fill out the form
     await renderRuleEditor();
+    await waitFor(() => expect(mocks.searchFolders).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.api.fetchBuildInfo).toHaveBeenCalled());
+
     userEvent.type(await ui.inputs.name.find(), 'my great new rule');
-    await clickSelectOption(ui.inputs.alertType.get(), /Classic Grafana alerts based on thresholds/);
+
     const folderInput = await ui.inputs.folder.find();
-    await waitFor(() => expect(searchFolderMock).toHaveBeenCalled());
     await clickSelectOption(folderInput, 'Folder A');
+
+    const groupInput = screen.getByRole('textbox', { name: /^Group/ });
+    userEvent.type(groupInput, 'my group');
 
     userEvent.type(ui.inputs.annotationValue(0).get(), 'some summary');
     userEvent.type(ui.inputs.annotationValue(1).get(), 'some description');
@@ -211,24 +269,28 @@ describe('RuleEditor', () => {
     // save and check what was sent to backend
     userEvent.click(ui.buttons.save.get());
     await waitFor(() => expect(mocks.api.setRulerRuleGroup).toHaveBeenCalled());
-    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith(GRAFANA_RULES_SOURCE_NAME, 'Folder A', {
-      interval: '1m',
-      name: 'my great new rule',
-      rules: [
-        {
-          annotations: { description: 'some description', summary: 'some summary' },
-          labels: { severity: 'warn', team: 'the a-team' },
-          for: '5m',
-          grafana_alert: {
-            condition: 'B',
-            data: getDefaultQueries(),
-            exec_err_state: 'Alerting',
-            no_data_state: 'NoData',
-            title: 'my great new rule',
+    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith(
+      { dataSourceName: GRAFANA_RULES_SOURCE_NAME, apiVersion: 'legacy' },
+      'Folder A',
+      {
+        interval: '1m',
+        name: 'my group',
+        rules: [
+          {
+            annotations: { description: 'some description', summary: 'some summary' },
+            labels: { severity: 'warn', team: 'the a-team' },
+            for: '5m',
+            grafana_alert: {
+              condition: 'B',
+              data: getDefaultQueries(),
+              exec_err_state: 'Alerting',
+              no_data_state: 'NoData',
+              title: 'my great new rule',
+            },
           },
-        },
-      ],
-    });
+        ],
+      }
+    );
   });
 
   it('can create a new cloud recording rule', async () => {
@@ -265,12 +327,24 @@ describe('RuleEditor', () => {
         },
       ],
     });
+    mocks.searchFolders.mockResolvedValue([]);
+
+    mocks.api.fetchBuildInfo.mockResolvedValue({
+      application: PromApplication.Cortex,
+      features: {
+        rulerApiEnabled: true,
+      },
+    });
 
     await renderRuleEditor();
+    await waitFor(() => expect(mocks.searchFolders).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.api.fetchBuildInfo).toHaveBeenCalled());
     userEvent.type(await ui.inputs.name.find(), 'my great new recording rule');
-    await clickSelectOption(ui.inputs.alertType.get(), /Cortex\/Loki managed recording rule/);
+    userEvent.click(await ui.buttons.lotexRecordingRule.get());
+
     const dataSourceSelect = ui.inputs.dataSource.get();
     userEvent.click(byRole('combobox').get(dataSourceSelect));
+
     await clickSelectOption(dataSourceSelect, 'Prom (default)');
     await waitFor(() => expect(mocks.api.fetchRulerRules).toHaveBeenCalled());
     await clickSelectOption(ui.inputs.namespace.get(), 'namespace2');
@@ -302,16 +376,20 @@ describe('RuleEditor', () => {
     // save and check what was sent to backend
     userEvent.click(ui.buttons.save.get());
     await waitFor(() => expect(mocks.api.setRulerRuleGroup).toHaveBeenCalled());
-    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith('Prom', 'namespace2', {
-      name: 'group2',
-      rules: [
-        {
-          record: 'my:great:new:recording:rule',
-          labels: { team: 'the a-team' },
-          expr: 'up == 1',
-        },
-      ],
-    });
+    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith(
+      { dataSourceName: 'Prom', apiVersion: 'legacy' },
+      'namespace2',
+      {
+        name: 'group2',
+        rules: [
+          {
+            record: 'my:great:new:recording:rule',
+            labels: { team: 'the a-team' },
+            expr: 'up == 1',
+          },
+        ],
+      }
+    );
   });
 
   it('can edit grafana managed rule', async () => {
@@ -321,7 +399,6 @@ describe('RuleEditor', () => {
       uid: 'abcd',
       id: 1,
     };
-    const searchFolderMock = jest.spyOn(api, 'searchFolders').mockResolvedValue([folder] as DashboardSearchHit[]);
     const getFolderByUid = jest.fn().mockResolvedValue({
       ...folder,
       canSave: true,
@@ -334,11 +411,13 @@ describe('RuleEditor', () => {
       }),
     };
 
-    const backendSrv = ({
+    const backendSrv = {
       getFolderByUid,
-    } as any) as BackendSrv;
+    } as any as BackendSrv;
     setBackendSrv(backendSrv);
     setDataSourceSrv(new MockDataSourceSrv(dataSources));
+
+    mocks.getAllDataSources.mockReturnValue(Object.values(dataSources));
     mocks.api.setRulerRuleGroup.mockResolvedValue();
     mocks.api.fetchRulerRulesNamespace.mockResolvedValue([]);
     mocks.api.fetchRulerRules.mockResolvedValue({
@@ -366,9 +445,12 @@ describe('RuleEditor', () => {
         },
       ],
     });
+    mocks.searchFolders.mockResolvedValue([folder] as DashboardSearchHit[]);
 
     await renderRuleEditor(uid);
-    await waitFor(() => expect(searchFolderMock).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.searchFolders).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.api.fetchBuildInfo).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.searchFolders).toHaveBeenCalled());
 
     // check that it's filled in
     const nameInput = await ui.inputs.name.find();
@@ -390,25 +472,29 @@ describe('RuleEditor', () => {
     userEvent.click(ui.buttons.save.get());
     await waitFor(() => expect(mocks.api.setRulerRuleGroup).toHaveBeenCalled());
 
-    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith(GRAFANA_RULES_SOURCE_NAME, 'Folder A', {
-      interval: '1m',
-      name: 'my great new rule',
-      rules: [
-        {
-          annotations: { description: 'some description', summary: 'some summary', custom: 'value' },
-          labels: { severity: 'warn', team: 'the a-team', custom: 'value' },
-          for: '5m',
-          grafana_alert: {
-            uid,
-            condition: 'B',
-            data: getDefaultQueries(),
-            exec_err_state: 'Alerting',
-            no_data_state: 'NoData',
-            title: 'my great new rule',
+    expect(mocks.api.setRulerRuleGroup).toHaveBeenCalledWith(
+      { dataSourceName: GRAFANA_RULES_SOURCE_NAME, apiVersion: 'legacy' },
+      'Folder A',
+      {
+        interval: '1m',
+        name: 'my great new rule',
+        rules: [
+          {
+            annotations: { description: 'some description', summary: 'some summary', custom: 'value' },
+            labels: { severity: 'warn', team: 'the a-team', custom: 'value' },
+            for: '5m',
+            grafana_alert: {
+              uid,
+              condition: 'B',
+              data: getDefaultQueries(),
+              exec_err_state: 'Alerting',
+              no_data_state: 'NoData',
+              title: 'my great new rule',
+            },
           },
-        },
-      ],
-    });
+        ],
+      }
+    );
   });
 
   it('for cloud alerts, should only allow to select editable rules sources', async () => {
@@ -465,7 +551,45 @@ describe('RuleEditor', () => {
       ),
     };
 
-    mocks.api.fetchRulerRulesGroup.mockImplementation(async (dataSourceName: string) => {
+    mocks.api.fetchBuildInfo.mockImplementation(async (dataSourceName) => {
+      if (dataSourceName === 'loki with ruler' || dataSourceName === 'cortex with ruler') {
+        return {
+          application: PromApplication.Cortex,
+          features: {
+            rulerApiEnabled: true,
+            alertManagerConfigApi: false,
+            federatedRules: false,
+            querySharding: false,
+          },
+        };
+      }
+      if (dataSourceName === 'loki with local rule store') {
+        return {
+          application: PromApplication.Cortex,
+          features: {
+            rulerApiEnabled: false,
+            alertManagerConfigApi: false,
+            federatedRules: false,
+            querySharding: false,
+          },
+        };
+      }
+      if (dataSourceName === 'cortex without ruler api') {
+        return {
+          application: PromApplication.Cortex,
+          features: {
+            rulerApiEnabled: false,
+            alertManagerConfigApi: false,
+            federatedRules: false,
+            querySharding: false,
+          },
+        };
+      }
+
+      throw new Error(`${dataSourceName} not handled`);
+    });
+
+    mocks.api.fetchRulerRulesGroup.mockImplementation(async ({ dataSourceName }) => {
       if (dataSourceName === 'loki with ruler' || dataSourceName === 'cortex with ruler') {
         return null;
       }
@@ -485,14 +609,15 @@ describe('RuleEditor', () => {
 
     setDataSourceSrv(new MockDataSourceSrv(dataSources));
     mocks.getAllDataSources.mockReturnValue(Object.values(dataSources));
+    mocks.searchFolders.mockResolvedValue([]);
 
-    // render rule editor, select cortex/loki managed alerts
+    // render rule editor, select mimir/loki managed alerts
     await renderRuleEditor();
-    await ui.inputs.name.find();
-    await clickSelectOption(ui.inputs.alertType.get(), /Cortex\/Loki managed alert/);
+    await waitFor(() => expect(mocks.api.fetchBuildInfo).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.searchFolders).toHaveBeenCalled());
 
-    // wait for ui theck each datasource if it supports rule editing
-    await waitFor(() => expect(mocks.api.fetchRulerRulesGroup).toHaveBeenCalledTimes(4));
+    await ui.inputs.name.find();
+    userEvent.click(await ui.buttons.lotexAlert.get());
 
     // check that only rules sources that have ruler available are there
     const dataSourceSelect = ui.inputs.dataSource.get();

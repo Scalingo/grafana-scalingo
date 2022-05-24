@@ -14,18 +14,19 @@
 
 jest.mock('../utils');
 
-import React from 'react';
 import { shallow } from 'enzyme';
+import React from 'react';
+
+import LabeledList from '../../common/LabeledList';
+import traceGenerator from '../../demo/trace-generators';
+import transformTraceData from '../../model/transform-trace-data';
+import { formatDuration } from '../utils';
 
 import AccordianKeyValues from './AccordianKeyValues';
 import AccordianLogs from './AccordianLogs';
 import DetailState from './DetailState';
+
 import SpanDetail from './index';
-import { formatDuration } from '../utils';
-import CopyIcon from '../../common/CopyIcon';
-import LabeledList from '../../common/LabeledList';
-import traceGenerator from '../../demo/trace-generators';
-import transformTraceData from '../../model/transform-trace-data';
 
 describe('<SpanDetail>', () => {
   let wrapper;
@@ -44,6 +45,7 @@ describe('<SpanDetail>', () => {
     tagsToggle: jest.fn(),
     warningsToggle: jest.fn(),
     referencesToggle: jest.fn(),
+    createFocusSpanLink: jest.fn(),
   };
   span.logs = [
     {
@@ -180,7 +182,7 @@ describe('<SpanDetail>', () => {
     expect(props.referencesToggle).toHaveBeenLastCalledWith(span.spanID);
   });
 
-  it('renders CopyIcon with deep link URL', () => {
-    expect(wrapper.find(CopyIcon).prop('copyText').includes(`?uiFind=${props.span.spanID}`)).toBe(true);
+  it('renders deep link URL', () => {
+    expect(wrapper.find('a').exists()).toBeTruthy();
   });
 });

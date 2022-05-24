@@ -1,10 +1,12 @@
-import React from 'react';
-import * as runtime from '@grafana/runtime';
 import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
+
+import * as runtime from '@grafana/runtime';
+
+import { customBuilder } from '../shared/testing/builders';
 
 import { VariablesUnknownTable, VariablesUnknownTableProps } from './VariablesUnknownTable';
-import { customBuilder } from '../shared/testing/builders';
 import * as utils from './utils';
 import { UsagesToNetwork } from './utils';
 
@@ -65,14 +67,14 @@ describe('VariablesUnknownTable', () => {
         const { getUnknownsNetworkSpy } = await getTestContext();
 
         userEvent.click(screen.getByRole('heading', { name: /renamed or missing variables/i }));
-        await waitFor(() => expect(screen.getByTitle('Click to collapse')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true'));
         expect(getUnknownsNetworkSpy).toHaveBeenCalledTimes(1);
 
         userEvent.click(screen.getByRole('heading', { name: /renamed or missing variables/i }));
-        await waitFor(() => expect(screen.getByTitle('Click to expand')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'false'));
 
         userEvent.click(screen.getByRole('heading', { name: /renamed or missing variables/i }));
-        await waitFor(() => expect(screen.getByTitle('Click to collapse')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true'));
 
         expect(getUnknownsNetworkSpy).toHaveBeenCalledTimes(1);
       });

@@ -1,9 +1,12 @@
 import React, { SyntheticEvent } from 'react';
-import { InlineFormLabel, LegacyForms } from '@grafana/ui';
-const { Select, Input } = LegacyForms;
+
 import { DataSourceSettings, SelectableValue } from '@grafana/data';
-import { OpenTsdbOptions } from '../types';
+import { InlineFormLabel, LegacyForms } from '@grafana/ui';
+
 import { useUniqueId } from '../../influxdb/components/useUniqueId';
+import { OpenTsdbOptions } from '../types';
+
+const { Select, Input } = LegacyForms;
 
 const tsdbVersions = [
   { label: '<=2.1', value: 1 },
@@ -71,26 +74,25 @@ export const OpenTsdbDetails = (props: Props) => {
   );
 };
 
-const onSelectChangeHandler = (key: keyof OpenTsdbOptions, value: Props['value'], onChange: Props['onChange']) => (
-  newValue: SelectableValue
-) => {
-  onChange({
-    ...value,
-    jsonData: {
-      ...value.jsonData,
-      [key]: newValue.value,
-    },
-  });
-};
+const onSelectChangeHandler =
+  (key: keyof OpenTsdbOptions, value: Props['value'], onChange: Props['onChange']) => (newValue: SelectableValue) => {
+    onChange({
+      ...value,
+      jsonData: {
+        ...value.jsonData,
+        [key]: newValue.value,
+      },
+    });
+  };
 
-const onInputChangeHandler = (key: keyof OpenTsdbOptions, value: Props['value'], onChange: Props['onChange']) => (
-  event: SyntheticEvent<HTMLInputElement>
-) => {
-  onChange({
-    ...value,
-    jsonData: {
-      ...value.jsonData,
-      [key]: event.currentTarget.value,
-    },
-  });
-};
+const onInputChangeHandler =
+  (key: keyof OpenTsdbOptions, value: Props['value'], onChange: Props['onChange']) =>
+  (event: SyntheticEvent<HTMLInputElement>) => {
+    onChange({
+      ...value,
+      jsonData: {
+        ...value.jsonData,
+        [key]: event.currentTarget.value,
+      },
+    });
+  };

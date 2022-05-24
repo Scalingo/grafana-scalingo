@@ -1,9 +1,11 @@
-import { SelectableValue, GrafanaTheme2 } from '@grafana/data';
-import { DataSourceType, GRAFANA_RULES_SOURCE_NAME } from '../utils/datasource';
-import React, { FC, useMemo } from 'react';
-import { Field, Select, useStyles2 } from '@grafana/ui';
-import { getAllDataSources } from '../utils/config';
 import { css } from '@emotion/css';
+import React, { FC, useMemo } from 'react';
+
+import { SelectableValue, GrafanaTheme2 } from '@grafana/data';
+import { Field, Select, useStyles2 } from '@grafana/ui';
+
+import { getAllDataSources } from '../utils/config';
+import { DataSourceType, GRAFANA_RULES_SOURCE_NAME } from '../utils/datasource';
 
 interface Props {
   onChange: (alertManagerSourceName: string) => void;
@@ -25,7 +27,7 @@ export const AlertManagerPicker: FC<Props> = ({ onChange, current, disabled = fa
       ...getAllDataSources()
         .filter((ds) => ds.type === DataSourceType.Alertmanager)
         .map((ds) => ({
-          label: ds.name.substr(0, 37),
+          label: ds.name.slice(0, 37),
           value: ds.name,
           imgUrl: ds.meta.info.logos.small,
           meta: ds.meta,
@@ -33,16 +35,11 @@ export const AlertManagerPicker: FC<Props> = ({ onChange, current, disabled = fa
     ];
   }, []);
 
-  // no need to show the picker if there's only one option
-  if (options.length === 1) {
-    return null;
-  }
-
   return (
     <Field
       className={styles.field}
       label={disabled ? 'Alertmanager' : 'Choose Alertmanager'}
-      disabled={disabled}
+      disabled={disabled || options.length === 1}
       data-testid="alertmanager-picker"
     >
       <Select

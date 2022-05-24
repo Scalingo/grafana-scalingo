@@ -60,7 +60,7 @@ func Test_stateToPostableAlert(t *testing.T) {
 					alertState.Labels[ngModels.RuleUIDLabel] = alertState.AlertRuleUID
 					result := stateToPostableAlert(alertState, appURL)
 					u := *appURL
-					u.Path = u.Path + "/alerting/" + alertState.AlertRuleUID + "/edit"
+					u.Path = u.Path + "/alerting/grafana/" + alertState.AlertRuleUID + "/view"
 					require.Equal(t, u.String(), result.Alert.GeneratorURL.String())
 				})
 
@@ -100,11 +100,7 @@ func Test_stateToPostableAlert(t *testing.T) {
 					alertState := randomState(tc.state)
 					alertState.Annotations = randomMapOfStrings()
 					expectedValueString := util.GenerateShortUID()
-					alertState.Results = []state.Evaluation{
-						{
-							EvaluationString: expectedValueString,
-						},
-					}
+					alertState.LastEvaluationString = expectedValueString
 
 					result := stateToPostableAlert(alertState, appURL)
 

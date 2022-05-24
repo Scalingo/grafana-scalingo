@@ -1,21 +1,15 @@
-// Libraries
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { connect, ConnectedProps } from 'react-redux';
 
-// Services & Utils
+import { RICH_HISTORY_SETTING_KEYS } from 'app/core/history/richHistoryLocalStorageUtils';
 import store from 'app/core/store';
-import { RICH_HISTORY_SETTING_KEYS } from 'app/core/utils/richHistory';
-
-// Types
 import { ExploreItemState, StoreState } from 'app/types';
 import { ExploreId } from 'app/types/explore';
 
-// Components, enums
-import { RichHistory, Tabs } from './RichHistory';
-
-//Actions
-import { deleteRichHistory } from '../state/history';
 import { ExploreDrawer } from '../ExploreDrawer';
+import { deleteRichHistory, loadRichHistory } from '../state/history';
+
+import { RichHistory, Tabs } from './RichHistory';
 
 function mapStateToProps(state: StoreState, { exploreId }: { exploreId: ExploreId }) {
   const explore = state.explore;
@@ -25,7 +19,7 @@ function mapStateToProps(state: StoreState, { exploreId }: { exploreId: ExploreI
   const firstTab = store.getBool(RICH_HISTORY_SETTING_KEYS.starredTabAsFirstTab, false)
     ? Tabs.Starred
     : Tabs.RichHistory;
-  const { richHistory } = explore;
+  const { richHistory } = item;
   return {
     richHistory,
     firstTab,
@@ -34,6 +28,7 @@ function mapStateToProps(state: StoreState, { exploreId }: { exploreId: ExploreI
 }
 
 const mapDispatchToProps = {
+  loadRichHistory,
   deleteRichHistory,
 };
 
@@ -49,7 +44,20 @@ export type Props = ConnectedProps<typeof connector> & OwnProps;
 export function RichHistoryContainer(props: Props) {
   const [height, setHeight] = useState(400);
 
-  const { richHistory, width, firstTab, activeDatasourceInstance, exploreId, deleteRichHistory, onClose } = props;
+  const {
+    richHistory,
+    width,
+    firstTab,
+    activeDatasourceInstance,
+    exploreId,
+    deleteRichHistory,
+    loadRichHistory,
+    onClose,
+  } = props;
+
+  useEffect(() => {
+    loadRichHistory(exploreId);
+  }, [loadRichHistory, exploreId]);
 
   return (
     <ExploreDrawer

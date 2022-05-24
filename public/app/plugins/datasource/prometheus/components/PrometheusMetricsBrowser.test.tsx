@@ -1,8 +1,11 @@
-import React from 'react';
 import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
 
 import { getTheme } from '@grafana/ui';
+
+import PromQlLanguageProvider from '../language_provider';
+
 import {
   buildSelector,
   facetLabels,
@@ -10,7 +13,6 @@ import {
   UnthemedPrometheusMetricsBrowser,
   BrowserProps,
 } from './PrometheusMetricsBrowser';
-import PromQlLanguageProvider from '../language_provider';
 
 describe('buildSelector()', () => {
   it('returns an empty selector for no labels', () => {
@@ -132,7 +134,7 @@ describe('PrometheusMetricsBrowser', () => {
       theme: getTheme(),
       onChange: () => {},
       autoSelect: 0,
-      languageProvider: (mockLanguageProvider as unknown) as PromQlLanguageProvider,
+      languageProvider: mockLanguageProvider as unknown as PromQlLanguageProvider,
       lastUsedLabels: [],
       storeLastUsedLabels: () => {},
       deleteLastUsedLabels: () => {},

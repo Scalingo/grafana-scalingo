@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/api/routing"
-	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/login"
@@ -155,7 +154,6 @@ func TestLoginErrorCookieAPIEndpoint(t *testing.T) {
 
 func TestLoginViewRedirect(t *testing.T) {
 	fakeSetIndexViewData(t)
-
 	fakeViewIndex(t)
 	sc := setupScenarioContext(t, "/login")
 	cfg := setting.NewCfg()
@@ -348,13 +346,12 @@ func TestLoginPostRedirect(t *testing.T) {
 		return hs.LoginPost(c)
 	})
 
-	bus.AddHandler("grafana-auth", func(ctx context.Context, query *models.LoginUserQuery) error {
-		query.User = &models.User{
-			Id:    42,
-			Email: "",
-		}
-		return nil
-	})
+	user := &models.User{
+		Id:    42,
+		Email: "",
+	}
+
+	hs.authenticator = &fakeAuthenticator{user, "", nil}
 
 	redirectCases := []redirectCase{
 		{
@@ -441,6 +438,7 @@ func TestLoginPostRedirect(t *testing.T) {
 	for _, c := range redirectCases {
 		hs.Cfg.AppURL = c.appURL
 		hs.Cfg.AppSubURL = c.appSubURL
+
 		t.Run(c.desc, func(t *testing.T) {
 			expCookiePath := "/"
 			if len(hs.Cfg.AppSubURL) > 0 {
@@ -685,12 +683,7 @@ func TestLoginPostRunLokingHook(t *testing.T) {
 
 	for _, c := range testCases {
 		t.Run(c.desc, func(t *testing.T) {
-			bus.AddHandler("grafana-auth", func(ctx context.Context, query *models.LoginUserQuery) error {
-				query.User = c.authUser
-				query.AuthModule = c.authModule
-				return c.authErr
-			})
-
+			hs.authenticator = &fakeAuthenticator{c.authUser, c.authModule, c.authErr}
 			sc.m.Post(sc.url, sc.defaultHandler)
 			sc.fakeReqNoAssertions("POST", sc.url).exec()
 
@@ -735,4 +728,16 @@ func (m *mockSocialService) GetOAuthHttpClient(name string) (*http.Client, error
 
 func (m *mockSocialService) GetConnector(string) (social.SocialConnector, error) {
 	return m.socialConnector, m.err
+}
+
+type fakeAuthenticator struct {
+	ExpectedUser       *models.User
+	ExpectedAuthModule string
+	ExpectedError      error
+}
+
+func (fa *fakeAuthenticator) AuthenticateUser(c context.Context, query *models.LoginUserQuery) error {
+	query.User = fa.ExpectedUser
+	query.AuthModule = fa.ExpectedAuthModule
+	return fa.ExpectedError
 }

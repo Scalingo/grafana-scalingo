@@ -1,7 +1,8 @@
 import { variableAdapters } from '../adapters';
-import { createTextBoxVariableAdapter } from './adapter';
 import { textboxBuilder } from '../shared/testing/builders';
 import { VariableHide } from '../types';
+
+import { createTextBoxVariableAdapter } from './adapter';
 
 variableAdapters.setInit(() => [createTextBoxVariableAdapter()]);
 
@@ -11,6 +12,7 @@ describe('createTextBoxVariableAdapter', () => {
       it('then the model should be correct', () => {
         const text = textboxBuilder()
           .withId('text')
+          .withRootStateKey('key')
           .withName('text')
           .withQuery('query')
           .withOriginalQuery('original')
@@ -41,6 +43,7 @@ describe('createTextBoxVariableAdapter', () => {
       it('then the model should be correct', () => {
         const text = textboxBuilder()
           .withId('text')
+          .withRootStateKey('key')
           .withName('text')
           .withQuery('query')
           .withOriginalQuery('original')

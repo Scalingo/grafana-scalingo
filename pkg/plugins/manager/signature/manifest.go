@@ -15,7 +15,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	// TODO: replace deprecated `golang.org/x/crypto` package https://github.com/grafana/grafana/issues/46050
+	// nolint:staticcheck
 	"golang.org/x/crypto/openpgp"
+	// nolint:staticcheck
 	"golang.org/x/crypto/openpgp/clearsign"
 
 	"github.com/grafana/grafana/pkg/infra/log"
@@ -79,7 +82,7 @@ func readPluginManifest(body []byte) (*pluginManifest, error) {
 	}
 
 	// Convert to a well typed object
-	manifest := &pluginManifest{}
+	var manifest pluginManifest
 	err := json.Unmarshal(block.Plaintext, &manifest)
 	if err != nil {
 		return nil, errutil.Wrap("Error parsing manifest JSON", err)
@@ -96,7 +99,7 @@ func readPluginManifest(body []byte) (*pluginManifest, error) {
 		return nil, errutil.Wrap("failed to check signature", err)
 	}
 
-	return manifest, nil
+	return &manifest, nil
 }
 
 func Calculate(mlog log.Logger, plugin *plugins.Plugin) (plugins.Signature, error) {

@@ -1,8 +1,10 @@
 /* eslint-disable max-len */
 
-import { renderGeneratedFileBanner } from '../utils/generatedFileBanner';
-import { styleMixins } from '.';
 import { GrafanaTheme2 } from '@grafana/data';
+
+import { renderGeneratedFileBanner } from '../utils/generatedFileBanner';
+
+import { styleMixins } from '.';
 
 export const lightThemeVarsTemplate = (theme: GrafanaTheme2) =>
   `${renderGeneratedFileBanner('grafana-ui/src/themes/light.ts', 'grafana-ui/src/themes/_variable.light.scss.tmpl.ts')}
@@ -10,6 +12,9 @@ export const lightThemeVarsTemplate = (theme: GrafanaTheme2) =>
 // --------------------------------------------------
 
 $theme-name: light;
+
+$colors-action-hover: ${theme.colors.action.hover};
+$colors-action-selected: ${theme.colors.action.selected};
 
 // New Colors
 // -------------------------

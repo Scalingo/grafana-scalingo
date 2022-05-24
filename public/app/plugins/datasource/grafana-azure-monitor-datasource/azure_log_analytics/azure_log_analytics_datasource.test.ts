@@ -1,17 +1,19 @@
-import AzureMonitorDatasource from '../datasource';
-import AzureLogAnalyticsDatasource from './azure_log_analytics_datasource';
-import FakeSchemaData from './__mocks__/schema';
-import { TemplateSrv } from 'app/features/templating/template_srv';
-import { AzureMonitorQuery, AzureQueryType, DatasourceValidationResult } from '../types';
 import { toUtc } from '@grafana/data';
+import { TemplateSrv } from 'app/features/templating/template_srv';
+
 import createMockQuery from '../__mocks__/query';
 import { singleVariable } from '../__mocks__/variables';
+import AzureMonitorDatasource from '../datasource';
+import { AzureMonitorQuery, AzureQueryType, DatasourceValidationResult } from '../types';
+
+import FakeSchemaData from './__mocks__/schema';
+import AzureLogAnalyticsDatasource from './azure_log_analytics_datasource';
 
 const templateSrv = new TemplateSrv();
 
 jest.mock('app/core/services/backend_srv');
 jest.mock('@grafana/runtime', () => ({
-  ...((jest.requireActual('@grafana/runtime') as unknown) as object),
+  ...(jest.requireActual('@grafana/runtime') as unknown as object),
   getTemplateSrv: () => templateSrv,
 }));
 
@@ -26,9 +28,12 @@ describe('AzureLogAnalyticsDatasource', () => {
   const ctx: any = {};
 
   beforeEach(() => {
+    templateSrv.init([singleVariable]);
+    templateSrv.getVariables = jest.fn().mockReturnValue([singleVariable]);
     ctx.instanceSettings = {
       jsonData: { subscriptionId: 'xxx' },
       url: 'http://azureloganalyticsapi',
+      templateSrv: templateSrv,
     };
 
     ctx.ds = new AzureMonitorDatasource(ctx.instanceSettings);
@@ -75,10 +80,11 @@ describe('AzureLogAnalyticsDatasource', () => {
 
   describe('When performing getSchema', () => {
     beforeEach(() => {
-      ctx.ds.azureLogAnalyticsDatasource.getResource = jest.fn().mockImplementation((path: string) => {
+      ctx.mockGetResource = jest.fn().mockImplementation((path: string) => {
         expect(path).toContain('metadata');
         return Promise.resolve(FakeSchemaData.getlogAnalyticsFakeMetadata());
       });
+      ctx.ds.azureLogAnalyticsDatasource.getResource = ctx.mockGetResource;
     });
 
     it('should return a schema to use with monaco-kusto', async () => {
@@ -110,6 +116,29 @@ describe('AzureLogAnalyticsDatasource', () => {
           cslDefaultValue: 'True',
         },
       ]);
+    });
+
+    it('should interpolate variables when making a request for a schema with a uri that contains template variables', async () => {
+      await ctx.ds.azureLogAnalyticsDatasource.getKustoSchema('myWorkspace/$var1');
+      expect(ctx.mockGetResource).lastCalledWith('loganalytics/v1myWorkspace/var1-foo/metadata');
+    });
+
+    it('should include macros as suggested functions', async () => {
+      const result = await ctx.ds.azureLogAnalyticsDatasource.getKustoSchema('myWorkspace');
+      expect(result.database.functions.map((f: { name: string }) => f.name)).toEqual([
+        'Func1',
+        '_AzureBackup_GetVaults',
+        '$__timeFilter',
+        '$__timeFrom',
+        '$__timeTo',
+        '$__escapeMulti',
+        '$__contains',
+      ]);
+    });
+
+    it('should include template variables as global parameters', async () => {
+      const result = await ctx.ds.azureLogAnalyticsDatasource.getKustoSchema('myWorkspace');
+      expect(result.globalParameters.map((f: { name: string }) => f.name)).toEqual([`$${singleVariable.name}`]);
     });
   });
 
@@ -273,12 +302,24 @@ describe('AzureLogAnalyticsDatasource', () => {
       laDatasource = new AzureLogAnalyticsDatasource(ctx.instanceSettings);
     });
 
-    it('should run complete queries', () => {
+    it('should run queries with a resource', () => {
       const query: AzureMonitorQuery = {
         refId: 'A',
         azureLogAnalytics: {
           resource: '/sub/124/rg/cloud/vm/server',
           query: 'perf | take 100',
+        },
+      };
+
+      expect(laDatasource.filterQuery(query)).toBeTruthy();
+    });
+
+    it('should run queries with a workspace', () => {
+      const query: AzureMonitorQuery = {
+        refId: 'A',
+        azureLogAnalytics: {
+          query: 'perf | take 100',
+          workspace: 'abc1b44e-3e57-4410-b027-6cc0ae6dee67',
         },
       };
 
@@ -317,7 +358,7 @@ describe('AzureLogAnalyticsDatasource', () => {
       expect(laDatasource.filterQuery(query)).toBeFalsy();
     });
 
-    it('should not run queries missing a resource', () => {
+    it('should not run queries missing a resource and a missing workspace', () => {
       const query: AzureMonitorQuery = {
         refId: 'A',
         azureLogAnalytics: {

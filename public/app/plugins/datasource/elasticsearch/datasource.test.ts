@@ -1,5 +1,6 @@
 import { map } from 'lodash';
 import { Observable, of, throwError } from 'rxjs';
+
 import {
   ArrayVector,
   CoreApp,
@@ -16,17 +17,18 @@ import {
   toUtc,
 } from '@grafana/data';
 import { BackendSrvRequest, FetchResponse } from '@grafana/runtime';
-
-import { ElasticDatasource, enhanceDataFrame } from './datasource';
 import { backendSrv } from 'app/core/services/backend_srv'; // will use the version in __mocks__
-import { ElasticsearchOptions, ElasticsearchQuery } from './types';
-import { Filters } from './components/QueryEditor/BucketAggregationsEditor/aggregations';
+
 import { createFetchResponse } from '../../../../test/helpers/createFetchResponse';
+
+import { Filters } from './components/QueryEditor/BucketAggregationsEditor/aggregations';
+import { ElasticDatasource, enhanceDataFrame } from './datasource';
+import { ElasticsearchOptions, ElasticsearchQuery } from './types';
 
 const ELASTICSEARCH_MOCK_URL = 'http://elasticsearch.local';
 
 jest.mock('@grafana/runtime', () => ({
-  ...((jest.requireActual('@grafana/runtime') as unknown) as object),
+  ...(jest.requireActual('@grafana/runtime') as unknown as object),
   getBackendSrv: () => backendSrv,
   getDataSourceSrv: () => {
     return {
@@ -360,7 +362,7 @@ describe('ElasticDatasource', function (this: any) {
         type: 'basic',
         statusText: 'Bad Request',
         redirected: false,
-        headers: ({} as unknown) as Headers,
+        headers: {} as unknown as Headers,
         ok: false,
       };
 

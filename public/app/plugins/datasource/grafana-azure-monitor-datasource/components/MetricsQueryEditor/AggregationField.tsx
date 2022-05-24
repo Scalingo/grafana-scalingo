@@ -1,9 +1,11 @@
 import React, { useCallback, useMemo } from 'react';
-import { Select } from '@grafana/ui';
-import { SelectableValue } from '@grafana/data';
 
-import { Field } from '../Field';
+import { SelectableValue } from '@grafana/data';
+import { Select } from '@grafana/ui';
+
 import { AzureQueryEditorFieldProps, AzureMonitorOption } from '../../types';
+import { Field } from '../Field';
+
 import { setAggregation } from './setQueryValue';
 
 interface AggregationFieldProps extends AzureQueryEditorFieldProps {
@@ -30,10 +32,10 @@ const AggregationField: React.FC<AggregationFieldProps> = ({
     [onQueryChange, query]
   );
 
-  const options = useMemo(() => [...aggregationOptions, variableOptionGroup], [
-    aggregationOptions,
-    variableOptionGroup,
-  ]);
+  const options = useMemo(
+    () => [...aggregationOptions, variableOptionGroup],
+    [aggregationOptions, variableOptionGroup]
+  );
 
   return (
     <Field label="Aggregation">

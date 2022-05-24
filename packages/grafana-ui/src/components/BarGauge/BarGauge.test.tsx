@@ -1,5 +1,6 @@
-import React from 'react';
 import { shallow } from 'enzyme';
+import React from 'react';
+
 import {
   DisplayValue,
   VizOrientation,
@@ -10,6 +11,7 @@ import {
   getDisplayProcessor,
   createTheme,
 } from '@grafana/data';
+
 import {
   BarGauge,
   Props,
@@ -87,7 +89,7 @@ describe('BarGauge', () => {
 
     it('does not show as lit if the value is null (somehow)', () => {
       const props = getProps();
-      expect(getCellColor(1, (null as unknown) as DisplayValue, props.display)).toEqual(
+      expect(getCellColor(1, null as unknown as DisplayValue, props.display)).toEqual(
         expect.objectContaining({
           isLit: false,
         })

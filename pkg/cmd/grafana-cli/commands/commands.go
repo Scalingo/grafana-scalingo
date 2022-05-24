@@ -4,13 +4,13 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/cmd/grafana-cli/commands/datamigrations"
 	"github.com/grafana/grafana/pkg/cmd/grafana-cli/commands/secretsmigrations"
 	"github.com/grafana/grafana/pkg/cmd/grafana-cli/logger"
 	"github.com/grafana/grafana/pkg/cmd/grafana-cli/runner"
 	"github.com/grafana/grafana/pkg/cmd/grafana-cli/services"
 	"github.com/grafana/grafana/pkg/cmd/grafana-cli/utils"
+	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/services/sqlstore/migrations"
 	"github.com/grafana/grafana/pkg/setting"
@@ -50,7 +50,12 @@ func runDbCommand(command func(commandLine utils.CommandLine, sqlStore *sqlstore
 			return errutil.Wrap("failed to load configuration", err)
 		}
 
-		sqlStore, err := sqlstore.ProvideService(cfg, nil, bus.GetBus(), &migrations.OSSMigrations{})
+		tracer, err := tracing.ProvideService(cfg)
+		if err != nil {
+			return errutil.Wrap("failed to initialize tracer service", err)
+		}
+
+		sqlStore, err := sqlstore.ProvideService(cfg, nil, &migrations.OSSMigrations{}, tracer)
 		if err != nil {
 			return errutil.Wrap("failed to initialize SQL store", err)
 		}
@@ -178,6 +183,16 @@ var adminCommands = []*cli.Command{
 				Usage:  "Re-encrypts secrets by decrypting and re-encrypting them with the currently configured encryption. Returns ok unless there is an error. Safe to execute multiple times.",
 				Action: runRunnerCommand(secretsmigrations.ReEncryptSecrets),
 			},
+			{
+				Name:   "rollback",
+				Usage:  "Rolls back secrets to legacy encryption. Returns ok unless there is an error. Safe to execute multiple times.",
+				Action: runRunnerCommand(secretsmigrations.RollBackSecrets),
+			},
+			{
+				Name:   "re-encrypt-data-keys",
+				Usage:  "Rotates persisted data encryption keys. Returns ok unless there is an error. Safe to execute multiple times.",
+				Action: runRunnerCommand(secretsmigrations.ReEncryptDEKS),
+			},
 		},
 	},
 }
@@ -240,6 +255,11 @@ so must be recompiled to validate newly-added CUE files.`,
 			&cli.StringFlag{
 				Name:  "grafana-root",
 				Usage: "path to the root of a Grafana repository in which to generate TypeScript from CUE files",
+			},
+			&cli.BoolFlag{
+				Name:  "diff",
+				Usage: "diff results of codegen against files already on disk. Exits 1 if diff is non-empty",
+				Value: false,
 			},
 		},
 	},

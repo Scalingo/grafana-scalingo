@@ -3,7 +3,6 @@ package testinfra
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -27,6 +26,11 @@ import (
 // StartGrafana starts a Grafana server.
 // The server address is returned.
 func StartGrafana(t *testing.T, grafDir, cfgPath string) (string, *sqlstore.SQLStore) {
+	addr, env := StartGrafanaEnv(t, grafDir, cfgPath)
+	return addr, env.SQLStore
+}
+
+func StartGrafanaEnv(t *testing.T, grafDir, cfgPath string) (string, *server.TestEnv) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -65,7 +69,7 @@ func StartGrafana(t *testing.T, grafDir, cfgPath string) (string, *sqlstore.SQLS
 
 	t.Logf("Grafana is listening on %s", addr)
 
-	return addr, env.SQLStore
+	return addr, env
 }
 
 // SetUpDatabase sets up the Grafana database.
@@ -91,12 +95,7 @@ func SetUpDatabase(t *testing.T, grafDir string) *sqlstore.SQLStore {
 func CreateGrafDir(t *testing.T, opts ...GrafanaOpts) (string, string) {
 	t.Helper()
 
-	tmpDir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		err := os.RemoveAll(tmpDir)
-		assert.NoError(t, err)
-	})
+	tmpDir := t.TempDir()
 
 	// Search upwards in directory tree for project root
 	var rootDir string
@@ -120,7 +119,7 @@ func CreateGrafDir(t *testing.T, opts ...GrafanaOpts) (string, string) {
 	require.True(t, found, "Couldn't detect project root directory")
 
 	cfgDir := filepath.Join(tmpDir, "conf")
-	err = os.MkdirAll(cfgDir, 0750)
+	err := os.MkdirAll(cfgDir, 0750)
 	require.NoError(t, err)
 	dataDir := filepath.Join(tmpDir, "data")
 	// nolint:gosec
@@ -231,6 +230,10 @@ func CreateGrafDir(t *testing.T, opts ...GrafanaOpts) (string, string) {
 			_, err = ngalertingSection.NewKey("alertmanager_config_poll_interval", o.NGAlertAlertmanagerConfigPollInterval.String())
 			require.NoError(t, err)
 		}
+		if o.AppModeProduction {
+			_, err = dfltSect.NewKey("app_mode", "production")
+			require.NoError(t, err)
+		}
 		if o.AnonymousUserRole != "" {
 			_, err = anonSect.NewKey("org_role", string(o.AnonymousUserRole))
 			require.NoError(t, err)
@@ -308,6 +311,7 @@ type GrafanaOpts struct {
 	CatalogAppEnabled                     bool
 	ViewersCanEdit                        bool
 	PluginAdminEnabled                    bool
+	AppModeProduction                     bool
 	DisableLegacyAlerting                 bool
 	EnableUnifiedAlerting                 bool
 	UnifiedAlertingDisabledOrgs           []int64

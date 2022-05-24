@@ -12,9 +12,13 @@ import (
 	"github.com/grafana/grafana/pkg/api/routing"
 	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/infra/localcache"
+	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/infra/usagestats"
 	"github.com/grafana/grafana/pkg/services/encryption/ossencryption"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
+	"github.com/grafana/grafana/pkg/services/hooks"
 	"github.com/grafana/grafana/pkg/services/kmsproviders/osskmsproviders"
+	"github.com/grafana/grafana/pkg/services/licensing"
 	"github.com/grafana/grafana/pkg/services/secrets"
 	"github.com/grafana/grafana/pkg/services/secrets/database"
 	"github.com/grafana/grafana/pkg/services/secrets/manager"
@@ -28,22 +32,32 @@ import (
 
 func Initialize(cfg *setting.Cfg) (Runner, error) {
 	cacheService := localcache.ProvideService()
-	inProcBus := bus.ProvideBus()
 	ossMigrations := migrations.ProvideOSSMigrations()
-	sqlStore, err := sqlstore.ProvideService(cfg, cacheService, inProcBus, ossMigrations)
+	tracer, err := tracing.ProvideService(cfg)
+	if err != nil {
+		return Runner{}, err
+	}
+	sqlStore, err := sqlstore.ProvideService(cfg, cacheService, ossMigrations, tracer)
 	if err != nil {
 		return Runner{}, err
 	}
 	ossImpl := setting.ProvideProvider(cfg)
 	service := ossencryption.ProvideService()
-	secretsStoreImpl := database.ProvideSecretsStore(sqlStore)
-	osskmsprovidersService := osskmsproviders.ProvideService(service, ossImpl)
-	usagestatsService := _wireNoOpUsageStatsValue
-	secretsService, err := manager.ProvideSecretsService(secretsStoreImpl, osskmsprovidersService, service, ossImpl, usagestatsService)
+	hooksService := hooks.ProvideService()
+	ossLicensingService := licensing.ProvideService(cfg, hooksService)
+	featureManager, err := featuremgmt.ProvideManagerService(cfg, ossLicensingService)
 	if err != nil {
 		return Runner{}, err
 	}
-	runner := New(cfg, sqlStore, ossImpl, service, secretsService)
+	featureToggles := featuremgmt.ProvideToggles(featureManager)
+	secretsStoreImpl := database.ProvideSecretsStore(sqlStore)
+	osskmsprovidersService := osskmsproviders.ProvideService(service, ossImpl, featureToggles)
+	usagestatsService := _wireNoOpUsageStatsValue
+	secretsService, err := manager.ProvideSecretsService(secretsStoreImpl, osskmsprovidersService, service, ossImpl, featureToggles, usagestatsService)
+	if err != nil {
+		return Runner{}, err
+	}
+	runner := New(cfg, sqlStore, ossImpl, service, featureToggles, secretsService)
 	return runner, nil
 }
 
@@ -54,7 +68,7 @@ var (
 // wire.go:
 
 var wireSet = wire.NewSet(
-	New, localcache.ProvideService, bus.ProvideBus, wire.Bind(new(bus.Bus), new(*bus.InProcBus)), sqlstore.ProvideService, wire.InterfaceValue(new(usagestats.Service), noOpUsageStats{}), wire.InterfaceValue(new(routing.RouteRegister), noOpRouteRegister{}), database.ProvideSecretsStore, wire.Bind(new(secrets.Store), new(*database.SecretsStoreImpl)), manager.ProvideSecretsService, wire.Bind(new(secrets.Service), new(*manager.SecretsService)),
+	New, localcache.ProvideService, tracing.ProvideService, bus.ProvideBus, featuremgmt.ProvideManagerService, featuremgmt.ProvideToggles, wire.Bind(new(bus.Bus), new(*bus.InProcBus)), sqlstore.ProvideService, wire.InterfaceValue(new(usagestats.Service), noOpUsageStats{}), wire.InterfaceValue(new(routing.RouteRegister), noOpRouteRegister{}), database.ProvideSecretsStore, wire.Bind(new(secrets.Store), new(*database.SecretsStoreImpl)), manager.ProvideSecretsService, wire.Bind(new(secrets.Service), new(*manager.SecretsService)), hooks.ProvideService,
 )
 
 type noOpUsageStats struct{}
@@ -87,6 +101,6 @@ func (noOpRouteRegister) Group(string, func(routing.RouteRegister), ...web.Handl
 
 func (noOpRouteRegister) Insert(string, func(routing.RouteRegister), ...web.Handler) {}
 
-func (noOpRouteRegister) Register(routing.Router) {}
+func (noOpRouteRegister) Register(routing.Router, ...routing.RegisterNamedMiddleware) {}
 
 func (noOpRouteRegister) Reset() {}

@@ -1,4 +1,6 @@
 import { lastValueFrom, Observable, of } from 'rxjs';
+import { createFetchResponse } from 'test/helpers/createFetchResponse';
+
 import {
   DataFrame,
   dataFrameToJSON,
@@ -9,13 +11,18 @@ import {
   MutableDataFrame,
   PluginType,
 } from '@grafana/data';
-
-import { createFetchResponse } from 'test/helpers/createFetchResponse';
 import { BackendDataSourceResponse, FetchResponse, setBackendSrv, setDataSourceSrv } from '@grafana/runtime';
+
 import { DEFAULT_LIMIT, TempoJsonData, TempoDatasource, TempoQuery } from './datasource';
 import mockJson from './mockJsonResponse.json';
 
 describe('Tempo data source', () => {
+  // Mock the console error so that running the test suite doesnt throw the error
+  const origError = console.error;
+  const consoleErrorMock = jest.fn();
+  afterEach(() => (console.error = origError));
+  beforeEach(() => (console.error = consoleErrorMock));
+
   it('returns empty response when traceId is empty', async () => {
     const ds = new TempoDatasource(defaultSettings);
     const response = await lastValueFrom(
@@ -71,9 +78,9 @@ describe('Tempo data source', () => {
     ).toMatchObject([
       { name: 'id', values: ['4322526419282105830'] },
       { name: 'title', values: ['service'] },
-      { name: 'subTitle', values: ['store.validateQueryTimeRange'] },
-      { name: 'mainStat', values: ['14.98ms (100%)'] },
-      { name: 'secondaryStat', values: ['14.98ms (100%)'] },
+      { name: 'subtitle', values: ['store.validateQueryTimeRange'] },
+      { name: 'mainstat', values: ['14.98ms (100%)'] },
+      { name: 'secondarystat', values: ['14.98ms (100%)'] },
       { name: 'color', values: [1.000007560204647] },
     ]);
 
@@ -217,6 +224,55 @@ describe('Tempo data source', () => {
       'Service Name: frontend, Span Name: /config, Search: root.http.status_code=500, Min Duration: 1ms, Max Duration: 100s, Limit: 10'
     );
   });
+
+  it('should get loki search datasource', () => {
+    // 1. Get lokiSearch.datasource if present
+    const ds1 = new TempoDatasource({
+      ...defaultSettings,
+      jsonData: {
+        lokiSearch: {
+          datasourceUid: 'loki-1',
+        },
+      },
+    });
+    const lokiDS1 = ds1.getLokiSearchDS();
+    expect(lokiDS1).toBe('loki-1');
+
+    // 2. Get traceToLogs.datasource
+    const ds2 = new TempoDatasource({
+      ...defaultSettings,
+      jsonData: {
+        tracesToLogs: {
+          lokiSearch: true,
+          datasourceUid: 'loki-2',
+        },
+      },
+    });
+    const lokiDS2 = ds2.getLokiSearchDS();
+    expect(lokiDS2).toBe('loki-2');
+
+    // 3. Return undefined if neither is available
+    const ds3 = new TempoDatasource(defaultSettings);
+    const lokiDS3 = ds3.getLokiSearchDS();
+    expect(lokiDS3).toBe(undefined);
+
+    // 4. Return undefined if lokiSearch is undefined, even if traceToLogs is present
+    // since this indicates the user cleared the fallback setting
+    const ds4 = new TempoDatasource({
+      ...defaultSettings,
+      jsonData: {
+        tracesToLogs: {
+          lokiSearch: true,
+          datasourceUid: 'loki-2',
+        },
+        lokiSearch: {
+          datasourceUid: undefined,
+        },
+      },
+    });
+    const lokiDS4 = ds4.getLokiSearchDS();
+    expect(lokiDS4).toBe(undefined);
+  });
 });
 
 const backendSrvWithPrometheus = {
@@ -347,7 +403,18 @@ const serviceGraphLinks = [
     title: 'Request rate',
     internal: {
       query: {
-        expr: 'rate(traces_service_graph_request_total{server="${__data.fields.id}"}[$__interval])',
+        expr: 'rate(traces_service_graph_request_total{server="${__data.fields.id}"}[$__rate_interval])',
+      },
+      datasourceUid: 'prom',
+      datasourceName: 'Prometheus',
+    },
+  },
+  {
+    url: '',
+    title: 'Request histogram',
+    internal: {
+      query: {
+        expr: 'histogram_quantile(0.9, sum(rate(traces_service_graph_request_server_seconds_bucket{server="${__data.fields.id}"}[$__rate_interval])) by (le, client, server))',
       },
       datasourceUid: 'prom',
       datasourceName: 'Prometheus',
@@ -358,7 +425,7 @@ const serviceGraphLinks = [
     title: 'Failed request rate',
     internal: {
       query: {
-        expr: 'rate(traces_service_graph_request_failed_total{server="${__data.fields.id}"}[$__interval])',
+        expr: 'rate(traces_service_graph_request_failed_total{server="${__data.fields.id}"}[$__rate_interval])',
       },
       datasourceUid: 'prom',
       datasourceName: 'Prometheus',

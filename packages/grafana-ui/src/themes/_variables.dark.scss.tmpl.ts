@@ -1,6 +1,7 @@
 /* eslint-disable max-len */
 
 import { GrafanaTheme2 } from '@grafana/data';
+
 import { renderGeneratedFileBanner } from '../utils/generatedFileBanner';
 
 export const darkThemeVarsTemplate = (theme: GrafanaTheme2) =>
@@ -9,6 +10,9 @@ export const darkThemeVarsTemplate = (theme: GrafanaTheme2) =>
 // --------------------------------------------------
 
 $theme-name: dark;
+
+$colors-action-hover: ${theme.colors.action.hover};
+$colors-action-selected: ${theme.colors.action.selected};
 
 // New Colors
 // -------------------------

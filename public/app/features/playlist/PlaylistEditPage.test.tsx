@@ -1,11 +1,12 @@
-import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-
-import { Playlist } from './types';
-import { PlaylistEditPage } from './PlaylistEditPage';
-import { backendSrv } from 'app/core/services/backend_srv';
 import userEvent from '@testing-library/user-event';
+import React from 'react';
+
 import { locationService } from '@grafana/runtime';
+import { backendSrv } from 'app/core/services/backend_srv';
+
+import { PlaylistEditPage } from './PlaylistEditPage';
+import { Playlist } from './types';
 
 jest.mock('@grafana/runtime', () => ({
   ...(jest.requireActual('@grafana/runtime') as any),
@@ -14,7 +15,7 @@ jest.mock('@grafana/runtime', () => ({
 
 async function getTestContext({ name, interval, items }: Partial<Playlist> = {}) {
   jest.clearAllMocks();
-  const playlist = ({ name, items, interval } as unknown) as Playlist;
+  const playlist = { name, items, interval } as unknown as Playlist;
   const queryParams = {};
   const route: any = {};
   const match: any = { params: { id: 1 } };

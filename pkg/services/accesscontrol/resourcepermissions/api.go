@@ -30,17 +30,45 @@ func newApi(ac accesscontrol.AccessControl, router routing.RouteRegister, manage
 	return &api{ac, router, manager, permissions}
 }
 
+func (a *api) getEvaluators(actionRead, actionWrite, scope string) (read, write accesscontrol.Evaluator) {
+	if a.service.options.InheritedScopesSolver == nil || a.service.options.InheritedScopePrefixes == nil {
+		read = accesscontrol.EvalPermission(actionRead, scope)
+		write = accesscontrol.EvalPermission(actionWrite, scope)
+	} else {
+		// Add inherited scopes to the evaluators protecting the endpoint.
+		// Scopes in the request context parameters are to be added by solveInheritedScopes.
+		// If a user got actionRead on any of the inherited scopes, they will be granted access to the endpoint.
+		// Ex: a user inherits dashboards:read from the containing folder (folders:uid:BCeknZL7k)
+		inheritedRead := []accesscontrol.Evaluator{accesscontrol.EvalPermission(actionRead, scope)}
+		inheritedWrite := []accesscontrol.Evaluator{accesscontrol.EvalPermission(actionWrite, scope)}
+		for _, scopePrefix := range a.service.options.InheritedScopePrefixes {
+			inheritedRead = append(inheritedRead,
+				accesscontrol.EvalPermission(actionRead, accesscontrol.Parameter(scopePrefix)))
+			inheritedWrite = append(inheritedWrite,
+				accesscontrol.EvalPermission(actionWrite, accesscontrol.Parameter(scopePrefix)))
+		}
+
+		read = accesscontrol.EvalAny(inheritedRead...)
+		write = accesscontrol.EvalAny(inheritedWrite...)
+	}
+	return
+}
+
 func (a *api) registerEndpoints() {
 	auth := middleware.Middleware(a.ac)
+	uidSolver := solveUID(a.service.options.UidSolver)
+	inheritanceSolver := solveInheritedScopes(a.service.options.InheritedScopesSolver)
 	disable := middleware.Disable(a.ac.IsDisabled())
 	a.router.Group(fmt.Sprintf("/api/access-control/%s", a.service.options.Resource), func(r routing.RouteRegister) {
-		idScope := accesscontrol.Scope(a.service.options.Resource, "id", accesscontrol.Parameter(":resourceID"))
-		actionWrite, actionRead := fmt.Sprintf("%s.permissions:write", a.service.options.Resource), fmt.Sprintf("%s.permissions:read", a.service.options.Resource)
+		actionRead := fmt.Sprintf("%s.permissions:read", a.service.options.Resource)
+		actionWrite := fmt.Sprintf("%s.permissions:write", a.service.options.Resource)
+		scope := accesscontrol.Scope(a.service.options.Resource, a.service.options.ResourceAttribute, accesscontrol.Parameter(":resourceID"))
+		readEvaluator, writeEvaluator := a.getEvaluators(actionRead, actionWrite, scope)
 		r.Get("/description", auth(disable, accesscontrol.EvalPermission(actionRead)), routing.Wrap(a.getDescription))
-		r.Get("/:resourceID", auth(disable, accesscontrol.EvalPermission(actionRead, idScope)), routing.Wrap(a.getPermissions))
-		r.Post("/:resourceID/users/:userID", auth(disable, accesscontrol.EvalPermission(actionWrite, idScope)), routing.Wrap(a.setUserPermission))
-		r.Post("/:resourceID/teams/:teamID", auth(disable, accesscontrol.EvalPermission(actionWrite, idScope)), routing.Wrap(a.setTeamPermission))
-		r.Post("/:resourceID/builtInRoles/:builtInRole", auth(disable, accesscontrol.EvalPermission(actionWrite, idScope)), routing.Wrap(a.setBuiltinRolePermission))
+		r.Get("/:resourceID", inheritanceSolver, uidSolver, auth(disable, readEvaluator), routing.Wrap(a.getPermissions))
+		r.Post("/:resourceID/users/:userID", inheritanceSolver, uidSolver, auth(disable, writeEvaluator), routing.Wrap(a.setUserPermission))
+		r.Post("/:resourceID/teams/:teamID", inheritanceSolver, uidSolver, auth(disable, writeEvaluator), routing.Wrap(a.setTeamPermission))
+		r.Post("/:resourceID/builtInRoles/:builtInRole", inheritanceSolver, uidSolver, auth(disable, writeEvaluator), routing.Wrap(a.setBuiltinRolePermission))
 	})
 }
 
@@ -64,7 +92,6 @@ func (a *api) getDescription(c *models.ReqContext) response.Response {
 
 type resourcePermissionDTO struct {
 	ID            int64    `json:"id"`
-	ResourceID    string   `json:"resourceId"`
 	RoleName      string   `json:"roleName"`
 	IsManaged     bool     `json:"isManaged"`
 	UserID        int64    `json:"userId,omitempty"`
@@ -81,9 +108,17 @@ type resourcePermissionDTO struct {
 func (a *api) getPermissions(c *models.ReqContext) response.Response {
 	resourceID := web.Params(c.Req)[":resourceID"]
 
-	permissions, err := a.service.GetPermissions(c.Req.Context(), c.OrgId, resourceID)
+	permissions, err := a.service.GetPermissions(c.Req.Context(), c.SignedInUser, resourceID)
 	if err != nil {
 		return response.Error(http.StatusInternalServerError, "failed to get permissions", err)
+	}
+
+	if a.service.options.Assignments.BuiltInRoles && !a.service.cfg.IsEnterprise {
+		permissions = append(permissions, accesscontrol.ResourcePermission{
+			Actions:     a.service.actions,
+			Scope:       "*",
+			BuiltInRole: string(models.ROLE_ADMIN),
+		})
 	}
 
 	dto := make([]resourcePermissionDTO, 0, len(permissions))
@@ -96,9 +131,7 @@ func (a *api) getPermissions(c *models.ReqContext) response.Response {
 
 			dto = append(dto, resourcePermissionDTO{
 				ID:            p.ID,
-				ResourceID:    p.ResourceID,
 				RoleName:      p.RoleName,
-				IsManaged:     p.IsManaged(),
 				UserID:        p.UserId,
 				UserLogin:     p.UserLogin,
 				UserAvatarUrl: dtos.GetGravatarUrl(p.UserEmail),
@@ -108,6 +141,7 @@ func (a *api) getPermissions(c *models.ReqContext) response.Response {
 				BuiltInRole:   p.BuiltInRole,
 				Actions:       p.Actions,
 				Permission:    permission,
+				IsManaged:     p.IsManaged,
 			})
 		}
 	}
@@ -131,7 +165,7 @@ func (a *api) setUserPermission(c *models.ReqContext) response.Response {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
 
-	_, err = a.service.SetUserPermission(c.Req.Context(), c.OrgId, userID, resourceID, a.service.MapPermission(cmd.Permission))
+	_, err = a.service.SetUserPermission(c.Req.Context(), c.OrgId, accesscontrol.User{ID: userID}, resourceID, cmd.Permission)
 	if err != nil {
 		return response.Error(http.StatusBadRequest, "failed to set user permission", err)
 	}
@@ -151,7 +185,7 @@ func (a *api) setTeamPermission(c *models.ReqContext) response.Response {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
 
-	_, err = a.service.SetTeamPermission(c.Req.Context(), c.OrgId, teamID, resourceID, a.service.MapPermission(cmd.Permission))
+	_, err = a.service.SetTeamPermission(c.Req.Context(), c.OrgId, teamID, resourceID, cmd.Permission)
 	if err != nil {
 		return response.Error(http.StatusBadRequest, "failed to set team permission", err)
 	}
@@ -168,7 +202,7 @@ func (a *api) setBuiltinRolePermission(c *models.ReqContext) response.Response {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
 
-	_, err := a.service.SetBuiltInRolePermission(c.Req.Context(), c.OrgId, builtInRole, resourceID, a.service.MapPermission(cmd.Permission))
+	_, err := a.service.SetBuiltInRolePermission(c.Req.Context(), c.OrgId, builtInRole, resourceID, cmd.Permission)
 	if err != nil {
 		return response.Error(http.StatusBadRequest, "failed to set role permission", err)
 	}

@@ -1,11 +1,11 @@
-// Library
 import React, { PureComponent } from 'react';
+
 import { DisplayValue, DisplayValueAlignmentFactors, FieldSparkline, TextDisplayOptions } from '@grafana/data';
 
-// Types
 import { Themeable2 } from '../../types';
-import { buildLayout } from './BigValueLayout';
 import { FormattedValueDisplay } from '../FormattedValueDisplay/FormattedValueDisplay';
+
+import { buildLayout } from './BigValueLayout';
 
 export enum BigValueColorMode {
   Value = 'value',

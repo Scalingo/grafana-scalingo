@@ -1,10 +1,14 @@
 import React, { PureComponent } from 'react';
 import { connect } from 'react-redux';
-import { setUsersSearchQuery } from './state/reducers';
-import { getInviteesCount, getUsersSearchQuery } from './state/selectors';
+
 import { RadioButtonGroup, LinkButton, FilterInput } from '@grafana/ui';
 import { contextSrv } from 'app/core/core';
 import { AccessControlAction } from 'app/types';
+
+import { selectTotal } from '../invites/state/selectors';
+
+import { setUsersSearchQuery } from './state/reducers';
+import { getUsersSearchQuery } from './state/selectors';
 
 export interface Props {
   searchQuery: string;
@@ -63,7 +67,7 @@ export class UsersActionBar extends PureComponent<Props> {
 function mapStateToProps(state: any) {
   return {
     searchQuery: getUsersSearchQuery(state.users),
-    pendingInvitesCount: getInviteesCount(state.users),
+    pendingInvitesCount: selectTotal(state.invites),
     externalUserMngLinkName: state.users.externalUserMngLinkName,
     externalUserMngLinkUrl: state.users.externalUserMngLinkUrl,
     canInvite: state.users.canInvite,

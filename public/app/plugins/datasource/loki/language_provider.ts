@@ -1,23 +1,19 @@
-// Libraries
 import { chain, difference } from 'lodash';
 import LRU from 'lru-cache';
+import Prism, { Grammar } from 'prismjs';
 
-// Services & Utils
+import { dateTime, AbsoluteTimeRange, LanguageProvider, HistoryItem, AbstractQuery } from '@grafana/data';
+import { CompletionItem, TypeaheadInput, TypeaheadOutput, CompletionItemGroup } from '@grafana/ui';
 import {
   extractLabelMatchers,
   parseSelector,
   processLabels,
   toPromLikeExpr,
 } from 'app/plugins/datasource/prometheus/language_utils';
+
+import { LokiDatasource } from './datasource';
 import syntax, { FUNCTIONS, PIPE_PARSERS, PIPE_OPERATORS } from './syntax';
-
-// Types
 import { LokiQuery, LokiQueryType } from './types';
-import { dateTime, AbsoluteTimeRange, LanguageProvider, HistoryItem, AbstractQuery } from '@grafana/data';
-
-import LokiDatasource from './datasource';
-import { CompletionItem, TypeaheadInput, TypeaheadOutput, CompletionItemGroup } from '@grafana/ui';
-import Prism, { Grammar } from 'prismjs';
 
 const DEFAULT_KEYS = ['job', 'namespace'];
 const EMPTY_SELECTOR = '{}';
@@ -78,8 +74,8 @@ export default class LokiLanguageProvider extends LanguageProvider {
    *  not account for different size of a response. If that is needed a `length` function can be added in the options.
    *  10 as a max size is totally arbitrary right now.
    */
-  private seriesCache = new LRU<string, Record<string, string[]>>(10);
-  private labelsCache = new LRU<string, string[]>(10);
+  private seriesCache = new LRU<string, Record<string, string[]>>({ max: 10 });
+  private labelsCache = new LRU<string, string[]>({ max: 10 });
 
   constructor(datasource: LokiDatasource, initialValues?: any) {
     super();
@@ -396,15 +392,16 @@ export default class LokiLanguageProvider extends LanguageProvider {
    * @param name
    */
   fetchSeriesLabels = async (match: string): Promise<Record<string, string[]>> => {
+    const interpolatedMatch = this.datasource.interpolateString(match);
     const url = '/loki/api/v1/series';
     const { start, end } = this.datasource.getTimeRangeParams();
 
-    const cacheKey = this.generateCacheKey(url, start, end, match);
+    const cacheKey = this.generateCacheKey(url, start, end, interpolatedMatch);
     let value = this.seriesCache.get(cacheKey);
     if (!value) {
       // Clear value when requesting new one. Empty object being truthy also makes sure we don't request twice.
       this.seriesCache.set(cacheKey, {});
-      const params = { 'match[]': match, start, end };
+      const params = { 'match[]': interpolatedMatch, start, end };
       const data = await this.request(url, params);
       const { values } = processLabels(data);
       value = values;
@@ -442,11 +439,12 @@ export default class LokiLanguageProvider extends LanguageProvider {
   }
 
   async fetchLabelValues(key: string): Promise<string[]> {
-    const url = `/loki/api/v1/label/${key}/values`;
+    const interpolatedKey = this.datasource.interpolateString(key);
+    const url = `/loki/api/v1/label/${interpolatedKey}/values`;
     const rangeParams = this.datasource.getTimeRangeParams();
     const { start, end } = rangeParams;
 
-    const cacheKey = this.generateCacheKey(url, start, end, key);
+    const cacheKey = this.generateCacheKey(url, start, end, interpolatedKey);
     const params = { start, end };
 
     let labelValues = this.labelsCache.get(cacheKey);

@@ -1,12 +1,9 @@
 // Libraries
-import React, { PureComponent, ReactNode } from 'react';
 import classNames from 'classnames';
 import { cloneDeep, has } from 'lodash';
+import React, { PureComponent, ReactNode } from 'react';
+
 // Utils & Services
-import { getDatasourceSrv } from 'app/features/plugins/datasource_srv';
-import { AngularComponent, getAngularLoader } from '@grafana/runtime';
-import { getTimeSrv } from 'app/features/dashboard/services/TimeSrv';
-import { ErrorBoundaryAlert, HorizontalGroup } from '@grafana/ui';
 import {
   CoreApp,
   DataQuery,
@@ -21,17 +18,22 @@ import {
   TimeRange,
   toLegacyResponseData,
 } from '@grafana/data';
-import { QueryEditorRowHeader } from './QueryEditorRowHeader';
+import { selectors } from '@grafana/e2e-selectors';
+import { AngularComponent, getAngularLoader } from '@grafana/runtime';
+import { ErrorBoundaryAlert, HorizontalGroup } from '@grafana/ui';
+import { OperationRowHelp } from 'app/core/components/QueryOperationRow/OperationRowHelp';
+import { QueryOperationAction } from 'app/core/components/QueryOperationRow/QueryOperationAction';
 import {
   QueryOperationRow,
   QueryOperationRowRenderProps,
 } from 'app/core/components/QueryOperationRow/QueryOperationRow';
-import { QueryOperationAction } from 'app/core/components/QueryOperationRow/QueryOperationAction';
-import { selectors } from '@grafana/e2e-selectors';
-import { PanelModel } from 'app/features/dashboard/state/PanelModel';
+import { getTimeSrv } from 'app/features/dashboard/services/TimeSrv';
 import { DashboardModel } from 'app/features/dashboard/state/DashboardModel';
-import { OperationRowHelp } from 'app/core/components/QueryOperationRow/OperationRowHelp';
+import { PanelModel } from 'app/features/dashboard/state/PanelModel';
+import { getDatasourceSrv } from 'app/features/plugins/datasource_srv';
+
 import { RowActionComponents } from './QueryActionComponent';
+import { QueryEditorRowHeader } from './QueryEditorRowHeader';
 
 interface Props<TQuery extends DataQuery> {
   data: PanelData;
@@ -137,7 +139,7 @@ export class QueryEditorRow<TQuery extends DataQuery> extends PureComponent<Prop
     }
 
     this.setState({
-      datasource: (datasource as unknown) as DataSourceApi<TQuery>,
+      datasource: datasource as unknown as DataSourceApi<TQuery>,
       loadedDataSourceIdentifier: dataSourceIdentifier,
       hasTextEditMode: has(datasource, 'components.QueryCtrl.prototype.toggleEditorMode'),
     });
@@ -413,6 +415,7 @@ export class QueryEditorRow<TQuery extends DataQuery> extends PureComponent<Prop
                 <OperationRowHelp>
                   <DatasourceCheatsheet
                     onClickExample={(query) => this.onClickExample(query)}
+                    query={this.props.query}
                     datasource={datasource}
                   />
                 </OperationRowHelp>
@@ -476,10 +479,12 @@ export function filterPanelDataToQuery(data: PanelData, refId: string): PanelDat
   }
 
   // Only say this is an error if the error links to the query
-  let state = LoadingState.Done;
+  let state = data.state;
   const error = data.error && data.error.refId === refId ? data.error : undefined;
   if (error) {
     state = LoadingState.Error;
+  } else if (!error && data.state === LoadingState.Error) {
+    state = LoadingState.Done;
   }
 
   const timeRange = data.timeRange;

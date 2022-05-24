@@ -1,8 +1,10 @@
-import { AbsoluteTimeRange, DataQueryResponse, LoadingState, SplitOpen, TimeZone } from '@grafana/data';
-import { Alert, Button, Collapse, InlineField, TooltipDisplayMode, useStyles2, useTheme2 } from '@grafana/ui';
-import { ExploreGraph } from './ExploreGraph';
-import React from 'react';
 import { css } from '@emotion/css';
+import React, { useState } from 'react';
+
+import { AbsoluteTimeRange, DataQueryError, DataQueryResponse, LoadingState, SplitOpen, TimeZone } from '@grafana/data';
+import { Alert, Button, Collapse, InlineField, TooltipDisplayMode, useStyles2, useTheme2 } from '@grafana/ui';
+
+import { ExploreGraph } from './ExploreGraph';
 
 type Props = {
   logsVolumeData?: DataQueryResponse;
@@ -13,6 +15,35 @@ type Props = {
   onUpdateTimeRange: (timeRange: AbsoluteTimeRange) => void;
   onLoadLogsVolume: () => void;
 };
+
+const SHORT_ERROR_MESSAGE_LIMIT = 100;
+
+function ErrorAlert(props: { error: DataQueryError }) {
+  const [isOpen, setIsOpen] = useState(false);
+  // generic get-error-message-logic, taken from
+  // /public/app/features/explore/ErrorContainer.tsx
+  const message = props.error.message || props.error.data?.message || '';
+
+  const showButton = !isOpen && message.length > SHORT_ERROR_MESSAGE_LIMIT;
+
+  return (
+    <Alert title="Failed to load log volume for this query" severity="warning">
+      {showButton ? (
+        <Button
+          variant="secondary"
+          size="xs"
+          onClick={() => {
+            setIsOpen(true);
+          }}
+        >
+          Show details
+        </Button>
+      ) : (
+        message
+      )}
+    </Alert>
+  );
+}
 
 export function LogsVolumePanel(props: Props) {
   const { width, logsVolumeData, absoluteRange, timeZone, splitOpen, onUpdateTimeRange, onLoadLogsVolume } = props;
@@ -26,11 +57,7 @@ export function LogsVolumePanel(props: Props) {
   if (!logsVolumeData) {
     return null;
   } else if (logsVolumeData?.error) {
-    return (
-      <Alert title="Failed to load log volume for this query" severity="warning">
-        Please check console logs for more details.
-      </Alert>
-    );
+    return <ErrorAlert error={logsVolumeData?.error} />;
   } else if (logsVolumeData?.state === LoadingState.Loading) {
     LogsVolumePanelContent = <span>Log volume is loading...</span>;
   } else if (logsVolumeData?.data) {

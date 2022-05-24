@@ -2,17 +2,22 @@ package accesscontrol
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/grafana/grafana/pkg/models"
 )
+
+type Options struct {
+	ReloadCache bool
+}
 
 type AccessControl interface {
 	// Evaluate evaluates access to the given resources.
 	Evaluate(ctx context.Context, user *models.SignedInUser, evaluator Evaluator) (bool, error)
 
 	// GetUserPermissions returns user permissions.
-	GetUserPermissions(ctx context.Context, user *models.SignedInUser) ([]*Permission, error)
+	GetUserPermissions(ctx context.Context, user *models.SignedInUser, options Options) ([]*Permission, error)
 
 	// GetUserRoles returns user roles.
 	GetUserRoles(ctx context.Context, user *models.SignedInUser) ([]*RoleDTO, error)
@@ -20,39 +25,44 @@ type AccessControl interface {
 	//IsDisabled returns if access control is enabled or not
 	IsDisabled() bool
 
-	// DeclareFixedRoles allow the caller to declare, to the service, fixed roles and their
+	// DeclareFixedRoles allows the caller to declare, to the service, fixed roles and their
 	// assignments to organization roles ("Viewer", "Editor", "Admin") or "Grafana Admin"
 	DeclareFixedRoles(...RoleRegistration) error
+
+	// RegisterAttributeScopeResolver allows the caller to register a scope resolver for a
+	// specific scope prefix (ex: datasources:name:)
+	RegisterAttributeScopeResolver(scopePrefix string, resolver AttributeScopeResolveFunc)
 }
 
 type PermissionsProvider interface {
 	GetUserPermissions(ctx context.Context, query GetUserPermissionsQuery) ([]*Permission, error)
 }
 
-type ResourcePermissionsService interface {
-	// GetPermissions returns all permissions for given resourceID
-	GetPermissions(ctx context.Context, orgID int64, resourceID string) ([]ResourcePermission, error)
-	// SetUserPermission sets permission on resource for a user
-	SetUserPermission(ctx context.Context, orgID, userID int64, resourceID string, actions []string) (*ResourcePermission, error)
-	// SetTeamPermission sets permission on resource for a team
-	SetTeamPermission(ctx context.Context, orgID, teamID int64, resourceID string, actions []string) (*ResourcePermission, error)
-	// SetBuiltInRolePermission sets permission on resource for a built-in role (Admin, Editor, Viewer)
-	SetBuiltInRolePermission(ctx context.Context, orgID int64, builtInRole string, resourceID string, actions []string) (*ResourcePermission, error)
-	// MapActions will map actions for a ResourcePermissions to it's "friendly" name configured in PermissionsToActions map.
-	MapActions(permission ResourcePermission) string
-	// MapPermission will map a friendly named permission to it's corresponding actions configured in PermissionsToAction map.
-	MapPermission(permission string) []string
+type PermissionsServices interface {
+	GetTeamService() PermissionsService
+	GetFolderService() PermissionsService
+	GetDashboardService() PermissionsService
+	GetDataSourceService() PermissionsService
 }
 
-type ResourcePermissionsStore interface {
-	// SetUserResourcePermission sets permission for managed user role on a resource
-	SetUserResourcePermission(ctx context.Context, orgID, userID int64, cmd SetResourcePermissionCommand) (*ResourcePermission, error)
-	// SetTeamResourcePermission sets permission for managed team role on a resource
-	SetTeamResourcePermission(ctx context.Context, orgID, teamID int64, cmd SetResourcePermissionCommand) (*ResourcePermission, error)
-	// SetBuiltinResourcePermission sets permissions for managed builtin role on a resource
-	SetBuiltInResourcePermission(ctx context.Context, orgID int64, builtinRole string, cmd SetResourcePermissionCommand) (*ResourcePermission, error)
-	// GetResourcesPermissions will return all permission for all supplied resource ids
-	GetResourcesPermissions(ctx context.Context, orgID int64, query GetResourcesPermissionsQuery) ([]ResourcePermission, error)
+type PermissionsService interface {
+	// GetPermissions returns all permissions for given resourceID
+	GetPermissions(ctx context.Context, user *models.SignedInUser, resourceID string) ([]ResourcePermission, error)
+	// SetUserPermission sets permission on resource for a user
+	SetUserPermission(ctx context.Context, orgID int64, user User, resourceID, permission string) (*ResourcePermission, error)
+	// SetTeamPermission sets permission on resource for a team
+	SetTeamPermission(ctx context.Context, orgID, teamID int64, resourceID, permission string) (*ResourcePermission, error)
+	// SetBuiltInRolePermission sets permission on resource for a built-in role (Admin, Editor, Viewer)
+	SetBuiltInRolePermission(ctx context.Context, orgID int64, builtInRole string, resourceID string, permission string) (*ResourcePermission, error)
+	// SetPermissions sets several permissions on resource for either built-in role, team or user
+	SetPermissions(ctx context.Context, orgID int64, resourceID string, commands ...SetResourcePermissionCommand) ([]ResourcePermission, error)
+	// MapActions will map actions for a ResourcePermissions to it's "friendly" name configured in PermissionsToActions map.
+	MapActions(permission ResourcePermission) string
+}
+
+type User struct {
+	ID         int64
+	IsExternal bool
 }
 
 // Metadata contains user accesses for a given resource
@@ -96,12 +106,20 @@ func HasAccess(ac AccessControl, c *models.ReqContext) func(fallback func(*model
 	}
 }
 
+var ReqSignedIn = func(c *models.ReqContext) bool {
+	return c.IsSignedIn
+}
+
 var ReqGrafanaAdmin = func(c *models.ReqContext) bool {
 	return c.IsGrafanaAdmin
 }
 
 var ReqOrgAdmin = func(c *models.ReqContext) bool {
 	return c.OrgRole == models.ROLE_ADMIN
+}
+
+var ReqOrgAdminOrEditor = func(c *models.ReqContext) bool {
+	return c.OrgRole == models.ROLE_ADMIN || c.OrgRole == models.ROLE_EDITOR
 }
 
 func BuildPermissionsMap(permissions []*Permission) map[string]bool {
@@ -146,30 +164,58 @@ func addActionToMetadata(allMetadata map[string]Metadata, action, id string) map
 }
 
 // GetResourcesMetadata returns a map of accesscontrol metadata, listing for each resource, users available actions
-func GetResourcesMetadata(ctx context.Context, permissions []*Permission, resource string, resourceIDs map[string]bool) map[string]Metadata {
-	allScope := GetResourceAllScope(resource)
-	allIDScope := GetResourceAllIDScope(resource)
+func GetResourcesMetadata(ctx context.Context, permissions map[string][]string, prefix string, resourceIDs map[string]bool) map[string]Metadata {
+	rootPrefix, attributePrefix, ok := extractPrefixes(prefix)
+	if !ok {
+		return map[string]Metadata{}
+	}
 
-	// prefix of ID based scopes (resource:id)
-	idPrefix := Scope(resource, "id")
-	// index of the ID in the scope
-	idIndex := len(idPrefix) + 1
+	allScope := GetResourceAllScope(strings.TrimSuffix(rootPrefix, ":"))
+	allAttributeScope := Scope(strings.TrimSuffix(attributePrefix, ":"), "*")
+
+	// index of the attribute in the scope
+	attributeIndex := len(attributePrefix)
 
 	// Loop through permissions once
 	result := map[string]Metadata{}
-	for _, p := range permissions {
-		if p.Scope == "*" || p.Scope == allScope || p.Scope == allIDScope {
-			// Add global action to all resources
-			for id := range resourceIDs {
-				result = addActionToMetadata(result, p.Action, id)
-			}
-		} else {
-			if len(p.Scope) > idIndex && strings.HasPrefix(p.Scope, idPrefix) && resourceIDs[p.Scope[idIndex:]] {
-				// Add action to a specific resource
-				result = addActionToMetadata(result, p.Action, p.Scope[idIndex:])
+
+	for action, scopes := range permissions {
+		for _, scope := range scopes {
+			if scope == "*" || scope == allScope || scope == allAttributeScope {
+				// Add global action to all resources
+				for id := range resourceIDs {
+					result = addActionToMetadata(result, action, id)
+				}
+			} else {
+				if len(scope) > attributeIndex && strings.HasPrefix(scope, attributePrefix) && resourceIDs[scope[attributeIndex:]] {
+					// Add action to a specific resource
+					result = addActionToMetadata(result, action, scope[attributeIndex:])
+				}
 			}
 		}
 	}
 
 	return result
+}
+
+func ManagedUserRoleName(userID int64) string {
+	return fmt.Sprintf("managed:users:%d:permissions", userID)
+}
+
+func ManagedTeamRoleName(teamID int64) string {
+	return fmt.Sprintf("managed:teams:%d:permissions", teamID)
+}
+
+func ManagedBuiltInRoleName(builtInRole string) string {
+	return fmt.Sprintf("managed:builtins:%s:permissions", strings.ToLower(builtInRole))
+}
+
+func extractPrefixes(prefix string) (string, string, bool) {
+	parts := strings.Split(strings.TrimSuffix(prefix, ":"), ":")
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	rootPrefix := parts[0] + ":"
+	attributePrefix := rootPrefix + parts[1] + ":"
+	return rootPrefix, attributePrefix, true
 }

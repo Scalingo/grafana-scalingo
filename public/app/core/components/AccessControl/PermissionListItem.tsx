@@ -1,6 +1,8 @@
 import React from 'react';
-import { ResourcePermission } from './types';
+
 import { Button, Icon, Select, Tooltip } from '@grafana/ui';
+
+import { ResourcePermission } from './types';
 
 interface Props {
   item: ResourcePermission;
@@ -14,8 +16,6 @@ export const PermissionListItem = ({ item, permissionLevels, canSet, onRemove, o
   <tr>
     <td style={{ width: '1%' }}>{getAvatar(item)}</td>
     <td style={{ width: '90%' }}>{getDescription(item)}</td>
-    <td />
-    <td className="query-keyword">Can</td>
     <td>
       <div className="gf-form">
         <Select

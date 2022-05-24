@@ -1,6 +1,6 @@
-import React, { PureComponent } from 'react';
 import { css } from '@emotion/css';
-import { Select, Alert, Label, stylesFactory } from '@grafana/ui';
+import React, { PureComponent } from 'react';
+
 import {
   LiveChannelScope,
   LiveChannelAddress,
@@ -8,9 +8,10 @@ import {
   StandardEditorProps,
   GrafanaTheme,
 } from '@grafana/data';
+import { Select, Alert, Label, stylesFactory } from '@grafana/ui';
+import { config } from 'app/core/config';
 
 import { LivePanelOptions } from './types';
-import { config } from 'app/core/config';
 
 type Props = StandardEditorProps<LiveChannelAddress, any, LivePanelOptions>;
 
@@ -52,8 +53,8 @@ export class LiveChannelEditor extends PureComponent<Props, State> {
     if (v.value) {
       this.props.onChange({
         scope: v.value,
-        namespace: (undefined as unknown) as string,
-        path: (undefined as unknown) as string,
+        namespace: undefined as unknown as string,
+        path: undefined as unknown as string,
       } as LiveChannelAddress);
     }
   };
@@ -61,7 +62,7 @@ export class LiveChannelEditor extends PureComponent<Props, State> {
   onNamespaceChanged = (v: SelectableValue<string>) => {
     const update = {
       scope: this.props.value?.scope,
-      path: (undefined as unknown) as string,
+      path: undefined as unknown as string,
     } as LiveChannelAddress;
 
     if (v.value) {

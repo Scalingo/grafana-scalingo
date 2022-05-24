@@ -1,11 +1,14 @@
+import { render, screen } from '@testing-library/react';
 // @ts-ignore
 import RCCascader from 'rc-cascader';
 import React from 'react';
-import PromQlLanguageProvider from '../language_provider';
-import PromQueryField from './PromQueryField';
+
 import { DataSourceInstanceSettings, PanelData, LoadingState, DataFrame } from '@grafana/data';
+
+import PromQlLanguageProvider from '../language_provider';
 import { PromOptions } from '../types';
-import { render, screen } from '@testing-library/react';
+
+import PromQueryField from './PromQueryField';
 
 // the monaco-based editor uses lazy-loading and that does not work
 // well with this test, and we do not need the monaco-related
@@ -24,7 +27,7 @@ describe('PromQueryField', () => {
   });
 
   it('renders metrics chooser regularly if lookups are not disabled in the datasource settings', () => {
-    const datasource = ({
+    const datasource = {
       languageProvider: {
         start: () => Promise.resolve([]),
         syntax: () => {},
@@ -32,7 +35,7 @@ describe('PromQueryField', () => {
         metrics: [],
       },
       getInitHints: () => [],
-    } as unknown) as DataSourceInstanceSettings<PromOptions>;
+    } as unknown as DataSourceInstanceSettings<PromOptions>;
 
     const queryField = render(
       <PromQueryField
@@ -49,7 +52,7 @@ describe('PromQueryField', () => {
   });
 
   it('renders a disabled metrics chooser if lookups are disabled in datasource settings', () => {
-    const datasource = ({
+    const datasource = {
       languageProvider: {
         start: () => Promise.resolve([]),
         syntax: () => {},
@@ -57,7 +60,7 @@ describe('PromQueryField', () => {
         metrics: [],
       },
       getInitHints: () => [],
-    } as unknown) as DataSourceInstanceSettings<PromOptions>;
+    } as unknown as DataSourceInstanceSettings<PromOptions>;
     const queryField = render(
       <PromQueryField
         // @ts-ignore
@@ -74,7 +77,7 @@ describe('PromQueryField', () => {
   });
 
   it('renders an initial hint if no data and initial hint provided', () => {
-    const datasource = ({
+    const datasource = {
       languageProvider: {
         start: () => Promise.resolve([]),
         syntax: () => {},
@@ -82,7 +85,7 @@ describe('PromQueryField', () => {
         metrics: [],
       },
       getInitHints: () => [{ label: 'Initial hint', type: 'INFO' }],
-    } as unknown) as DataSourceInstanceSettings<PromOptions>;
+    } as unknown as DataSourceInstanceSettings<PromOptions>;
     render(
       <PromQueryField
         // @ts-ignore
@@ -97,7 +100,7 @@ describe('PromQueryField', () => {
   });
 
   it('renders query hint if data, query hint and initial hint provided', () => {
-    const datasource = ({
+    const datasource = {
       languageProvider: {
         start: () => Promise.resolve([]),
         syntax: () => {},
@@ -106,7 +109,7 @@ describe('PromQueryField', () => {
       },
       getInitHints: () => [{ label: 'Initial hint', type: 'INFO' }],
       getQueryHints: () => [{ label: 'Query hint', type: 'INFO' }],
-    } as unknown) as DataSourceInstanceSettings<PromOptions>;
+    } as unknown as DataSourceInstanceSettings<PromOptions>;
     render(
       <PromQueryField
         // @ts-ignore
@@ -165,7 +168,7 @@ describe('PromQueryField', () => {
 
 function makeLanguageProvider(options: { metrics: string[][] }) {
   const metricsStack = [...options.metrics];
-  return ({
+  return {
     histogramMetrics: [] as any,
     metrics: [],
     metricsMetadata: {},
@@ -175,5 +178,5 @@ function makeLanguageProvider(options: { metrics: string[][] }) {
       this.metrics = metricsStack.shift();
       return Promise.resolve([]);
     },
-  } as any) as PromQlLanguageProvider;
+  } as any as PromQlLanguageProvider;
 }

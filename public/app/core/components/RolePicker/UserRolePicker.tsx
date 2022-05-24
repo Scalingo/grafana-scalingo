@@ -1,16 +1,19 @@
-import React, { FC, useState } from 'react';
-import { useAsync } from 'react-use';
-import { Role, OrgRole } from 'app/types';
+import React, { FC, useEffect } from 'react';
+import { useAsyncFn } from 'react-use';
+
+import { contextSrv } from 'app/core/core';
+import { Role, OrgRole, AccessControlAction } from 'app/types';
+
 import { RolePicker } from './RolePicker';
-import { fetchBuiltinRoles, fetchRoleOptions, fetchUserRoles, updateUserRoles } from './api';
+import { fetchUserRoles, updateUserRoles } from './api';
 
 export interface Props {
   builtInRole: OrgRole;
   userId: number;
   orgId?: number;
   onBuiltinRoleChange: (newRole: OrgRole) => void;
-  getRoleOptions?: () => Promise<Role[]>;
-  getBuiltinRoles?: () => Promise<{ [key: string]: Role[] }>;
+  roleOptions: Role[];
+  builtInRoles?: { [key: string]: Role[] };
   disabled?: boolean;
   builtinRolesDisabled?: boolean;
 }
@@ -20,35 +23,36 @@ export const UserRolePicker: FC<Props> = ({
   userId,
   orgId,
   onBuiltinRoleChange,
-  getRoleOptions,
-  getBuiltinRoles,
+  roleOptions,
+  builtInRoles,
   disabled,
   builtinRolesDisabled,
 }) => {
-  const [roleOptions, setRoleOptions] = useState<Role[]>([]);
-  const [appliedRoles, setAppliedRoles] = useState<Role[]>([]);
-  const [builtInRoles, setBuiltinRoles] = useState<Record<string, Role[]>>({});
-
-  const { loading } = useAsync(async () => {
+  const [{ loading, value: appliedRoles = [] }, getUserRoles] = useAsyncFn(async () => {
     try {
-      let options = await (getRoleOptions ? getRoleOptions() : fetchRoleOptions(orgId));
-      setRoleOptions(options.filter((option) => !option.name?.startsWith('managed:')));
-
-      const builtInRoles = await (getBuiltinRoles ? getBuiltinRoles() : fetchBuiltinRoles(orgId));
-      setBuiltinRoles(builtInRoles);
-
-      const userRoles = await fetchUserRoles(userId, orgId);
-      setAppliedRoles(userRoles);
+      if (contextSrv.hasPermission(AccessControlAction.ActionUserRolesList)) {
+        return await fetchUserRoles(userId, orgId);
+      }
     } catch (e) {
       // TODO handle error
       console.error('Error loading options');
     }
-  }, [getBuiltinRoles, getRoleOptions, orgId, userId]);
+    return [];
+  }, [orgId, userId]);
+
+  useEffect(() => {
+    getUserRoles();
+  }, [orgId, userId, getUserRoles]);
+
+  const onRolesChange = async (roles: string[]) => {
+    await updateUserRoles(roles, userId, orgId);
+    await getUserRoles();
+  };
 
   return (
     <RolePicker
       builtInRole={builtInRole}
-      onRolesChange={(roles) => updateUserRoles(roles, userId, orgId)}
+      onRolesChange={onRolesChange}
       onBuiltinRoleChange={onBuiltinRoleChange}
       roleOptions={roleOptions}
       appliedRoles={appliedRoles}

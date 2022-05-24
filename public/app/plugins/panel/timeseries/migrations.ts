@@ -1,3 +1,5 @@
+import { omitBy, pickBy, isNil, isNumber, isString } from 'lodash';
+
 import {
   ConfigOverrideRule,
   DynamicConfigValue,
@@ -7,6 +9,7 @@ import {
   FieldConfigSource,
   FieldMatcherID,
   fieldReducers,
+  FieldType,
   NullValueMode,
   PanelTypeChangedHandler,
   Threshold,
@@ -26,10 +29,11 @@ import {
   ScaleDistribution,
   StackingMode,
   SortOrder,
+  GraphTransform,
 } from '@grafana/schema';
-import { TimeSeriesOptions } from './types';
-import { omitBy, pickBy, isNil, isNumber, isString } from 'lodash';
+
 import { defaultGraphConfig } from './config';
+import { TimeSeriesOptions } from './types';
 
 /**
  * This is called when the panel changes from another panel
@@ -241,6 +245,12 @@ export function flotToGraphOptions(angular: any): { fieldConfig: FieldConfigSour
               },
             });
             break;
+          case 'transform':
+            rule.properties.push({
+              id: 'custom.transform',
+              value: v === 'negative-Y' ? GraphTransform.NegativeY : GraphTransform.Constant,
+            });
+            break;
           default:
             console.log('Ignore override migration:', seriesOverride.alias, p, v);
         }
@@ -434,6 +444,20 @@ export function flotToGraphOptions(angular: any): { fieldConfig: FieldConfigSour
     };
   }
 
+  if (angular.xaxis && angular.xaxis.show === false && angular.xaxis.mode === 'time') {
+    overrides.push({
+      matcher: {
+        id: FieldMatcherID.byType,
+        options: FieldType.time,
+      },
+      properties: [
+        {
+          id: 'custom.axisPlacement',
+          value: AxisPlacement.Hidden,
+        },
+      ],
+    });
+  }
   return {
     fieldConfig: {
       defaults: omitBy(y1, isNil),

@@ -1,6 +1,8 @@
 import { DataTransformerConfig, DataTransformerID, FieldType, toDataFrame, transformDataFrame } from '@grafana/data';
-import { renameByRegexTransformer, RenameByRegexTransformerOptions } from './renameByRegex';
+
 import { mockTransformationsRegistry } from '../../utils/tests/mockTransformationsRegistry';
+
+import { renameByRegexTransformer, RenameByRegexTransformerOptions } from './renameByRegex';
 
 describe('Rename By Regex Transformer', () => {
   beforeAll(() => {
@@ -46,6 +48,7 @@ describe('Rename By Regex Transformer', () => {
               "name": "Time",
               "state": Object {
                 "displayName": "Time",
+                "multipleFrames": false,
               },
               "type": "time",
               "values": Array [
@@ -62,6 +65,7 @@ describe('Rename By Regex Transformer', () => {
               "name": "Value",
               "state": Object {
                 "displayName": "web-01",
+                "multipleFrames": false,
               },
               "type": "number",
               "values": Array [
@@ -96,6 +100,7 @@ describe('Rename By Regex Transformer', () => {
               "name": "Time",
               "state": Object {
                 "displayName": "Time",
+                "multipleFrames": false,
               },
               "type": "time",
               "values": Array [
@@ -112,6 +117,7 @@ describe('Rename By Regex Transformer', () => {
               "name": "Value",
               "state": Object {
                 "displayName": "web-01.example.com",
+                "multipleFrames": false,
               },
               "type": "number",
               "values": Array [
@@ -147,6 +153,7 @@ describe('Rename By Regex Transformer', () => {
               "name": "Time",
               "state": Object {
                 "displayName": "Time",
+                "multipleFrames": false,
               },
               "type": "time",
               "values": Array [
@@ -163,6 +170,7 @@ describe('Rename By Regex Transformer', () => {
               "name": "Value",
               "state": Object {
                 "displayName": "web-01.example.com",
+                "multipleFrames": false,
               },
               "type": "number",
               "values": Array [

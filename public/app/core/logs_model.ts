@@ -1,6 +1,5 @@
 import { size } from 'lodash';
-import { BarAlignment, GraphDrawStyle, StackingMode } from '@grafana/schema';
-import { ansicolor, colors } from '@grafana/ui';
+import { Observable } from 'rxjs';
 
 import {
   AbsoluteTimeRange,
@@ -9,7 +8,6 @@ import {
   DataQueryRequest,
   DataQueryResponse,
   DataSourceApi,
-  dateTime,
   dateTimeFormat,
   dateTimeFormatTimeAgo,
   FieldCache,
@@ -36,10 +34,12 @@ import {
   textUtil,
   TimeRange,
   toDataFrame,
+  toUtc,
 } from '@grafana/data';
-import { getThemeColor } from 'app/core/utils/colors';
 import { SIPrefix } from '@grafana/data/src/valueFormats/symbolFormatters';
-import { Observable, throwError, timeout } from 'rxjs';
+import { BarAlignment, GraphDrawStyle, StackingMode } from '@grafana/schema';
+import { ansicolor, colors } from '@grafana/ui';
+import { getThemeColor } from 'app/core/utils/colors';
 
 export const LIMIT_LABEL = 'Line limit';
 export const COMMON_LABELS = 'Common labels';
@@ -326,24 +326,27 @@ export function logSeriesToLogsModel(logSeries: DataFrame[]): LogsModel | undefi
   const seriesWithFields = logSeries.filter((series) => series.fields.length);
 
   if (seriesWithFields.length) {
-    allSeries = seriesWithFields.map((series) => {
+    seriesWithFields.forEach((series) => {
       const fieldCache = new FieldCache(series);
       const stringField = fieldCache.getFirstFieldOfType(FieldType.string);
+      const timeField = fieldCache.getFirstFieldOfType(FieldType.time);
 
-      if (stringField?.labels) {
-        allLabels.push(stringField.labels);
+      if (stringField !== undefined && timeField !== undefined) {
+        if (stringField?.labels) {
+          allLabels.push(stringField.labels);
+        }
+
+        allSeries.push({
+          series,
+          timeField,
+          timeNanosecondField: fieldCache.hasFieldWithNameAndType('tsNs', FieldType.time)
+            ? fieldCache.getFieldByName('tsNs')
+            : undefined,
+          stringField,
+          logLevelField: fieldCache.getFieldByName('level'),
+          idField: getIdField(fieldCache),
+        });
       }
-
-      return {
-        series,
-        timeField: fieldCache.getFirstFieldOfType(FieldType.time),
-        timeNanosecondField: fieldCache.hasFieldWithNameAndType('tsNs', FieldType.time)
-          ? fieldCache.getFieldByName('tsNs')
-          : undefined,
-        stringField,
-        logLevelField: fieldCache.getFieldByName('level'),
-        idField: getIdField(fieldCache),
-      } as LogFields;
     });
   }
 
@@ -367,7 +370,7 @@ export function logSeriesToLogsModel(logSeries: DataFrame[]): LogsModel | undefi
 
     for (let j = 0; j < series.length; j++) {
       const ts = timeField.values.get(j);
-      const time = dateTime(ts);
+      const time = toUtc(ts);
       const tsNs = timeNanosecondField ? timeNanosecondField.values.get(j) : undefined;
       const timeEpochNs = tsNs ? tsNs : time.valueOf() + '000000';
 
@@ -617,10 +620,7 @@ function aggregateFields(dataFrames: DataFrame[], config: FieldConfig): DataFram
   return aggregatedDataFrame;
 }
 
-const LOGS_VOLUME_QUERY_DEFAULT_TIMEOUT = 60000;
-
 type LogsVolumeQueryOptions<T extends DataQuery> = {
-  timeout?: number;
   extractLevel: (dataFrame: DataFrame) => LogLevel;
   targets: T[];
   range: TimeRange;
@@ -651,45 +651,36 @@ export function queryLogsVolume<T extends DataQuery>(
       data: [],
     });
 
-    const subscription = (datasource.query(logsVolumeRequest) as Observable<DataQueryResponse>)
-      .pipe(
-        timeout({
-          each: options.timeout || LOGS_VOLUME_QUERY_DEFAULT_TIMEOUT,
-          with: () => throwError(new Error('Request timed-out. Please make your query more specific and try again.')),
-        })
-      )
-      .subscribe({
-        complete: () => {
-          const aggregatedLogsVolume = aggregateRawLogsVolume(rawLogsVolume, options.extractLevel);
-          if (aggregatedLogsVolume[0]) {
-            aggregatedLogsVolume[0].meta = {
-              custom: {
-                targets: options.targets,
-                absoluteRange: { from: options.range.from.valueOf(), to: options.range.to.valueOf() },
-              },
-            };
-          }
-          observer.next({
-            state: LoadingState.Done,
-            error: undefined,
-            data: aggregatedLogsVolume,
-          });
-          observer.complete();
-        },
-        next: (dataQueryResponse: DataQueryResponse) => {
-          rawLogsVolume = rawLogsVolume.concat(dataQueryResponse.data.map(toDataFrame));
-        },
-        error: (error) => {
-          const errorMessage = error.data?.message || error.statusText || error.message;
-          console.error('Log volume query failed with error: ', errorMessage);
-          observer.next({
-            state: LoadingState.Error,
-            error: error,
-            data: [],
-          });
-          observer.error(error);
-        },
-      });
+    const subscription = (datasource.query(logsVolumeRequest) as Observable<DataQueryResponse>).subscribe({
+      complete: () => {
+        const aggregatedLogsVolume = aggregateRawLogsVolume(rawLogsVolume, options.extractLevel);
+        if (aggregatedLogsVolume[0]) {
+          aggregatedLogsVolume[0].meta = {
+            custom: {
+              targets: options.targets,
+              absoluteRange: { from: options.range.from.valueOf(), to: options.range.to.valueOf() },
+            },
+          };
+        }
+        observer.next({
+          state: LoadingState.Done,
+          error: undefined,
+          data: aggregatedLogsVolume,
+        });
+        observer.complete();
+      },
+      next: (dataQueryResponse: DataQueryResponse) => {
+        rawLogsVolume = rawLogsVolume.concat(dataQueryResponse.data.map(toDataFrame));
+      },
+      error: (error) => {
+        observer.next({
+          state: LoadingState.Error,
+          error: error,
+          data: [],
+        });
+        observer.error(error);
+      },
+    });
     return () => {
       subscription?.unsubscribe();
     };

@@ -1,18 +1,22 @@
 import React from 'react';
+
 import { PanelPlugin } from '@grafana/data';
-import { TagsInput } from '@grafana/ui';
-import { AlertList } from './AlertList';
-import { UnifiedAlertList } from './UnifiedAlertList';
-import { AlertListOptions, ShowOption, SortOrder, UnifiedAlertListOptions } from './types';
-import { alertListPanelMigrationHandler } from './AlertListMigrationHandler';
 import { config, DataSourcePicker } from '@grafana/runtime';
+import { TagsInput } from '@grafana/ui';
 import { RuleFolderPicker } from 'app/features/alerting/unified/components/rule-editor/RuleFolderPicker';
+
 import {
   ALL_FOLDER,
   GENERAL_FOLDER,
   ReadonlyFolderPicker,
 } from '../../../core/components/Select/ReadonlyFolderPicker/ReadonlyFolderPicker';
+
+import { AlertList } from './AlertList';
+import { alertListPanelMigrationHandler } from './AlertListMigrationHandler';
+import { GroupBy } from './GroupByWithLoading';
+import { UnifiedAlertList } from './UnifiedAlertList';
 import { AlertListSuggestionsSupplier } from './suggestions';
+import { AlertListOptions, GroupMode, ShowOption, SortOrder, UnifiedAlertListOptions } from './types';
 
 function showIfCurrentState(options: AlertListOptions) {
   return options.showOptions === ShowOption.Current;
@@ -151,6 +155,37 @@ const alertList = new PanelPlugin<AlertListOptions>(AlertList)
 
 const unifiedAlertList = new PanelPlugin<UnifiedAlertListOptions>(UnifiedAlertList).setPanelOptions((builder) => {
   builder
+    .addRadio({
+      path: 'groupMode',
+      name: 'Group mode',
+      description: 'How alert instances should be grouped',
+      defaultValue: GroupMode.Default,
+      settings: {
+        options: [
+          { value: GroupMode.Default, label: 'Default grouping' },
+          { value: GroupMode.Custom, label: 'Custom grouping' },
+        ],
+      },
+      category: ['Options'],
+    })
+    .addCustomEditor({
+      path: 'groupBy',
+      name: 'Group by',
+      description: 'Filter alerts using label querying',
+      id: 'groupBy',
+      defaultValue: [],
+      showIf: (options) => options.groupMode === GroupMode.Custom,
+      category: ['Options'],
+      editor: (props) => {
+        return (
+          <GroupBy
+            id={props.id ?? 'groupBy'}
+            defaultValue={props.value.map((value: string) => ({ label: value, value }))}
+            onChange={props.onChange}
+          />
+        );
+      },
+    })
     .addNumberInput({
       name: 'Max items',
       path: 'maxItems',
@@ -178,13 +213,6 @@ const unifiedAlertList = new PanelPlugin<UnifiedAlertListOptions>(UnifiedAlertLi
       path: 'dashboardAlerts',
       name: 'Alerts from this dashboard',
       description: 'Show alerts from this dashboard',
-      defaultValue: false,
-      category: ['Options'],
-    })
-    .addBooleanSwitch({
-      path: 'showInstances',
-      name: 'Show alert instances',
-      description: 'Show individual alert instances for multi-dimensional rules',
       defaultValue: false,
       category: ['Options'],
     })

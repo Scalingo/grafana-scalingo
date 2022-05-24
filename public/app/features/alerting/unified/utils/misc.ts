@@ -1,14 +1,16 @@
+import { sortBy } from 'lodash';
+
 import { urlUtil, UrlQueryMap, Labels } from '@grafana/data';
 import { config } from '@grafana/runtime';
+import { alertInstanceKey } from 'app/features/alerting/unified/utils/rules';
+import { SortOrder } from 'app/plugins/panel/alertlist/types';
 import { Alert, CombinedRule, FilterState, RulesSource, SilenceFilterState } from 'app/types/unified-alerting';
+import { GrafanaAlertState, PromAlertingRuleState } from 'app/types/unified-alerting-dto';
+
 import { ALERTMANAGER_NAME_QUERY_KEY } from './constants';
 import { getRulesSourceName } from './datasource';
-import * as ruleId from './rule-id';
-import { SortOrder } from 'app/plugins/panel/alertlist/types';
-import { alertInstanceKey } from 'app/features/alerting/unified/utils/rules';
-import { sortBy } from 'lodash';
-import { GrafanaAlertState, PromAlertingRuleState } from 'app/types/unified-alerting-dto';
 import { getMatcherQueryParams } from './matchers';
+import * as ruleId from './rule-id';
 
 export function createViewLink(ruleSource: RulesSource, rule: CombinedRule, returnTo: string): string {
   const sourceName = getRulesSourceName(ruleSource);
@@ -45,6 +47,13 @@ export const getFiltersFromUrlParams = (queryParams: UrlQueryMap): FilterState =
   const ruleType = queryParams['ruleType'] === undefined ? undefined : String(queryParams['ruleType']);
   const groupBy = queryParams['groupBy'] === undefined ? undefined : String(queryParams['groupBy']).split(',');
   return { queryString, alertState, dataSource, groupBy, ruleType };
+};
+
+export const getNotificationPoliciesFilters = (searchParams: URLSearchParams) => {
+  return {
+    queryString: searchParams.get('queryString') ?? undefined,
+    contactPoint: searchParams.get('contactPoint') ?? undefined,
+  };
 };
 
 export const getSilenceFiltersFromUrlParams = (queryParams: UrlQueryMap): SilenceFilterState => {

@@ -1,6 +1,7 @@
-import { BackendSrvRequest } from '@grafana/runtime';
 import { omitBy } from 'lodash';
+
 import { deprecationWarning } from '@grafana/data';
+import { BackendSrvRequest } from '@grafana/runtime';
 
 export const parseInitFromOptions = (options: BackendSrvRequest): RequestInit => {
   const method = options.method;
@@ -105,7 +106,12 @@ export async function parseResponseBody<T>(
         return response.blob() as any;
 
       case 'json':
-        return response.json();
+        try {
+          return await response.json();
+        } catch (err) {
+          console.warn(`${response.url} returned an invalid JSON -`, err);
+          return {} as unknown as T;
+        }
 
       case 'text':
         return response.text() as any;

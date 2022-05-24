@@ -439,15 +439,18 @@ The default is `25`.
 
 ### url
 
-The full Redis URL of your Redis server. Example: `redis://localhost:6739/0`.
+The full Redis URL of your Redis server. For example: `redis://username:password@localhost:6739/0`. To enable TLS, use the `rediss` scheme.
 
 The default is `"redis://localhost:6379"`.
 
 ### cluster
 
-A comma-separated list of Redis cluster members in `host:port` format. For example, `localhost:7000, localhost: 7001, localhost:7002`.
+A comma-separated list of Redis cluster members, either in `host:port` format or using the full Redis URLs (`redis://username:password@localhost:6739`). For example, `localhost:7000, localhost: 7001, localhost:7002`.
+If you use the full Redis URLs, then you can specify the scheme, username, and password only once. For example, `redis://username:password@localhost:0000,localhost:1111,localhost:2222`. You cannot specify a different username and password for each URL.
 
 > **Note:** If you have specify `cluster`, the value for `url` is ignored.
+
+> **Note:** You can enable TLS for cluster mode using the `rediss` scheme in Grafana Enterprise v8.5 and later versions.
 
 ### prefix
 
@@ -501,9 +504,3 @@ The org id of the datasource where the query data will be written.
 
 If all `default_remote_write_*` properties are set, this information will be populated at startup. If a remote write target has
 already been configured, nothing will happen.
-
-## [feature_highlights]
-
-### enabled
-
-Whether the feature highlights feature is enabled

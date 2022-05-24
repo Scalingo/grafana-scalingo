@@ -1,4 +1,5 @@
 import React from 'react';
+
 import {
   FieldConfigEditorBuilder,
   FieldOverrideEditorProps,
@@ -6,8 +7,9 @@ import {
   identityOverrideProcessor,
   SelectableValue,
 } from '@grafana/data';
-import { graphFieldOptions, Select, HorizontalGroup, RadioButtonGroup } from '../../index';
 import { AxisConfig, AxisPlacement, ScaleDistribution, ScaleDistributionConfig } from '@grafana/schema';
+
+import { graphFieldOptions, Select, HorizontalGroup, RadioButtonGroup } from '../../index';
 
 /**
  * @alpha
@@ -37,8 +39,8 @@ export function addAxisConfig(
         placeholder: 'Optional text',
       },
       showIf: (c) => c.axisPlacement !== AxisPlacement.Hidden,
-      // no matter what the field type is
-      shouldApply: () => true,
+      // Do not apply default settings to time and string fields which are used as x-axis fields in Time series and Bar chart panels
+      shouldApply: (f) => f.type !== FieldType.time && f.type !== FieldType.string,
     })
     .addNumberInput({
       path: 'axisWidth',
@@ -143,7 +145,6 @@ const ScaleDistributionEditor: React.FC<FieldOverrideEditorProps<ScaleDistributi
         <Select
           menuShouldPortal
           allowCustomValue={false}
-          autoFocus
           options={LOG_DISTRIBUTION_OPTIONS}
           value={value.log || 2}
           prefix={'base'}

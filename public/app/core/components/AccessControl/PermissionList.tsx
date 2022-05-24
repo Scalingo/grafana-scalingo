@@ -1,6 +1,7 @@
 import React from 'react';
-import { ResourcePermission } from './types';
+
 import { PermissionListItem } from './PermissionListItem';
+import { ResourcePermission } from './types';
 
 interface Props {
   title: string;
@@ -18,8 +19,16 @@ export const PermissionList = ({ title, items, permissionLevels, canSet, onRemov
 
   return (
     <div>
-      <h5>{title}</h5>
       <table className="filter-table gf-form-group">
+        <thead>
+          <tr>
+            <th style={{ width: '1%' }} />
+            <th>{title}</th>
+            <th>Permission</th>
+            <th style={{ width: '1%' }} />
+            <th style={{ width: '1%' }} />
+          </tr>
+        </thead>
         <tbody>
           {items.map((item, index) => (
             <PermissionListItem

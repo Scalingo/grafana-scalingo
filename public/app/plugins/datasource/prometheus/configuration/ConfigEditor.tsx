@@ -1,11 +1,15 @@
 import React from 'react';
+
+import { DataSourcePluginOptionsEditorProps, DataSourceSettings } from '@grafana/data';
 import { AlertingSettings, DataSourceHttpSettings, Alert } from '@grafana/ui';
-import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { config } from 'app/core/config';
-import { PromOptions } from '../types';
-import { AzureAuthSettings } from './AzureAuthSettings';
-import { PromSettings } from './PromSettings';
 import { getAllAlertmanagerDataSources } from 'app/features/alerting/unified/utils/alertmanager';
+
+import { PromOptions } from '../types';
+
+import { AzureAuthSettings } from './AzureAuthSettings';
+import { hasCredentials, setDefaultCredentials, resetCredentials } from './AzureCredentialsConfig';
+import { PromSettings } from './PromSettings';
 
 export type Props = DataSourcePluginOptionsEditorProps<PromOptions>;
 export const ConfigEditor = (props: Props) => {
@@ -13,7 +17,10 @@ export const ConfigEditor = (props: Props) => {
   const alertmanagers = getAllAlertmanagerDataSources();
 
   const azureAuthSettings = {
-    azureAuthEnabled: config.featureToggles['prometheus_azure_auth'] ?? false,
+    azureAuthSupported: config.featureToggles['prometheus_azure_auth'] ?? false,
+    getAzureAuthEnabled: (config: DataSourceSettings<any, any>): boolean => hasCredentials(config),
+    setAzureAuthEnabled: (config: DataSourceSettings<any, any>, enabled: boolean) =>
+      enabled ? setDefaultCredentials(config) : resetCredentials(config),
     azureSettingsUI: AzureAuthSettings,
   };
 

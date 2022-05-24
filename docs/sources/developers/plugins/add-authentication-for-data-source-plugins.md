@@ -291,16 +291,38 @@ When configured, Grafana will pass the user's token to the plugin in an Authoriz
 
 ```go
 func (ds *dataSource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-    for _, q := range req.Queries {
-        token := strings.Fields(q.Headers.Get("Authorization"))
+  token := strings.Fields(req.Headers["Authorization"])
+	var (
+		tokenType   = token[0]
+		accessToken = token[1]
+	)
 
-        var (
-          tokenType = token[0]
-          accessToken = token[1]
-        )
+	for _, q := range req.Queries {
+		// ...
+	}
+}
+```
 
-        // ...
-    }
+In addition, if the user's token includes an ID token, Grafana will pass the user's ID token to the plugin in an `X-ID-Token` header, available on the `QueryDataRequest` object on the `QueryData` request in your backend data source.
+
+```go
+func (ds *dataSource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
+  idToken := req.Headers["X-ID-Token"]
+
+	for _, q := range req.Queries {
+		// ...
+	}
+}
+```
+
+The `Authorization` and `X-ID-Token` headers will also be available on the `CallResourceRequest` object on the `CallResource` request in your backend data source when `jsonData.oauthPassThru` is `true`.
+
+```go
+func (ds *dataSource) CallResource(ctx context.Context, req *backend.CallResourceRequest, sender backend.CallResourceResponseSender) error {
+  token := req.Headers["Authorization"]
+  idToken := req.Headers["X-ID-Token"] // present if user's token includes an ID token
+
+  // ...
 }
 ```
 

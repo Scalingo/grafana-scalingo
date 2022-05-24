@@ -3,14 +3,15 @@ package channels
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
 
-	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/notifications"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
@@ -38,50 +39,69 @@ type OpsgenieNotifier struct {
 	SendTagsAs       string
 	tmpl             *template.Template
 	log              log.Logger
+	ns               notifications.WebhookSender
+}
+
+type OpsgenieConfig struct {
+	*NotificationChannelConfig
+	APIKey           string
+	APIUrl           string
+	AutoClose        bool
+	OverridePriority bool
+	SendTagsAs       string
+}
+
+func OpsgenieFactory(fc FactoryConfig) (NotificationChannel, error) {
+	cfg, err := NewOpsgenieConfig(fc.Config, fc.DecryptFunc)
+	if err != nil {
+		return nil, receiverInitError{
+			Reason: err.Error(),
+			Cfg:    *fc.Config,
+		}
+	}
+	return NewOpsgenieNotifier(cfg, fc.NotificationService, fc.Template, fc.DecryptFunc), nil
+}
+
+func NewOpsgenieConfig(config *NotificationChannelConfig, decryptFunc GetDecryptedValueFn) (*OpsgenieConfig, error) {
+	apiKey := decryptFunc(context.Background(), config.SecureSettings, "apiKey", config.Settings.Get("apiKey").MustString())
+	if apiKey == "" {
+		return nil, errors.New("could not find api key property in settings")
+	}
+	sendTagsAs := config.Settings.Get("sendTagsAs").MustString(OpsgenieSendTags)
+	if sendTagsAs != OpsgenieSendTags &&
+		sendTagsAs != OpsgenieSendDetails &&
+		sendTagsAs != OpsgenieSendBoth {
+		return nil, fmt.Errorf("invalid value for sendTagsAs: %q", sendTagsAs)
+	}
+	return &OpsgenieConfig{
+		NotificationChannelConfig: config,
+		APIKey:                    apiKey,
+		APIUrl:                    config.Settings.Get("apiUrl").MustString(OpsgenieAlertURL),
+		AutoClose:                 config.Settings.Get("autoClose").MustBool(true),
+		OverridePriority:          config.Settings.Get("overridePriority").MustBool(true),
+		SendTagsAs:                sendTagsAs,
+	}, nil
 }
 
 // NewOpsgenieNotifier is the constructor for the Opsgenie notifier
-func NewOpsgenieNotifier(model *NotificationChannelConfig, t *template.Template, fn GetDecryptedValueFn) (*OpsgenieNotifier, error) {
-	if model.Settings == nil {
-		return nil, receiverInitError{Cfg: *model, Reason: "no settings supplied"}
-	}
-	if model.SecureSettings == nil {
-		return nil, receiverInitError{Cfg: *model, Reason: "no secure settings supplied"}
-	}
-	autoClose := model.Settings.Get("autoClose").MustBool(true)
-	overridePriority := model.Settings.Get("overridePriority").MustBool(true)
-	apiKey := fn(context.Background(), model.SecureSettings, "apiKey", model.Settings.Get("apiKey").MustString())
-	apiURL := model.Settings.Get("apiUrl").MustString()
-	if apiKey == "" {
-		return nil, receiverInitError{Cfg: *model, Reason: "could not find api key property in settings"}
-	}
-	if apiURL == "" {
-		apiURL = OpsgenieAlertURL
-	}
-
-	sendTagsAs := model.Settings.Get("sendTagsAs").MustString(OpsgenieSendTags)
-	if sendTagsAs != OpsgenieSendTags && sendTagsAs != OpsgenieSendDetails && sendTagsAs != OpsgenieSendBoth {
-		return nil, receiverInitError{Cfg: *model,
-			Reason: fmt.Sprintf("invalid value for sendTagsAs: %q", sendTagsAs),
-		}
-	}
-
+func NewOpsgenieNotifier(config *OpsgenieConfig, ns notifications.WebhookSender, t *template.Template, fn GetDecryptedValueFn) *OpsgenieNotifier {
 	return &OpsgenieNotifier{
 		Base: NewBase(&models.AlertNotification{
-			Uid:                   model.UID,
-			Name:                  model.Name,
-			Type:                  model.Type,
-			DisableResolveMessage: model.DisableResolveMessage,
-			Settings:              model.Settings,
+			Uid:                   config.UID,
+			Name:                  config.Name,
+			Type:                  config.Type,
+			DisableResolveMessage: config.DisableResolveMessage,
+			Settings:              config.Settings,
 		}),
-		APIKey:           apiKey,
-		APIUrl:           apiURL,
-		AutoClose:        autoClose,
-		OverridePriority: overridePriority,
-		SendTagsAs:       sendTagsAs,
+		APIKey:           config.APIKey,
+		APIUrl:           config.APIUrl,
+		AutoClose:        config.AutoClose,
+		OverridePriority: config.OverridePriority,
+		SendTagsAs:       config.SendTagsAs,
 		tmpl:             t,
-		log:              log.New("alerting.notifier." + model.Name),
-	}, nil
+		log:              log.New("alerting.notifier." + config.Name),
+		ns:               ns,
+	}
 }
 
 // Notify sends an alert notification to Opsgenie
@@ -120,7 +140,7 @@ func (on *OpsgenieNotifier) Notify(ctx context.Context, as ...*types.Alert) (boo
 		},
 	}
 
-	if err := bus.Dispatch(ctx, cmd); err != nil {
+	if err := on.ns.SendWebhookSync(ctx, cmd); err != nil {
 		return false, fmt.Errorf("send notification to Opsgenie: %w", err)
 	}
 

@@ -17,7 +17,7 @@ func TestProvideService(t *testing.T) {
 	t.Run("When invalid from_address in configuration", func(t *testing.T) {
 		cfg := createSmtpConfig()
 		cfg.Smtp.FromAddress = "@notanemail@"
-		_, _, err := createSutWithConfig(bus, cfg)
+		_, _, err := createSutWithConfig(t, bus, cfg)
 
 		require.Error(t, err)
 	})
@@ -25,7 +25,7 @@ func TestProvideService(t *testing.T) {
 	t.Run("When template_patterns fails to parse", func(t *testing.T) {
 		cfg := createSmtpConfig()
 		cfg.Smtp.TemplatesPatterns = append(cfg.Smtp.TemplatesPatterns, "/usr/not-a-dir/**")
-		_, _, err := createSutWithConfig(bus, cfg)
+		_, _, err := createSutWithConfig(t, bus, cfg)
 
 		require.Error(t, err)
 	})
@@ -35,7 +35,7 @@ func TestSendEmailSync(t *testing.T) {
 	bus := bus.New()
 
 	t.Run("When sending emails synchronously", func(t *testing.T) {
-		_, mailer := createSut(t, bus)
+		ns, mailer := createSut(t, bus)
 		cmd := &models.SendEmailCommandSync{
 			SendEmailCommand: models.SendEmailCommand{
 				Subject:     "subject",
@@ -44,8 +44,7 @@ func TestSendEmailSync(t *testing.T) {
 				Template:    "welcome_on_signup",
 			},
 		}
-
-		err := bus.Dispatch(context.Background(), cmd)
+		err := ns.SendEmailCommandHandlerSync(context.Background(), cmd)
 		require.NoError(t, err)
 
 		require.NotEmpty(t, mailer.Sent)
@@ -55,7 +54,7 @@ func TestSendEmailSync(t *testing.T) {
 	})
 
 	t.Run("When using Single Email mode with multiple recipients", func(t *testing.T) {
-		_, mailer := createSut(t, bus)
+		ns, mailer := createSut(t, bus)
 		cmd := &models.SendEmailCommandSync{
 			SendEmailCommand: models.SendEmailCommand{
 				Subject:     "subject",
@@ -65,14 +64,14 @@ func TestSendEmailSync(t *testing.T) {
 			},
 		}
 
-		err := bus.Dispatch(context.Background(), cmd)
+		err := ns.SendEmailCommandHandlerSync(context.Background(), cmd)
 		require.NoError(t, err)
 
 		require.Len(t, mailer.Sent, 1)
 	})
 
 	t.Run("When using Multi Email mode with multiple recipients", func(t *testing.T) {
-		_, mailer := createSut(t, bus)
+		ns, mailer := createSut(t, bus)
 		cmd := &models.SendEmailCommandSync{
 			SendEmailCommand: models.SendEmailCommand{
 				Subject:     "subject",
@@ -82,14 +81,14 @@ func TestSendEmailSync(t *testing.T) {
 			},
 		}
 
-		err := bus.Dispatch(context.Background(), cmd)
+		err := ns.SendEmailCommandHandlerSync(context.Background(), cmd)
 		require.NoError(t, err)
 
 		require.Len(t, mailer.Sent, 3)
 	})
 
 	t.Run("When attaching files to emails", func(t *testing.T) {
-		_, mailer := createSut(t, bus)
+		ns, mailer := createSut(t, bus)
 		cmd := &models.SendEmailCommandSync{
 			SendEmailCommand: models.SendEmailCommand{
 				Subject:     "subject",
@@ -105,7 +104,7 @@ func TestSendEmailSync(t *testing.T) {
 			},
 		}
 
-		err := bus.Dispatch(context.Background(), cmd)
+		err := ns.SendEmailCommandHandlerSync(context.Background(), cmd)
 		require.NoError(t, err)
 
 		require.NotEmpty(t, mailer.Sent)
@@ -119,7 +118,7 @@ func TestSendEmailSync(t *testing.T) {
 	t.Run("When SMTP disabled in configuration", func(t *testing.T) {
 		cfg := createSmtpConfig()
 		cfg.Smtp.Enabled = false
-		_, mailer, err := createSutWithConfig(bus, cfg)
+		ns, mailer, err := createSutWithConfig(t, bus, cfg)
 		require.NoError(t, err)
 		cmd := &models.SendEmailCommandSync{
 			SendEmailCommand: models.SendEmailCommand{
@@ -130,7 +129,7 @@ func TestSendEmailSync(t *testing.T) {
 			},
 		}
 
-		err = bus.Dispatch(context.Background(), cmd)
+		err = ns.SendEmailCommandHandlerSync(context.Background(), cmd)
 
 		require.ErrorIs(t, err, models.ErrSmtpNotEnabled)
 		require.Empty(t, mailer.Sent)
@@ -139,7 +138,7 @@ func TestSendEmailSync(t *testing.T) {
 	t.Run("When invalid content type in configuration", func(t *testing.T) {
 		cfg := createSmtpConfig()
 		cfg.Smtp.ContentTypes = append(cfg.Smtp.ContentTypes, "multipart/form-data")
-		_, mailer, err := createSutWithConfig(bus, cfg)
+		ns, mailer, err := createSutWithConfig(t, bus, cfg)
 		require.NoError(t, err)
 		cmd := &models.SendEmailCommandSync{
 			SendEmailCommand: models.SendEmailCommand{
@@ -150,14 +149,14 @@ func TestSendEmailSync(t *testing.T) {
 			},
 		}
 
-		err = bus.Dispatch(context.Background(), cmd)
+		err = ns.SendEmailCommandHandlerSync(context.Background(), cmd)
 
 		require.Error(t, err)
 		require.Empty(t, mailer.Sent)
 	})
 
 	t.Run("When SMTP dialer is disconnected", func(t *testing.T) {
-		_ = createDisconnectedSut(t, bus)
+		ns := createDisconnectedSut(t, bus)
 		cmd := &models.SendEmailCommandSync{
 			SendEmailCommand: models.SendEmailCommand{
 				Subject:     "subject",
@@ -167,7 +166,7 @@ func TestSendEmailSync(t *testing.T) {
 			},
 		}
 
-		err := bus.Dispatch(context.Background(), cmd)
+		err := ns.SendEmailCommandHandlerSync(context.Background(), cmd)
 
 		require.Error(t, err)
 	})
@@ -178,7 +177,7 @@ func TestSendEmailAsync(t *testing.T) {
 
 	t.Run("When sending reset email password", func(t *testing.T) {
 		sut, _ := createSut(t, bus)
-		err := sut.sendResetPasswordEmail(context.Background(), &models.SendResetPasswordEmailCommand{User: &models.User{Email: "asd@asd.com"}})
+		err := sut.SendResetPasswordEmail(context.Background(), &models.SendResetPasswordEmailCommand{User: &models.User{Email: "asd@asd.com"}})
 		require.NoError(t, err)
 
 		sentMsg := <-sut.mailQueue
@@ -192,7 +191,7 @@ func TestSendEmailAsync(t *testing.T) {
 	t.Run("When SMTP disabled in configuration", func(t *testing.T) {
 		cfg := createSmtpConfig()
 		cfg.Smtp.Enabled = false
-		_, mailer, err := createSutWithConfig(bus, cfg)
+		ns, mailer, err := createSutWithConfig(t, bus, cfg)
 		require.NoError(t, err)
 		cmd := &models.SendEmailCommand{
 			Subject:     "subject",
@@ -201,7 +200,7 @@ func TestSendEmailAsync(t *testing.T) {
 			Template:    "welcome_on_signup",
 		}
 
-		err = bus.Dispatch(context.Background(), cmd)
+		err = ns.SendEmailCommandHandler(context.Background(), cmd)
 
 		require.ErrorIs(t, err, models.ErrSmtpNotEnabled)
 		require.Empty(t, mailer.Sent)
@@ -210,7 +209,7 @@ func TestSendEmailAsync(t *testing.T) {
 	t.Run("When invalid content type in configuration", func(t *testing.T) {
 		cfg := createSmtpConfig()
 		cfg.Smtp.ContentTypes = append(cfg.Smtp.ContentTypes, "multipart/form-data")
-		_, mailer, err := createSutWithConfig(bus, cfg)
+		ns, mailer, err := createSutWithConfig(t, bus, cfg)
 		require.NoError(t, err)
 		cmd := &models.SendEmailCommand{
 			Subject:     "subject",
@@ -219,14 +218,14 @@ func TestSendEmailAsync(t *testing.T) {
 			Template:    "welcome_on_signup",
 		}
 
-		err = bus.Dispatch(context.Background(), cmd)
+		err = ns.SendEmailCommandHandler(context.Background(), cmd)
 
 		require.Error(t, err)
 		require.Empty(t, mailer.Sent)
 	})
 
 	t.Run("When SMTP dialer is disconnected", func(t *testing.T) {
-		_ = createDisconnectedSut(t, bus)
+		ns := createDisconnectedSut(t, bus)
 		cmd := &models.SendEmailCommand{
 			Subject:     "subject",
 			To:          []string{"1@grafana.com", "2@grafana.com", "3@grafana.com"},
@@ -234,7 +233,7 @@ func TestSendEmailAsync(t *testing.T) {
 			Template:    "welcome_on_signup",
 		}
 
-		err := bus.Dispatch(context.Background(), cmd)
+		err := ns.SendEmailCommandHandler(context.Background(), cmd)
 
 		// The async version should not surface connection errors via Bus. It should only log them.
 		require.NoError(t, err)
@@ -245,14 +244,14 @@ func createSut(t *testing.T, bus bus.Bus) (*NotificationService, *FakeMailer) {
 	t.Helper()
 
 	cfg := createSmtpConfig()
-	ns, fm, err := createSutWithConfig(bus, cfg)
+	ns, fm, err := createSutWithConfig(t, bus, cfg)
 	require.NoError(t, err)
 	return ns, fm
 }
 
-func createSutWithConfig(bus bus.Bus, cfg *setting.Cfg) (*NotificationService, *FakeMailer, error) {
+func createSutWithConfig(t *testing.T, bus bus.Bus, cfg *setting.Cfg) (*NotificationService, *FakeMailer, error) {
 	smtp := NewFakeMailer()
-	ns, err := ProvideService(bus, cfg, smtp)
+	ns, err := ProvideService(bus, cfg, smtp, nil)
 	return ns, smtp, err
 }
 
@@ -261,7 +260,7 @@ func createDisconnectedSut(t *testing.T, bus bus.Bus) *NotificationService {
 
 	cfg := createSmtpConfig()
 	smtp := NewFakeDisconnectedMailer()
-	ns, err := ProvideService(bus, cfg, smtp)
+	ns, err := ProvideService(bus, cfg, smtp, nil)
 	require.NoError(t, err)
 	return ns
 }

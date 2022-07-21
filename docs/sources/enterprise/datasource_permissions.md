@@ -1,10 +1,20 @@
-+++
-title = "Data source permissions"
-description = "Grafana Datasource Permissions Guide"
-aliases = ["docs/sources/permissions/datasource_permissions.md"]
-keywords = ["grafana", "configuration", "documentation", "datasource", "permissions", "users", "teams", "enterprise"]
-weight = 500
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/datasource_permissions/
+  - /docs/sources/permissions/datasource_permissions.md/
+description: Grafana Datasource Permissions Guide
+keywords:
+  - grafana
+  - configuration
+  - documentation
+  - datasource
+  - permissions
+  - users
+  - teams
+  - enterprise
+title: Data source permissions
+weight: 500
+---
 
 # Data source permissions
 

@@ -1,9 +1,15 @@
-+++
-title = "Auditing"
-description = "Auditing"
-keywords = ["grafana", "auditing", "audit", "logs"]
-weight = 1100
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/auditing/
+description: Auditing
+keywords:
+  - grafana
+  - auditing
+  - audit
+  - logs
+title: Auditing
+weight: 1100
+---
 
 # Auditing
 

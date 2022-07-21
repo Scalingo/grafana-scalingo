@@ -1,10 +1,14 @@
-+++
-title = "Provisioning"
-description = ""
-keywords = ["grafana", "provisioning"]
-aliases = ["/docs/grafana/latest/installation/provisioning"]
-weight = 800
-+++
+---
+aliases:
+  - /docs/grafana/latest/administration/provisioning/
+  - /docs/grafana/latest/installation/provisioning/
+description: ''
+keywords:
+  - grafana
+  - provisioning
+title: Provisioning
+weight: 800
+---
 
 # Provisioning Grafana
 

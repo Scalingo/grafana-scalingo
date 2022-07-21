@@ -1,9 +1,17 @@
-+++
-title = "Manage team role assignments"
-description = "Manage team role assignments"
-keywords = ["grafana", "fine-grained-access-control", "roles", "permissions", "fine-grained-access-control-usage", "enterprise"]
-weight = 200
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/access-control/manage-role-assignments/manage-team-role-assignments/
+description: Manage team role assignments
+keywords:
+  - grafana
+  - fine-grained-access-control
+  - roles
+  - permissions
+  - fine-grained-access-control-usage
+  - enterprise
+title: Manage team role assignments
+weight: 200
+---
 
 # Manage team role assignments
 

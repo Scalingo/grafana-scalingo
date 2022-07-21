@@ -1,8 +1,10 @@
-+++
-title = "Opt-in to Grafana alerting"
-description = "Enable Grafana alerts"
-weight = 115
-+++
+---
+aliases:
+  - /docs/grafana/latest/alerting/unified-alerting/opt-in/
+description: Enable Grafana alerts
+title: Opt-in to Grafana alerting
+weight: 115
+---
 
 # Opt-in to Grafana alerting
 

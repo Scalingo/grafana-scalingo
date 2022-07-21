@@ -1,7 +1,10 @@
+import { startsWith, get, set } from 'lodash';
+
 import { DataSourceInstanceSettings } from '@grafana/data';
 import { TemplateSrv } from 'app/features/templating/template_srv';
 
 import createMockQuery from '../__mocks__/query';
+import { createTemplateVariables } from '../__mocks__/utils';
 import { singleVariable, subscriptionsVariable } from '../__mocks__/variables';
 import AzureMonitorDatasource from '../datasource';
 import { AzureDataSourceJsonData, AzureQueryType, DatasourceValidationResult } from '../types';
@@ -275,12 +278,26 @@ describe('AzureMonitorDatasource', () => {
 
       it('should return list of Resource Names', () => {
         metricDefinition = 'Microsoft.Storage/storageAccounts/blobServices';
+        const validMetricDefinition = startsWith(metricDefinition, 'Microsoft.Storage/storageAccounts/')
+          ? 'Microsoft.Storage/storageAccounts'
+          : metricDefinition;
+        ctx.ds.azureMonitorDatasource.getResource = jest.fn().mockImplementation((path: string) => {
+          const basePath = `azuremonitor/subscriptions/${subscription}/resourceGroups`;
+          expect(path).toBe(
+            basePath +
+              `/${resourceGroup}/resources?$filter=resourceType eq '${validMetricDefinition}'&api-version=2021-04-01`
+          );
+          return Promise.resolve(response);
+        });
         return ctx.ds
           .getResourceNames(subscription, resourceGroup, metricDefinition)
           .then((results: Array<{ text: string; value: string }>) => {
             expect(results.length).toEqual(1);
             expect(results[0].text).toEqual('storagetest/default');
             expect(results[0].value).toEqual('storagetest/default');
+            expect(ctx.ds.azureMonitorDatasource.getResource).toHaveBeenCalledWith(
+              `azuremonitor/subscriptions/${subscription}/resourceGroups/${resourceGroup}/resources?$filter=resourceType eq '${validMetricDefinition}'&api-version=2021-04-01`
+            );
           });
       });
     });
@@ -591,6 +608,49 @@ describe('AzureMonitorDatasource', () => {
         .then((results: any) => {
           expect(results.dimensions.length).toEqual(0);
         });
+    });
+  });
+
+  describe('When performing interpolateVariablesInQueries for azure_monitor_metrics', () => {
+    beforeEach(() => {
+      templateSrv.init([]);
+    });
+
+    it('should return a query unchanged if no template variables are provided', () => {
+      const query = createMockQuery();
+      const templatedQuery = ctx.ds.interpolateVariablesInQueries([query], {});
+      expect(templatedQuery[0]).toEqual(query);
+    });
+
+    it('should return a query with any template variables replaced', () => {
+      const templateableProps = [
+        'resourceGroup',
+        'resourceName',
+        'metricNamespace',
+        'metricDefinition',
+        'timeGrain',
+        'aggregation',
+        'top',
+        'dimensionFilters[0].dimension',
+        'dimensionFilters[0].filter',
+      ];
+      const templateVariables = createTemplateVariables(templateableProps);
+      templateSrv.init(Array.from(templateVariables.values()).map((item) => item.templateVariable));
+      const query = createMockQuery();
+      const azureMonitorQuery: { [index: string]: any } = {};
+      for (const [path, templateVariable] of templateVariables.entries()) {
+        set(azureMonitorQuery, path, `$${templateVariable.variableName}`);
+      }
+
+      query.azureMonitor = {
+        ...query.azureMonitor,
+        ...azureMonitorQuery,
+      };
+      const templatedQuery = ctx.ds.interpolateVariablesInQueries([query], {});
+      expect(templatedQuery[0]).toHaveProperty('datasource');
+      for (const [path, templateVariable] of templateVariables.entries()) {
+        expect(get(templatedQuery[0].azureMonitor, path)).toEqual(templateVariable.templateVariable.current.value);
+      }
     });
   });
 });

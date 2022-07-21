@@ -1,8 +1,10 @@
-+++
-title = "Administration"
-description = "Administration"
-weight = 40
-+++
+---
+aliases:
+  - /docs/grafana/latest/administration/
+description: Administration
+title: Administration
+weight: 40
+---
 
 # Administration
 

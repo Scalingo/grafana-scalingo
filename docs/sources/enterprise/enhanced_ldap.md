@@ -1,9 +1,17 @@
-+++
-title = "Enhanced LDAP Integration"
-description = "Grafana Enhanced LDAP Integration Guide "
-keywords = ["grafana", "configuration", "documentation", "ldap", "active directory", "enterprise"]
-weight = 600
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/enhanced_ldap/
+description: 'Grafana Enhanced LDAP Integration Guide '
+keywords:
+  - grafana
+  - configuration
+  - documentation
+  - ldap
+  - active directory
+  - enterprise
+title: Enhanced LDAP Integration
+weight: 600
+---
 
 # Enhanced LDAP integration
 

@@ -1,8 +1,10 @@
-+++
-title = "Getting started"
-weight = 10
-aliases = ["/docs/grafana/latest/guides/what-is-grafana"]
-+++
+---
+aliases:
+  - /docs/grafana/latest/getting-started/
+  - /docs/grafana/latest/guides/what-is-grafana/
+title: Getting started
+weight: 10
+---
 
 # Getting started
 

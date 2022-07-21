@@ -1,9 +1,15 @@
-+++
-title = "Live Channel"
-description = "Grafana Live channel guide"
-keywords = ["Grafana", "live", "guide", "channel"]
-weight = 110
-+++
+---
+aliases:
+  - /docs/grafana/latest/live/live-channel/
+description: Grafana Live channel guide
+keywords:
+  - Grafana
+  - live
+  - guide
+  - channel
+title: Live Channel
+weight: 110
+---
 
 # Grafana Live Channel guide
 

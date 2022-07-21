@@ -1,9 +1,16 @@
-+++
-title = "Permissions"
-description = "Understand fine-grained access control permissions"
-keywords = ["grafana", "fine-grained access-control", "roles", "permissions", "enterprise"]
-weight = 110
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/access-control/permissions/
+description: Understand fine-grained access control permissions
+keywords:
+  - grafana
+  - fine-grained access-control
+  - roles
+  - permissions
+  - enterprise
+title: Permissions
+weight: 110
+---
 
 # Permissions
 
@@ -128,10 +135,8 @@ The following list contains fine-grained access control actions.
 | `alert.instances:update`             | n/a                                                                                         | Update and expire silences in the current organization.                                                                                                                                          |
 | `alert.instances.external:read`      | `datasources:*`<br>`datasources:uid:*`                                                      | Read alerts and silences in data sources that support alerting.                                                                                                                                  |
 | `alert.instances.external:write`     | `datasources:*`<br>`datasources:uid:*`                                                      | Manage alerts and silences in data sources that support alerting.                                                                                                                                |
-| `alert.notifications:create`         | n/a                                                                                         | Create templates, contact points, notification policies, and mute timings in the current organization.                                                                                           |
 | `alert.notifications:read`           | n/a                                                                                         | Read all templates, contact points, notification policies, and mute timings in the current organization.                                                                                         |
-| `alert.notifications:update`         | n/a                                                                                         | Update templates, contact points, notification policies, and mute timings in the current organization.                                                                                           |
-| `alert.notifications:delete`         | n/a                                                                                         | Delete templates, contact points, notification policies, and mute timings in the current organization.                                                                                           |
+| `alert.notifications:write`          | n/a                                                                                         | Manage templates, contact points, notification policies, and mute timings in the current organization.                                                                                           |
 | `alert.notifications.external:read`  | `datasources:*`<br>`datasources:uid:*`                                                      | Read templates, contact points, notification policies, and mute timings in data sources that support alerting.                                                                                   |
 | `alert.notifications.external:write` | `datasources:*`<br>`datasources:uid:*`                                                      | Manage templates, contact points, notification policies, and mute timings in data sources that support alerting.                                                                                 |
 

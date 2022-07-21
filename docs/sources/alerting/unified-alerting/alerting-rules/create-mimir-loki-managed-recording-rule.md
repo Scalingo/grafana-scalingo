@@ -1,9 +1,17 @@
-+++
-title = "Create Grafana Mimir or Loki managed recording rule"
-description = "Create Grafana Mimir or Loki managed recording rule"
-keywords = ["grafana", "alerting", "guide", "rules", "recording rules", "create"]
-weight = 400
-+++
+---
+aliases:
+  - /docs/grafana/latest/alerting/unified-alerting/alerting-rules/create-mimir-loki-managed-recording-rule/
+description: Create Grafana Mimir or Loki managed recording rule
+keywords:
+  - grafana
+  - alerting
+  - guide
+  - rules
+  - recording rules
+  - create
+title: Create Grafana Mimir or Loki managed recording rule
+weight: 400
+---
 
 # Create a Grafana Mimir or Loki managed recording rule
 

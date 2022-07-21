@@ -1,7 +1,9 @@
-+++
-title = "Keyboard shortcuts"
-weight = 10
-+++
+---
+aliases:
+  - /docs/grafana/latest/dashboards/shortcuts/
+title: Keyboard shortcuts
+weight: 10
+---
 
 # Keyboard shortcuts
 

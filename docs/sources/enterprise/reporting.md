@@ -1,10 +1,14 @@
-+++
-title = "Reporting"
-description = ""
-keywords = ["grafana", "reporting"]
-aliases = ["/docs/grafana/latest/administration/reports"]
-weight = 800
-+++
+---
+aliases:
+  - /docs/grafana/latest/administration/reports/
+  - /docs/grafana/latest/enterprise/reporting/
+description: ''
+keywords:
+  - grafana
+  - reporting
+title: Reporting
+weight: 800
+---
 
 # Reporting
 
@@ -162,6 +166,8 @@ These options are available in the [configuration]({{< relref "../administration
 
 ```ini
 [reporting]
+# Use this option to enable or disable the reporting feature. When disabled, no reports are generated, and the UI is hidden. By default, reporting is enabled.
+enabled = true
 # Set timeout for each panel rendering request
 rendering_timeout = 10s
 # Set maximum number of concurrent calls to the rendering service

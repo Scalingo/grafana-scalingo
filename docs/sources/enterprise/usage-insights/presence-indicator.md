@@ -1,10 +1,15 @@
-+++
-title = "Presence indicator"
-description = "Know who is looking at the same dashboard as you are"
-keywords = ["grafana", "presence-indicator", "enterprise"]
-aliases = ["/docs/grafana/latest/enterprise/usage-insights/presence-indicator.md"]
-weight = 300
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/usage-insights/presence-indicator.md/
+  - /docs/grafana/latest/enterprise/usage-insights/presence-indicator/
+description: Know who is looking at the same dashboard as you are
+keywords:
+  - grafana
+  - presence-indicator
+  - enterprise
+title: Presence indicator
+weight: 300
+---
 
 # Presence indicator
 

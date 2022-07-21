@@ -1,9 +1,16 @@
-+++
-title = "Export and import"
-keywords = ["grafana", "dashboard", "documentation", "export", "import"]
-aliases = ["/docs/grafana/latest/reference/export_import/"]
-weight = 800
-+++
+---
+aliases:
+  - /docs/grafana/latest/dashboards/export-import/
+  - /docs/grafana/latest/reference/export_import/
+keywords:
+  - grafana
+  - dashboard
+  - documentation
+  - export
+  - import
+title: Export and import
+weight: 800
+---
 
 # Export and import
 

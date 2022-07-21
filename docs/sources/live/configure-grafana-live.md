@@ -1,9 +1,15 @@
-+++
-title = "Configure Grafana Live"
-description = "Grafana Live configuration guide"
-keywords = ["Grafana", "live", "guide", "websocket"]
-weight = 120
-+++
+---
+aliases:
+  - /docs/grafana/latest/live/configure-grafana-live/
+description: Grafana Live configuration guide
+keywords:
+  - Grafana
+  - live
+  - guide
+  - websocket
+title: Configure Grafana Live
+weight: 120
+---
 
 # Configure Grafana Live
 

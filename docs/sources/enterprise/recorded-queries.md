@@ -1,9 +1,15 @@
-+++
-title = "Recorded queries"
-description = "Grafana Enterprise recorded queries"
-keywords = ["grafana", "query", "queries", "recorded"]
-weight = 300
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/recorded-queries/
+description: Grafana Enterprise recorded queries
+keywords:
+  - grafana
+  - query
+  - queries
+  - recorded
+title: Recorded queries
+weight: 300
+---
 
 # Recorded queries
 

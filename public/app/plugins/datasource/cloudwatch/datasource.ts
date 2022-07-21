@@ -31,6 +31,8 @@ import { VariableWithMultiSupport } from 'app/features/variables/types';
 import { store } from 'app/store/store';
 import { AppNotificationTimeout } from 'app/types';
 
+import config from '../../../core/config';
+
 import { SQLCompletionItemProvider } from './cloudwatch-sql/completion/CompletionItemProvider';
 import { ThrottlingErrorMessage } from './components/ThrottlingErrorMessage';
 import { CloudWatchLanguageProvider } from './language_provider';
@@ -225,6 +227,7 @@ export class CloudWatchDatasource
               options,
               this.timeSrv.timeRange(),
               this.replace.bind(this),
+              this.getVariableValue.bind(this),
               this.getActualRegion.bind(this),
               this.tracingDataSourceUid
             );
@@ -594,9 +597,12 @@ export class CloudWatchDatasource
         for (const fieldName of fieldsToReplace) {
           if (query.hasOwnProperty(fieldName)) {
             if (Array.isArray(anyQuery[fieldName])) {
-              anyQuery[fieldName] = anyQuery[fieldName].map((val: string) =>
-                this.replace(val, options.scopedVars, true, fieldName)
-              );
+              anyQuery[fieldName] = anyQuery[fieldName].flatMap((val: string) => {
+                if (fieldName === 'logGroupNames') {
+                  return this.getVariableValue(val, options.scopedVars || {});
+                }
+                return this.replace(val, options.scopedVars, true, fieldName);
+              });
             } else {
               anyQuery[fieldName] = this.replace(anyQuery[fieldName], options.scopedVars, true, fieldName);
             }
@@ -623,6 +629,10 @@ export class CloudWatchDatasource
     return this.awsRequest(DS_QUERY_ENDPOINT, requestParams, headers).pipe(
       map((response) => resultsToDataFrames({ data: response })),
       catchError((err: FetchError) => {
+        if (config.featureToggles.datasourceQueryMultiStatus && err.status === 207) {
+          throw err;
+        }
+
         if (err.status === 400) {
           throw err;
         }
@@ -836,19 +846,25 @@ export class CloudWatchDatasource
         return { ...result, [key]: null };
       }
 
-      const valueVar = this.templateSrv
-        .getVariables()
-        .find(({ name }) => name === this.templateSrv.getVariableName(value));
-      if (valueVar) {
-        if ((valueVar as unknown as VariableWithMultiSupport).multi) {
-          const values = this.templateSrv.replace(value, scopedVars, 'pipe').split('|');
-          return { ...result, [key]: values };
-        }
-        return { ...result, [key]: [this.templateSrv.replace(value, scopedVars)] };
-      }
-
-      return { ...result, [key]: [value] };
+      const newValues = this.getVariableValue(value, scopedVars);
+      return { ...result, [key]: newValues };
     }, {});
+  }
+  // get the value for a given template variable
+  getVariableValue(value: string, scopedVars: ScopedVars): string[] {
+    const variableName = this.templateSrv.getVariableName(value);
+    const valueVar = this.templateSrv.getVariables().find(({ name }) => {
+      return name === variableName;
+    });
+    if (variableName && valueVar) {
+      if ((valueVar as unknown as VariableWithMultiSupport).multi) {
+        // rebuild the variable name to handle old migrated queries
+        const values = this.templateSrv.replace('$' + variableName, scopedVars, 'pipe').split('|');
+        return values;
+      }
+      return [this.templateSrv.replace(value, scopedVars)];
+    }
+    return [value];
   }
 
   replace(
@@ -923,13 +939,7 @@ export class CloudWatchDatasource
       namespace: this.replace(query.namespace, scopedVars),
       period: this.replace(query.period, scopedVars),
       sqlExpression: this.replace(query.sqlExpression, scopedVars),
-      dimensions: Object.entries(query.dimensions ?? {}).reduce((prev, [key, value]) => {
-        if (Array.isArray(value)) {
-          return { ...prev, [key]: value };
-        }
-
-        return { ...prev, [this.replace(key, scopedVars)]: this.replace(value, scopedVars) };
-      }, {}),
+      dimensions: this.convertDimensionFormat(query.dimensions ?? {}, scopedVars),
     };
   }
 }

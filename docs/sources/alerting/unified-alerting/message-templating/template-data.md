@@ -1,7 +1,14 @@
-+++
-title = "Template data"
-keywords = ["grafana", "alerting", "guide", "contact point", "templating"]
-+++
+---
+aliases:
+  - /docs/grafana/latest/alerting/unified-alerting/message-templating/template-data/
+keywords:
+  - grafana
+  - alerting
+  - guide
+  - contact point
+  - templating
+title: Template data
+---
 
 # Template data
 

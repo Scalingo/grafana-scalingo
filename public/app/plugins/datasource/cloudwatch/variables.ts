@@ -48,11 +48,22 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
           return this.handleResourceARNsQuery(query);
         case VariableQueryType.Statistics:
           return this.handleStatisticsQuery();
+        case VariableQueryType.LogGroups:
+          return this.handleLogGroupsQuery(query);
       }
     } catch (error) {
       console.error(`Could not run CloudWatchMetricFindQuery ${query}`, error);
       return [];
     }
+  }
+
+  async handleLogGroupsQuery({ region, logGroupPrefix }: VariableQuery) {
+    const logGroups = await this.datasource.describeLogGroups({ region, logGroupNamePrefix: logGroupPrefix });
+    return logGroups.map((s) => ({
+      text: s,
+      value: s,
+      expandable: true,
+    }));
   }
 
   async handleRegionsQuery() {
@@ -96,7 +107,7 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
       return [];
     }
     var filterJson = {};
-    if (dimensionFilters) {
+    if (dimensionFilters && dimensionFilters !== '[]') {
       filterJson = JSON.parse(dimensionFilters);
     }
     const keys = await this.datasource.getDimensionValues(region, namespace, metricName, dimensionKey, filterJson);
@@ -124,7 +135,7 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
       return [];
     }
     var filterJson = {};
-    if (ec2Filters) {
+    if (ec2Filters && ec2Filters !== '[]') {
       filterJson = JSON.parse(this.templateSrv.replace(ec2Filters));
     }
     const values = await this.datasource.getEc2InstanceAttribute(region, attributeName, filterJson);
@@ -140,7 +151,7 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
       return [];
     }
     var tagJson = {};
-    if (tags) {
+    if (tags && tags !== '[]') {
       tagJson = JSON.parse(this.templateSrv.replace(tags));
     }
     const keys = await this.datasource.getResourceARNs(region, resourceType, tagJson);

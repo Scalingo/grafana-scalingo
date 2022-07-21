@@ -52,6 +52,7 @@ func (api *API) authorize(method, path string) web.Handler {
 	case http.MethodGet + "/api/ruler/grafana/api/v1/rules":
 		eval = ac.EvalPermission(ac.ActionAlertingRuleRead)
 	case http.MethodPost + "/api/ruler/grafana/api/v1/rules/{Namespace}":
+		fallback = middleware.ReqSignedIn // if RBAC is disabled then we need to delegate permission check to folder because its permissions can allow editing for Viewer role
 		scope := dashboards.ScopeFoldersProvider.GetResourceScopeName(ac.Parameter(":Namespace"))
 		// more granular permissions are enforced by the handler via "authorizeRuleChanges"
 		eval = ac.EvalAny(
@@ -148,7 +149,7 @@ func (api *API) authorize(method, path string) web.Handler {
 
 	// Grafana Paths
 	case http.MethodDelete + "/api/alertmanager/grafana/config/api/v1/alerts": // reset alertmanager config to the default
-		eval = ac.EvalPermission(ac.ActionAlertingNotificationsDelete)
+		eval = ac.EvalPermission(ac.ActionAlertingNotificationsWrite)
 	case http.MethodGet + "/api/alertmanager/grafana/config/api/v1/alerts":
 		fallback = middleware.ReqEditorRole
 		eval = ac.EvalPermission(ac.ActionAlertingNotificationsRead)
@@ -156,14 +157,14 @@ func (api *API) authorize(method, path string) web.Handler {
 		eval = ac.EvalPermission(ac.ActionAlertingNotificationsRead)
 	case http.MethodPost + "/api/alertmanager/grafana/config/api/v1/alerts":
 		// additional authorization is done in the request handler
-		eval = ac.EvalAny(ac.EvalPermission(ac.ActionAlertingNotificationsUpdate), ac.EvalPermission(ac.ActionAlertingNotificationsCreate), ac.EvalPermission(ac.ActionAlertingNotificationsDelete))
+		eval = ac.EvalAny(ac.EvalPermission(ac.ActionAlertingNotificationsWrite))
 	case http.MethodPost + "/api/alertmanager/grafana/config/api/v1/receivers/test":
 		fallback = middleware.ReqEditorRole
 		eval = ac.EvalPermission(ac.ActionAlertingNotificationsRead)
 
 	// External Alertmanager Paths
 	case http.MethodDelete + "/api/alertmanager/{Recipient}/config/api/v1/alerts":
-		eval = ac.EvalPermission(ac.ActionAlertingNotificationsDelete, datasources.ScopeProvider.GetResourceScope(ac.Parameter(":Recipient")))
+		eval = ac.EvalPermission(ac.ActionAlertingNotificationsExternalWrite, datasources.ScopeProvider.GetResourceScope(ac.Parameter(":Recipient")))
 	case http.MethodGet + "/api/alertmanager/{Recipient}/api/v2/status":
 		eval = ac.EvalPermission(ac.ActionAlertingNotificationsExternalRead, datasources.ScopeProvider.GetResourceScope(ac.Parameter(":Recipient")))
 	case http.MethodGet + "/api/alertmanager/{Recipient}/config/api/v1/alerts":
@@ -184,13 +185,17 @@ func (api *API) authorize(method, path string) web.Handler {
 	case http.MethodGet + "/api/provisioning/policies",
 		http.MethodGet + "/api/provisioning/contact-points",
 		http.MethodGet + "/api/provisioning/templates",
-		http.MethodGet + "/api/provisioning/templates/{ID}":
+		http.MethodGet + "/api/provisioning/templates/{name}",
+		http.MethodGet + "/api/provisioning/mute-timings",
+		http.MethodGet + "/api/provisioning/mute-timings/{name}":
 		return middleware.ReqSignedIn
 
-	case http.MethodPost + "/api/provisioning/policies",
+	case http.MethodPut + "/api/provisioning/policies",
 		http.MethodPost + "/api/provisioning/contact-points",
-		http.MethodPut + "/api/provisioning/contact-points",
-		http.MethodDelete + "/api/provisioning/contact-points/{ID}":
+		http.MethodPut + "/api/provisioning/contact-points/{ID}",
+		http.MethodDelete + "/api/provisioning/contact-points/{ID}",
+		http.MethodPut + "/api/provisioning/templates/{name}",
+		http.MethodDelete + "/api/provisioning/templates/{name}":
 		return middleware.ReqEditorRole
 	}
 

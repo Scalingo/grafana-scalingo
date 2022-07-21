@@ -1,9 +1,19 @@
-+++
-title = "Dashboard Permissions HTTP API "
-description = "Grafana Dashboard Permissions HTTP API"
-keywords = ["grafana", "http", "documentation", "api", "dashboard", "permission", "permissions", "acl"]
-aliases = ["/docs/grafana/latest/http_api/dashboardpermissions/"]
-+++
+---
+aliases:
+  - /docs/grafana/latest/http_api/dashboard_permissions/
+  - /docs/grafana/latest/http_api/dashboardpermissions/
+description: Grafana Dashboard Permissions HTTP API
+keywords:
+  - grafana
+  - http
+  - documentation
+  - api
+  - dashboard
+  - permission
+  - permissions
+  - acl
+title: 'Dashboard Permissions HTTP API '
+---
 
 # Dashboard Permissions API
 

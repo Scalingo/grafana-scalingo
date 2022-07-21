@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
+	"github.com/grafana/grafana/pkg/setting"
 )
 
 type Options struct {
@@ -114,6 +116,11 @@ var ReqGrafanaAdmin = func(c *models.ReqContext) bool {
 	return c.IsGrafanaAdmin
 }
 
+// ReqViewer returns true if the current user has models.ROLE_VIEWER. Note: this can be anonymous user as well
+var ReqViewer = func(c *models.ReqContext) bool {
+	return c.OrgRole.Includes(models.ROLE_VIEWER)
+}
+
 var ReqOrgAdmin = func(c *models.ReqContext) bool {
 	return c.OrgRole == models.ROLE_ADMIN
 }
@@ -218,4 +225,8 @@ func extractPrefixes(prefix string) (string, string, bool) {
 	rootPrefix := parts[0] + ":"
 	attributePrefix := rootPrefix + parts[1] + ":"
 	return rootPrefix, attributePrefix, true
+}
+
+func IsDisabled(cfg *setting.Cfg) bool {
+	return !cfg.IsFeatureToggleEnabled(featuremgmt.FlagAccesscontrol)
 }

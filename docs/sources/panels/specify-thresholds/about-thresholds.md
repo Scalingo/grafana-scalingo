@@ -1,8 +1,10 @@
-+++
-title = "About thresholds"
-weight = 10
-aliases = ["/docs/sources/panels/specify-thresholds/about-thresholds/"]
-+++
+---
+aliases:
+  - /docs/grafana/latest/panels/specify-thresholds/about-thresholds/
+  - /docs/sources/panels/specify-thresholds/about-thresholds/
+title: About thresholds
+weight: 10
+---
 
 # About thresholds
 

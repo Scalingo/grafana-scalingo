@@ -125,6 +125,23 @@ describe('Graph Migrations', () => {
       panel.options = graphPanelChangedHandler(panel, 'graph', old, prevFieldConfig);
       expect(panel).toMatchSnapshot();
     });
+    test('with sideWidth', () => {
+      const old: any = {
+        angular: {
+          legend: {
+            alignAsTable: true,
+            rightSide: true,
+            show: true,
+            sideWidth: 200,
+            total: true,
+            values: true,
+          },
+        },
+      };
+      const panel = {} as PanelModel;
+      panel.options = graphPanelChangedHandler(panel, 'graph', old, prevFieldConfig);
+      expect(panel.options.legend.width).toBe(200);
+    });
   });
 
   describe('stacking', () => {
@@ -424,6 +441,29 @@ describe('Graph Migrations', () => {
       const panel = {} as PanelModel;
       panel.options = graphPanelChangedHandler(panel, 'graph', old, prevFieldConfig);
       expect(panel.fieldConfig).toMatchSnapshot();
+    });
+  });
+
+  describe('null values', () => {
+    test('nullPointMode = null', () => {
+      const old: any = {
+        angular: {
+          nullPointMode: 'null',
+        },
+      };
+      const panel = {} as PanelModel;
+      panel.options = graphPanelChangedHandler(panel, 'graph', old, prevFieldConfig);
+      expect(panel.fieldConfig.defaults.custom.spanNulls).toBeFalsy();
+    });
+    test('nullPointMode = connected', () => {
+      const old: any = {
+        angular: {
+          nullPointMode: 'connected',
+        },
+      };
+      const panel = {} as PanelModel;
+      panel.options = graphPanelChangedHandler(panel, 'graph', old, prevFieldConfig);
+      expect(panel.fieldConfig.defaults.custom.spanNulls).toBeTruthy();
     });
   });
 });

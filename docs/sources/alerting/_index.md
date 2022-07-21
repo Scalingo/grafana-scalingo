@@ -1,7 +1,9 @@
-+++
-title = "Alerts"
-weight = 110
-+++
+---
+aliases:
+  - /docs/grafana/latest/alerting/
+title: Alerts
+weight: 110
+---
 
 # Grafana alerts
 

@@ -1,9 +1,14 @@
-+++
-title = "What's new in Grafana alerting"
-description = "What's New with Grafana alerts"
-keywords = ["grafana", "alerting", "guide"]
-weight = 114
-+++
+---
+aliases:
+  - /docs/grafana/latest/alerting/unified-alerting/difference-old-new/
+description: What's New with Grafana alerts
+keywords:
+  - grafana
+  - alerting
+  - guide
+title: What's new in Grafana alerting
+weight: 114
+---
 
 # What's new in Grafana alerting
 

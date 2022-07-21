@@ -1,9 +1,15 @@
-+++
-title = "Live HA setup"
-description = "Grafana Live HA setup guide"
-keywords = ["Grafana", "live", "guide", "ha"]
-weight = 130
-+++
+---
+aliases:
+  - /docs/grafana/latest/live/live-ha-setup/
+description: Grafana Live HA setup guide
+keywords:
+  - Grafana
+  - live
+  - guide
+  - ha
+title: Live HA setup
+weight: 130
+---
 
 # Configure Grafana Live HA setup
 

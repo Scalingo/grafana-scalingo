@@ -1,9 +1,16 @@
-+++
-title = "Manage role assignments"
-description = ""
-keywords = ["grafana", "fine-grained-access-control", "roles", "permissions", "enterprise"]
-weight = 115
-+++
+---
+aliases:
+  - /docs/grafana/latest/enterprise/access-control/manage-role-assignments/
+description: ''
+keywords:
+  - grafana
+  - fine-grained-access-control
+  - roles
+  - permissions
+  - enterprise
+title: Manage role assignments
+weight: 115
+---
 
 # Manage role assignments
 

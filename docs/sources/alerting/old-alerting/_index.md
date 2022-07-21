@@ -1,7 +1,9 @@
-+++
-title = "Legacy Grafana Alerts"
-weight = 114
-+++
+---
+aliases:
+  - /docs/grafana/latest/alerting/old-alerting/
+title: Legacy Grafana Alerts
+weight: 114
+---
 
 # Legacy Grafana alerts
 

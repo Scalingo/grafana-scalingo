@@ -1,7 +1,5 @@
 import { isString as _isString } from 'lodash';
 
-// Store
-
 import { TimeRange, AppEvents, rangeUtil, dateMath, PanelModel as IPanelModel } from '@grafana/data';
 import { getTemplateSrv } from '@grafana/runtime';
 import appEvents from 'app/core/app_events';

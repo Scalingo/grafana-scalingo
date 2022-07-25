@@ -76,7 +76,6 @@ const mustKeepProps: { [str: string]: boolean } = {
   title: true,
   scopedVars: true,
   repeat: true,
-  repeatIteration: true,
   repeatPanelId: true,
   repeatDirection: true,
   repeatedByRow: true,
@@ -139,7 +138,7 @@ export class PanelModel implements DataConfigSource, IPanelModel {
   maxPerRow?: number;
   collapsed?: boolean;
 
-  panels?: any;
+  panels?: PanelModel[];
   declare targets: DataQuery[];
   transformations?: DataTransformerConfig[];
   datasource: DataSourceRef | null = null;
@@ -289,11 +288,23 @@ export class PanelModel implements DataConfigSource, IPanelModel {
     this.isViewing = isViewing;
   }
 
-  updateGridPos(newPos: GridPos) {
+  updateGridPos(newPos: GridPos, manuallyUpdated = true) {
+    if (
+      newPos.x === this.gridPos.x &&
+      newPos.y === this.gridPos.y &&
+      newPos.h === this.gridPos.h &&
+      newPos.w === this.gridPos.w
+    ) {
+      return;
+    }
+
     this.gridPos.x = newPos.x;
     this.gridPos.y = newPos.y;
     this.gridPos.w = newPos.w;
     this.gridPos.h = newPos.h;
+    if (manuallyUpdated) {
+      this.configRev++;
+    }
   }
 
   runAllPanelQueries(dashboardId: number, dashboardTimezone: string, timeData: TimeOverrideResult, width: number) {

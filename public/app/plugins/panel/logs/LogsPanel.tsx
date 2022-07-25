@@ -25,6 +25,7 @@ interface LogsPanelProps extends PanelProps<Options> {}
 export const LogsPanel: React.FunctionComponent<LogsPanelProps> = ({
   data,
   timeZone,
+  fieldConfig,
   options: {
     showLabels,
     showTime,
@@ -86,7 +87,7 @@ export const LogsPanel: React.FunctionComponent<LogsPanelProps> = ({
   );
 
   if (!data || logRows.length === 0) {
-    return <PanelDataErrorView panelId={id} data={data} needsStringField />;
+    return <PanelDataErrorView fieldConfig={fieldConfig} panelId={id} data={data} needsStringField />;
   }
 
   const renderCommonLabels = () => (

@@ -104,7 +104,6 @@ export const LabelsAsFieldsTransformerEditor: React.FC<TransformerUIProps<Labels
             htmlFor="labels-to-fields-as-name"
           >
             <Select
-              menuShouldPortal
               inputId="labels-to-fields-as-name"
               isClearable={true}
               allowCustomValue={false}

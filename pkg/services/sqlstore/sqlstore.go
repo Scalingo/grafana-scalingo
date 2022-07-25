@@ -15,6 +15,7 @@ import (
 	_ "github.com/lib/pq"
 	"xorm.io/xorm"
 
+	"github.com/grafana/grafana/pkg/bus"
 	"github.com/grafana/grafana/pkg/infra/fs"
 	"github.com/grafana/grafana/pkg/infra/localcache"
 	"github.com/grafana/grafana/pkg/infra/log"
@@ -32,7 +33,6 @@ import (
 )
 
 var (
-	x       *xorm.Engine
 	dialect migrator.Dialect
 
 	sqlog log.Logger = log.New("sqlstore")
@@ -45,6 +45,7 @@ type SQLStore struct {
 	Cfg          *setting.Cfg
 	CacheService *localcache.CacheService
 
+	bus                         bus.Bus
 	dbCfg                       DatabaseConfig
 	engine                      *xorm.Engine
 	log                         log.Logger
@@ -54,12 +55,12 @@ type SQLStore struct {
 	tracer                      tracing.Tracer
 }
 
-func ProvideService(cfg *setting.Cfg, cacheService *localcache.CacheService, migrations registry.DatabaseMigrator, tracer tracing.Tracer) (*SQLStore, error) {
+func ProvideService(cfg *setting.Cfg, cacheService *localcache.CacheService, migrations registry.DatabaseMigrator, bus bus.Bus, tracer tracing.Tracer) (*SQLStore, error) {
 	// This change will make xorm use an empty default schema for postgres and
 	// by that mimic the functionality of how it was functioning before
 	// xorm's changes above.
 	xorm.DefaultPostgresSchema = ""
-	s, err := newSQLStore(cfg, cacheService, nil, migrations, tracer)
+	s, err := newSQLStore(cfg, cacheService, nil, migrations, bus, tracer)
 	if err != nil {
 		return nil, err
 	}
@@ -80,13 +81,14 @@ func ProvideServiceForTests(migrations registry.DatabaseMigrator) (*SQLStore, er
 }
 
 func newSQLStore(cfg *setting.Cfg, cacheService *localcache.CacheService, engine *xorm.Engine,
-	migrations registry.DatabaseMigrator, tracer tracing.Tracer, opts ...InitTestDBOpt) (*SQLStore, error) {
+	migrations registry.DatabaseMigrator, bus bus.Bus, tracer tracing.Tracer, opts ...InitTestDBOpt) (*SQLStore, error) {
 	ss := &SQLStore{
 		Cfg:                         cfg,
 		CacheService:                cacheService,
 		log:                         log.New("sqlstore"),
 		skipEnsureDefaultOrgAndUser: false,
 		migrations:                  migrations,
+		bus:                         bus,
 		tracer:                      tracer,
 	}
 	for _, opt := range opts {
@@ -101,13 +103,11 @@ func newSQLStore(cfg *setting.Cfg, cacheService *localcache.CacheService, engine
 
 	ss.Dialect = migrator.NewDialect(ss.engine)
 
-	// temporarily still set global var
-	x = ss.engine
 	dialect = ss.Dialect
 
 	// Init repo instances
 	annotations.SetRepository(&SQLAnnotationRepo{sql: ss})
-	annotations.SetAnnotationCleaner(&AnnotationCleanupService{batchSize: ss.Cfg.AnnotationCleanupJobBatchSize, log: log.New("annotationcleaner")})
+	annotations.SetAnnotationCleaner(&AnnotationCleanupService{batchSize: ss.Cfg.AnnotationCleanupJobBatchSize, log: log.New("annotationcleaner"), sqlstore: ss})
 
 	// if err := ss.Reset(); err != nil {
 	// 	return nil, err
@@ -157,6 +157,11 @@ func (ss *SQLStore) Quote(value string) string {
 	return ss.engine.Quote(value)
 }
 
+// GetDialect retrieves the dialect of the current SQL engine
+func (ss *SQLStore) GetDialect() migrator.Dialect {
+	return ss.Dialect
+}
+
 func (ss *SQLStore) ensureMainOrgAndAdminUser() error {
 	ctx := context.Background()
 	err := ss.WithTransactionalDbSession(ctx, func(sess *DBSession) error {
@@ -176,12 +181,12 @@ func (ss *SQLStore) ensureMainOrgAndAdminUser() error {
 		// ensure admin user
 		if !ss.Cfg.DisableInitAdminCreation {
 			ss.log.Debug("Creating default admin user")
-			if _, err := ss.createUser(ctx, sess, userCreationArgs{
+			if _, err := ss.createUser(ctx, sess, models.CreateUserCommand{
 				Login:    ss.Cfg.AdminUser,
 				Email:    ss.Cfg.AdminUser + "@localhost",
 				Password: ss.Cfg.AdminPassword,
 				IsAdmin:  true,
-			}, false); err != nil {
+			}); err != nil {
 				return fmt.Errorf("failed to create admin user: %s", err)
 			}
 
@@ -441,6 +446,7 @@ type InitTestDBOpt struct {
 var featuresEnabledDuringTests = []string{
 	featuremgmt.FlagDashboardPreviews,
 	featuremgmt.FlagDashboardComments,
+	featuremgmt.FlagPanelTitleSearch,
 }
 
 // InitTestDBWithMigration initializes the test DB given custom migrations.
@@ -489,6 +495,7 @@ func initTestDB(migration registry.DatabaseMigrator, opts ...InitTestDBOpt) (*SQ
 
 		// set test db config
 		cfg := setting.NewCfg()
+		cfg.RBACEnabled = true
 		cfg.IsFeatureToggleEnabled = func(key string) bool {
 			for _, enabledFeature := range features {
 				if enabledFeature == key {
@@ -540,7 +547,8 @@ func initTestDB(migration registry.DatabaseMigrator, opts ...InitTestDBOpt) (*SQ
 		if err != nil {
 			return nil, err
 		}
-		testSQLStore, err = newSQLStore(cfg, localcache.New(5*time.Minute, 10*time.Minute), engine, migration, tracer, opts...)
+		bus := bus.ProvideBus(tracer)
+		testSQLStore, err = newSQLStore(cfg, localcache.New(5*time.Minute, 10*time.Minute), engine, migration, bus, tracer, opts...)
 		if err != nil {
 			return nil, err
 		}

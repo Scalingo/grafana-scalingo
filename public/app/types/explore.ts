@@ -16,6 +16,7 @@ import {
   DataQueryResponse,
   ExplorePanelsState,
 } from '@grafana/data';
+import { RichHistorySearchFilters, RichHistorySettings } from 'app/core/utils/richHistoryTypes';
 
 export enum ExploreId {
   left = 'left',
@@ -45,6 +46,11 @@ export interface ExploreState {
   right?: ExploreItemState;
 
   /**
+   * Settings for rich history (note: filters are stored per each pane separately)
+   */
+  richHistorySettings?: RichHistorySettings;
+
+  /**
    * True if local storage quota was exceeded when a rich history item was added. This is to prevent showing
    * multiple errors when local storage is full.
    */
@@ -54,6 +60,11 @@ export interface ExploreState {
    * True if a warning message of hitting the exceeded number of items has been shown already.
    */
   richHistoryLimitExceededWarningShown: boolean;
+
+  /**
+   * True if a warning message about failed rich history has been shown already in this session.
+   */
+  richHistoryMigrationFailed: boolean;
 }
 
 export const EXPLORE_GRAPH_STYLES = ['lines', 'bars', 'points', 'stacked_lines', 'stacked_bars'] as const;
@@ -154,6 +165,8 @@ export interface ExploreItemState {
    * History of all queries
    */
   richHistory: RichHistoryQuery[];
+  richHistorySearchFilters?: RichHistorySearchFilters;
+  richHistoryTotal?: number;
 
   /**
    * We are using caching to store query responses of queries run from logs navigation.

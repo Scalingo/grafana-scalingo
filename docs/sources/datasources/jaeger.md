@@ -15,7 +15,7 @@ weight: 800
 # Jaeger data source
 
 Grafana ships with built-in support for Jaeger, which provides open source, end-to-end distributed tracing.
-Just add it as a data source and you are ready to query your traces in [Explore]({{< relref "../explore/_index.md" >}}).
+Just add it as a data source and you are ready to query your traces in [Explore]({{< relref "../explore/" >}}).
 
 ## Add data source
 
@@ -34,7 +34,7 @@ To access Jaeger settings, click the **Configuration** (gear) icon, then click *
 
 > **Note:** This feature is available in Grafana 7.4+.
 
-This is a configuration for the [trace to logs feature]({{< relref "../explore/trace-integration" >}}). Select target data source (at this moment limited to Loki and Splunk \[logs\] data sources) and select which tags will be used in the logs query.
+This is a configuration for the [trace to logs feature]({{< relref "../explore/trace-integration/" >}}). Select target data source (at this moment limited to Loki and Splunk \[logs\] data sources) and select which tags will be used in the logs query.
 
 - **Data source -** Target data source.
 - **Tags -** The tags that will be used in the logs query. Default is `'cluster', 'hostname', 'namespace', 'pod'`.
@@ -46,6 +46,19 @@ This is a configuration for the [trace to logs feature]({{< relref "../explore/t
 
 ![Trace to logs settings](/static/img/docs/explore/trace-to-logs-settings-8-2.png 'Screenshot of the trace to logs settings')
 
+### Trace to metrics
+
+> **Note:** This feature is behind the `traceToMetrics` feature toggle.
+
+To configure trace to metrics, select the target Prometheus data source and create any desired linked queries.
+
+-- **Data source -** Target data source.
+
+Each linked query consists of:
+
+-- **Link Label -** (Optional) Descriptive label for the linked query.
+-- **Query -** Query that runs when navigating from a trace to the metrics data source.
+
 ### Node Graph
 
 This is a configuration for the beta Node Graph visualization. The Node Graph is shown after the trace view is loaded and is disabled by default.
@@ -54,7 +67,7 @@ This is a configuration for the beta Node Graph visualization. The Node Graph is
 
 ## Query traces
 
-You can query and display traces from Jaeger via [Explore]({{< relref "../explore/_index.md" >}}).
+You can query and display traces from Jaeger via [Explore]({{< relref "../explore/" >}}).
 
 {{< figure src="/static/img/docs/explore/jaeger-search-form.png" class="docs-image--no-shadow" caption="Screenshot of the Jaeger query editor" >}}
 
@@ -129,7 +142,7 @@ Here is an example JSON:
 
 ## Linking Trace ID from logs
 
-You can link to Jaeger trace from logs in Loki by configuring a derived field with internal link. See the [Derived fields]({{< relref "loki.md#derived-fields" >}}) section in the [Loki data source]({{< relref "loki.md" >}}) documentation for details.
+You can link to Jaeger trace from logs in Loki by configuring a derived field with internal link. See the [Derived fields]({{< relref "loki/#derived-fields" >}}) section in the [Loki data source]({{< relref "loki/" >}}) documentation for details.
 
 ## Configure the data source with provisioning
 

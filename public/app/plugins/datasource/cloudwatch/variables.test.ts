@@ -8,12 +8,9 @@ const defaultQuery: VariableQuery = {
   region: 'bar',
   metricName: '',
   dimensionKey: '',
-  dimensionFilters: '',
-  ec2Filters: '',
   instanceID: '',
   attributeName: '',
   resourceType: '',
-  tags: '',
   refId: '',
 };
 
@@ -22,13 +19,12 @@ ds.datasource.getRegions = jest.fn().mockResolvedValue([{ label: 'a', value: 'a'
 ds.datasource.getNamespaces = jest.fn().mockResolvedValue([{ label: 'b', value: 'b' }]);
 ds.datasource.getMetrics = jest.fn().mockResolvedValue([{ label: 'c', value: 'c' }]);
 ds.datasource.getDimensionKeys = jest.fn().mockResolvedValue([{ label: 'd', value: 'd' }]);
-ds.datasource.describeLogGroups = jest.fn().mockResolvedValue(['a', 'b']);
 const getDimensionValues = jest.fn().mockResolvedValue([{ label: 'e', value: 'e' }]);
 const getEbsVolumeIds = jest.fn().mockResolvedValue([{ label: 'f', value: 'f' }]);
 const getEc2InstanceAttribute = jest.fn().mockResolvedValue([{ label: 'g', value: 'g' }]);
 const getResourceARNs = jest.fn().mockResolvedValue([{ label: 'h', value: 'h' }]);
 
-const variables = new CloudWatchVariableSupport(ds.datasource, ds.templateService);
+const variables = new CloudWatchVariableSupport(ds.datasource);
 
 describe('variables', () => {
   it('should run regions', async () => {
@@ -57,7 +53,7 @@ describe('variables', () => {
       queryType: VariableQueryType.DimensionValues,
       metricName: 'abc',
       dimensionKey: 'efg',
-      dimensionFilters: '{"a":"b"}',
+      dimensionFilters: { a: 'b' },
     };
     beforeEach(() => {
       ds.datasource.getDimensionValues = getDimensionValues;
@@ -75,23 +71,14 @@ describe('variables', () => {
       expect(getDimensionValues).not.toBeCalled();
       expect(result).toEqual([]);
     });
-
     it('should run if values are set', async () => {
       const result = await variables.execute(query);
-      expect(getDimensionValues).toBeCalledWith(query.region, query.namespace, query.metricName, query.dimensionKey, {
-        a: 'b',
-      });
-      expect(result).toEqual([{ text: 'e', value: 'e', expandable: true }]);
-    });
-
-    it('should replace empty array filters with empty object', async () => {
-      const result = await variables.execute({ ...query, dimensionFilters: '[]' });
       expect(getDimensionValues).toBeCalledWith(
         query.region,
         query.namespace,
         query.metricName,
         query.dimensionKey,
-        {}
+        query.dimensionFilters
       );
       expect(result).toEqual([{ text: 'e', value: 'e', expandable: true }]);
     });
@@ -125,7 +112,7 @@ describe('variables', () => {
       ...defaultQuery,
       queryType: VariableQueryType.EC2InstanceAttributes,
       attributeName: 'abc',
-      ec2Filters: '{"$dimension":["b"]}',
+      ec2Filters: { a: ['b'] },
     };
     beforeEach(() => {
       ds.datasource.getEc2InstanceAttribute = getEc2InstanceAttribute;
@@ -140,13 +127,7 @@ describe('variables', () => {
 
     it('should run if instance id set', async () => {
       const result = await variables.execute(query);
-      expect(getEc2InstanceAttribute).toBeCalledWith(query.region, query.attributeName, { env: ['b'] });
-      expect(result).toEqual([{ text: 'g', value: 'g', expandable: true }]);
-    });
-
-    it('should replace empty array filters with empty object', async () => {
-      const result = await variables.execute({ ...query, ec2Filters: '[]' });
-      expect(getEc2InstanceAttribute).toBeCalledWith(query.region, query.attributeName, {});
+      expect(getEc2InstanceAttribute).toBeCalledWith(query.region, query.attributeName, { a: ['b'] });
       expect(result).toEqual([{ text: 'g', value: 'g', expandable: true }]);
     });
   });
@@ -156,7 +137,7 @@ describe('variables', () => {
       ...defaultQuery,
       queryType: VariableQueryType.ResourceArns,
       resourceType: 'abc',
-      tags: '{"a":${labels:json}}',
+      tags: { a: ['b'] },
     };
     beforeEach(() => {
       ds.datasource.getResourceARNs = getResourceARNs;
@@ -171,13 +152,7 @@ describe('variables', () => {
 
     it('should run if instance id set', async () => {
       const result = await variables.execute(query);
-      expect(getResourceARNs).toBeCalledWith(query.region, query.resourceType, { a: ['InstanceId', 'InstanceType'] });
-      expect(result).toEqual([{ text: 'h', value: 'h', expandable: true }]);
-    });
-
-    it('should replace empty array tags with empty object', async () => {
-      const result = await variables.execute({ ...query, tags: '[]' });
-      expect(getResourceARNs).toBeCalledWith(query.region, query.resourceType, {});
+      expect(getResourceARNs).toBeCalledWith(query.region, query.resourceType, { a: ['b'] });
       expect(result).toEqual([{ text: 'h', value: 'h', expandable: true }]);
     });
   });
@@ -191,15 +166,5 @@ describe('variables', () => {
       { text: 'Sum', value: 'Sum', expandable: true },
       { text: 'SampleCount', value: 'SampleCount', expandable: true },
     ]);
-  });
-
-  describe('log groups', () => {
-    it('should call describe log groups', async () => {
-      const result = await variables.execute({ ...defaultQuery, queryType: VariableQueryType.LogGroups });
-      expect(result).toEqual([
-        { text: 'a', value: 'a', expandable: true },
-        { text: 'b', value: 'b', expandable: true },
-      ]);
-    });
   });
 });

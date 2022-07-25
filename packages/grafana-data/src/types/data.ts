@@ -48,6 +48,9 @@ export interface QueryResultMeta {
   /** The path for live stream updates for this frame */
   channel?: string;
 
+  /** Did the query response come from the cache */
+  isCachedResponse?: boolean;
+
   /**
    * Optionally identify which topic the frame should be assigned to.
    * A value specified in the response will override what the request asked for.

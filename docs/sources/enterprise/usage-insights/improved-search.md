@@ -1,6 +1,5 @@
 ---
 aliases:
-  - /docs/grafana/latest/enterprise/usage-insights/improved-search.md/
   - /docs/grafana/latest/enterprise/usage-insights/improved-search/
 description: Sort dashboards by using insights data
 keywords:
@@ -14,7 +13,7 @@ weight: 400
 
 # Sort dashboards by using insights data
 
-> **Note:** Available in Grafana Enterprise v7.0+.
+> **Note:** Available in [Grafana Enterprise]({{< relref "../" >}}) version 7.0 and later, and [Grafana Cloud Pro and Advanced]({{< ref "/docs/grafana-cloud" >}}).
 
 In the search view, you can sort dashboards by using insights data. Doing so helps you find unused or broken dashboards or discover those that are most viewed.
 

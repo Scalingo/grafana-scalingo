@@ -36,13 +36,13 @@ describe('TransformationsEditor', () => {
           options: {},
         },
       ]);
-      const editors = screen.getAllByLabelText(/^Transformation editor/g);
+      const editors = screen.getAllByLabelText(/^Transformation editor/);
       expect(editors).toHaveLength(1);
     });
   });
 
   describe('when Add transformation clicked', () => {
-    it('renders transformations picker', () => {
+    it('renders transformations picker', async () => {
       const buttonLabel = 'Add transformation';
       setup([
         {
@@ -52,7 +52,7 @@ describe('TransformationsEditor', () => {
       ]);
 
       const addTransformationButton = screen.getByText(buttonLabel);
-      userEvent.click(addTransformationButton);
+      await userEvent.click(addTransformationButton);
 
       const search = screen.getByLabelText(selectors.components.Transforms.searchInput);
       expect(search).toBeDefined();
@@ -61,7 +61,7 @@ describe('TransformationsEditor', () => {
 
   describe('actions', () => {
     describe('debug', () => {
-      it('should show/hide debugger', () => {
+      it('should show/hide debugger', async () => {
         setup([
           {
             id: 'reduce',
@@ -73,7 +73,7 @@ describe('TransformationsEditor', () => {
         expect(screen.queryByLabelText(debuggerSelector)).toBeNull();
 
         const debugButton = screen.getByLabelText(selectors.components.QueryEditorRow.actionButton('Debug'));
-        userEvent.click(debugButton);
+        await userEvent.click(debugButton);
 
         expect(screen.getByLabelText(debuggerSelector)).toBeInTheDocument();
       });

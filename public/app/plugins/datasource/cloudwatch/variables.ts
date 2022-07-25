@@ -2,21 +2,18 @@ import { from, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { CustomVariableSupport, DataQueryRequest, DataQueryResponse } from '@grafana/data';
-import { getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
 import { VariableQueryEditor } from './components/VariableQueryEditor/VariableQueryEditor';
 import { CloudWatchDatasource } from './datasource';
-import { migrateVariableQuery } from './migrations';
+import { migrateVariableQuery } from './migrations/variableQueryMigrations';
 import { VariableQuery, VariableQueryType } from './types';
 
 export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchDatasource, VariableQuery> {
   private readonly datasource: CloudWatchDatasource;
-  private readonly templateSrv: TemplateSrv;
 
-  constructor(datasource: CloudWatchDatasource, templateSrv: TemplateSrv = getTemplateSrv()) {
+  constructor(datasource: CloudWatchDatasource) {
     super();
     this.datasource = datasource;
-    this.templateSrv = templateSrv;
     this.query = this.query.bind(this);
   }
 
@@ -48,22 +45,11 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
           return this.handleResourceARNsQuery(query);
         case VariableQueryType.Statistics:
           return this.handleStatisticsQuery();
-        case VariableQueryType.LogGroups:
-          return this.handleLogGroupsQuery(query);
       }
     } catch (error) {
       console.error(`Could not run CloudWatchMetricFindQuery ${query}`, error);
       return [];
     }
-  }
-
-  async handleLogGroupsQuery({ region, logGroupPrefix }: VariableQuery) {
-    const logGroups = await this.datasource.describeLogGroups({ region, logGroupNamePrefix: logGroupPrefix });
-    return logGroups.map((s) => ({
-      text: s,
-      value: s,
-      expandable: true,
-    }));
   }
 
   async handleRegionsQuery() {
@@ -106,11 +92,13 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
     if (!dimensionKey || !metricName) {
       return [];
     }
-    var filterJson = {};
-    if (dimensionFilters && dimensionFilters !== '[]') {
-      filterJson = JSON.parse(dimensionFilters);
-    }
-    const keys = await this.datasource.getDimensionValues(region, namespace, metricName, dimensionKey, filterJson);
+    const keys = await this.datasource.getDimensionValues(
+      region,
+      namespace,
+      metricName,
+      dimensionKey,
+      dimensionFilters ?? {}
+    );
     return keys.map((s: { label: string; value: string }) => ({
       text: s.label,
       value: s.value,
@@ -134,11 +122,7 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
     if (!attributeName) {
       return [];
     }
-    var filterJson = {};
-    if (ec2Filters && ec2Filters !== '[]') {
-      filterJson = JSON.parse(this.templateSrv.replace(ec2Filters));
-    }
-    const values = await this.datasource.getEc2InstanceAttribute(region, attributeName, filterJson);
+    const values = await this.datasource.getEc2InstanceAttribute(region, attributeName, ec2Filters ?? {});
     return values.map((s: { label: string; value: string }) => ({
       text: s.label,
       value: s.value,
@@ -150,11 +134,7 @@ export class CloudWatchVariableSupport extends CustomVariableSupport<CloudWatchD
     if (!resourceType) {
       return [];
     }
-    var tagJson = {};
-    if (tags && tags !== '[]') {
-      tagJson = JSON.parse(this.templateSrv.replace(tags));
-    }
-    const keys = await this.datasource.getResourceARNs(region, resourceType, tagJson);
+    const keys = await this.datasource.getResourceARNs(region, resourceType, tags ?? {});
     return keys.map((s: { label: string; value: string }) => ({
       text: s.label,
       value: s.value,

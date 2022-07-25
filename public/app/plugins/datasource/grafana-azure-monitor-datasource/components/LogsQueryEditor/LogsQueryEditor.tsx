@@ -1,13 +1,16 @@
 import React from 'react';
 
-import { Alert, InlineFieldRow } from '@grafana/ui';
+import { EditorRows, EditorRow, EditorFieldGroup } from '@grafana/experimental';
+import { Alert } from '@grafana/ui';
 
 import Datasource from '../../datasource';
 import { AzureMonitorErrorish, AzureMonitorOption, AzureMonitorQuery } from '../../types';
+import ResourceField from '../ResourceField';
+import { ResourceRowType } from '../ResourcePicker/types';
 
 import FormatAsField from './FormatAsField';
 import QueryField from './QueryField';
-import ResourceField from './ResourceField';
+import { setResource } from './setQueryValue';
 import useMigrations from './useMigrations';
 
 interface LogsQueryEditorProps {
@@ -32,9 +35,32 @@ const LogsQueryEditor: React.FC<LogsQueryEditorProps> = ({
   const migrationError = useMigrations(datasource, query, onChange);
 
   return (
-    <div data-testid="azure-monitor-logs-query-editor">
-      <InlineFieldRow>
-        <ResourceField
+    <span data-testid="azure-monitor-logs-query-editor-with-experimental-ui">
+      <EditorRows>
+        <EditorRow>
+          <EditorFieldGroup>
+            <ResourceField
+              query={query}
+              datasource={datasource}
+              inlineField={true}
+              labelWidth={10}
+              subscriptionId={subscriptionId}
+              variableOptionGroup={variableOptionGroup}
+              onQueryChange={onChange}
+              setError={setError}
+              selectableEntryTypes={[
+                ResourceRowType.Subscription,
+                ResourceRowType.ResourceGroup,
+                ResourceRowType.Resource,
+                ResourceRowType.Variable,
+              ]}
+              setResource={setResource}
+              resourceUri={query.azureLogAnalytics?.resource}
+              queryType="logs"
+            />
+          </EditorFieldGroup>
+        </EditorRow>
+        <QueryField
           query={query}
           datasource={datasource}
           subscriptionId={subscriptionId}
@@ -42,30 +68,24 @@ const LogsQueryEditor: React.FC<LogsQueryEditorProps> = ({
           onQueryChange={onChange}
           setError={setError}
         />
-      </InlineFieldRow>
+        <EditorRow>
+          <EditorFieldGroup>
+            {!hideFormatAs && (
+              <FormatAsField
+                query={query}
+                datasource={datasource}
+                subscriptionId={subscriptionId}
+                variableOptionGroup={variableOptionGroup}
+                onQueryChange={onChange}
+                setError={setError}
+              />
+            )}
 
-      <QueryField
-        query={query}
-        datasource={datasource}
-        subscriptionId={subscriptionId}
-        variableOptionGroup={variableOptionGroup}
-        onQueryChange={onChange}
-        setError={setError}
-      />
-
-      {!hideFormatAs && (
-        <FormatAsField
-          query={query}
-          datasource={datasource}
-          subscriptionId={subscriptionId}
-          variableOptionGroup={variableOptionGroup}
-          onQueryChange={onChange}
-          setError={setError}
-        />
-      )}
-
-      {migrationError && <Alert title={migrationError.title}>{migrationError.message}</Alert>}
-    </div>
+            {migrationError && <Alert title={migrationError.title}>{migrationError.message}</Alert>}
+          </EditorFieldGroup>
+        </EditorRow>
+      </EditorRows>
+    </span>
   );
 };
 

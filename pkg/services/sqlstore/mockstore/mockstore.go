@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
+	"github.com/grafana/grafana/pkg/services/sqlstore/migrator"
 )
 
 type OrgListResponse []struct {
@@ -20,7 +21,6 @@ type SQLStoreMock struct {
 	ExpectedDatasource             *models.DataSource
 	ExpectedAlert                  *models.Alert
 	ExpectedPluginSetting          *models.PluginSetting
-	ExpectedDashboard              *models.Dashboard
 	ExpectedDashboards             []*models.Dashboard
 	ExpectedDashboardVersion       *models.DashboardVersion
 	ExpectedDashboardVersions      []*models.DashboardVersion
@@ -76,6 +76,10 @@ func (m *SQLStoreMock) GetSystemStats(ctx context.Context, query *models.GetSyst
 	return m.ExpectedError
 }
 
+func (m *SQLStoreMock) GetDialect() migrator.Dialect {
+	return nil
+}
+
 func (m *SQLStoreMock) DeleteExpiredSnapshots(ctx context.Context, cmd *models.DeleteExpiredSnapshotsCommand) error {
 	return m.ExpectedError
 }
@@ -88,7 +92,7 @@ func (m *SQLStoreMock) DeleteDashboardSnapshot(ctx context.Context, cmd *models.
 	return m.ExpectedError
 }
 
-func (m *SQLStoreMock) GetDashboardSnapshot(query *models.GetDashboardSnapshotQuery) error {
+func (m *SQLStoreMock) GetDashboardSnapshot(ctx context.Context, query *models.GetDashboardSnapshotQuery) error {
 	query.Result = m.ExpectedDashboardSnapshot
 	return m.ExpectedError
 }
@@ -97,7 +101,7 @@ func (m *SQLStoreMock) HasEditPermissionInFolders(ctx context.Context, query *mo
 	return m.ExpectedError
 }
 
-func (m *SQLStoreMock) SearchDashboardSnapshots(query *models.GetDashboardSnapshotsQuery) error {
+func (m *SQLStoreMock) SearchDashboardSnapshots(ctx context.Context, query *models.GetDashboardSnapshotsQuery) error {
 	return m.ExpectedError
 }
 
@@ -116,6 +120,9 @@ func (m *SQLStoreMock) GetOrgByNameHandler(ctx context.Context, query *models.Ge
 
 func (m *SQLStoreMock) CreateOrgWithMember(name string, userID int64) (models.Org, error) {
 	return *m.ExpectedOrg, nil
+}
+func (m *SQLStoreMock) CreateOrg(ctx context.Context, cmd *models.CreateOrgCommand) error {
+	return m.ExpectedError
 }
 
 func (m *SQLStoreMock) UpdateOrg(ctx context.Context, cmd *models.UpdateOrgCommand) error {
@@ -289,23 +296,6 @@ func (m *SQLStoreMock) WithDbSession(ctx context.Context, callback sqlstore.DBTr
 	return m.ExpectedError
 }
 
-func (m *SQLStoreMock) GetPreferencesWithDefaults(ctx context.Context, query *models.GetPreferencesWithDefaultsQuery) error {
-	query.Result = &models.Preferences{}
-	return m.ExpectedError
-}
-
-func (m *SQLStoreMock) GetPreferences(ctx context.Context, query *models.GetPreferencesQuery) error {
-	return m.ExpectedError
-}
-
-func (m *SQLStoreMock) SavePreferences(ctx context.Context, cmd *models.SavePreferencesCommand) error {
-	return m.ExpectedError
-}
-
-func (m *SQLStoreMock) PatchPreferences(ctx context.Context, cmd *models.PatchPreferencesCommand) error {
-	return m.ExpectedError
-}
-
 func (m *SQLStoreMock) GetPluginSettings(ctx context.Context, orgID int64) ([]*models.PluginSetting, error) {
 	return nil, m.ExpectedError
 }
@@ -320,24 +310,6 @@ func (m *SQLStoreMock) UpdatePluginSetting(ctx context.Context, cmd *models.Upda
 }
 
 func (m *SQLStoreMock) UpdatePluginSettingVersion(ctx context.Context, cmd *models.UpdatePluginSettingVersionCmd) error {
-	return m.ExpectedError
-}
-
-func (m *SQLStoreMock) IsStarredByUserCtx(ctx context.Context, query *models.IsStarredByUserQuery) error {
-	query.Result = false
-	return m.ExpectedError
-}
-
-func (m *SQLStoreMock) StarDashboard(ctx context.Context, cmd *models.StarDashboardCommand) error {
-	return m.ExpectedError
-}
-
-func (m *SQLStoreMock) UnstarDashboard(ctx context.Context, cmd *models.UnstarDashboardCommand) error {
-	return m.ExpectedError
-}
-
-func (m *SQLStoreMock) GetUserStars(ctx context.Context, query *models.GetUserStarsQuery) error {
-	query.Result = m.ExpectedUserStars
 	return m.ExpectedError
 }
 
@@ -408,7 +380,7 @@ func (m *SQLStoreMock) UpdatePlaylist(ctx context.Context, cmd *models.UpdatePla
 	return m.ExpectedError
 }
 
-func (m *SQLStoreMock) GetPlaylist(ctx context.Context, query *models.GetPlaylistByIdQuery) error {
+func (m *SQLStoreMock) GetPlaylist(ctx context.Context, query *models.GetPlaylistByUidQuery) error {
 	return m.ExpectedError
 }
 
@@ -420,7 +392,7 @@ func (m *SQLStoreMock) SearchPlaylists(ctx context.Context, query *models.GetPla
 	return m.ExpectedError
 }
 
-func (m *SQLStoreMock) GetPlaylistItem(ctx context.Context, query *models.GetPlaylistItemsByIdQuery) error {
+func (m *SQLStoreMock) GetPlaylistItem(ctx context.Context, query *models.GetPlaylistItemsByUidQuery) error {
 	return m.ExpectedError
 }
 
@@ -480,11 +452,6 @@ func (m *SQLStoreMock) SaveDashboard(cmd models.SaveDashboardCommand) (*models.D
 	return nil, m.ExpectedError
 }
 
-func (m *SQLStoreMock) GetDashboard(ctx context.Context, query *models.GetDashboardQuery) error {
-	query.Result = m.ExpectedDashboard
-	return m.ExpectedError
-}
-
 func (m SQLStoreMock) SearchDashboards(ctx context.Context, query *models.FindPersistedDashboardsQuery) error {
 	query.Result = m.ExpectedPersistedDashboards
 	return m.ExpectedError
@@ -495,6 +462,7 @@ func (m *SQLStoreMock) GetDashboardTags(ctx context.Context, query *models.GetDa
 }
 
 func (m *SQLStoreMock) GetDashboards(ctx context.Context, query *models.GetDashboardsQuery) error {
+	query.Result = m.ExpectedDashboards
 	return m.ExpectedError
 }
 
@@ -669,6 +637,10 @@ func (m *SQLStoreMock) GetDashboardPermissionsForUser(ctx context.Context, query
 	return m.ExpectedError
 }
 
-func (m *SQLStoreMock) GetDashboardSlugById(ctx context.Context, query *models.GetDashboardSlugByIdQuery) error {
+func (m *SQLStoreMock) IsAdminOfTeams(ctx context.Context, query *models.IsAdminOfTeamsQuery) error {
 	return m.ExpectedError
+}
+
+func (m *SQLStoreMock) GetAPIKeyByHash(ctx context.Context, hash string) (*models.ApiKey, error) {
+	return nil, m.ExpectedError
 }

@@ -54,7 +54,7 @@ func (hs *HTTPServer) GetFolderPermissionList(c *models.ReqContext) response.Res
 		filteredAcls = append(filteredAcls, perm)
 	}
 
-	return response.JSON(200, filteredAcls)
+	return response.JSON(http.StatusOK, filteredAcls)
 }
 
 func (hs *HTTPServer) UpdateFolderPermissions(c *models.ReqContext) response.Response {
@@ -140,7 +140,7 @@ func (hs *HTTPServer) UpdateFolderPermissions(c *models.ReqContext) response.Res
 		return response.Error(500, "Failed to create permission", err)
 	}
 
-	return response.JSON(200, util.DynMap{
+	return response.JSON(http.StatusOK, util.DynMap{
 		"message": "Folder permissions updated",
 		"id":      folder.Id,
 		"title":   folder.Title,

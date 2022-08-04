@@ -10,11 +10,6 @@ import { selectTotal } from '../invites/state/selectors';
 import { setUsersSearchQuery } from './state/reducers';
 import { getUsersSearchQuery } from './state/selectors';
 
-import { selectTotal } from '../invites/state/selectors';
-
-import { setUsersSearchQuery } from './state/reducers';
-import { getUsersSearchQuery } from './state/selectors';
-
 export interface Props {
   searchQuery: string;
   setUsersSearchQuery: typeof setUsersSearchQuery;

@@ -77,20 +77,6 @@ func TraceIDFromContext(c context.Context, requireSampled bool) string {
 	return ""
 }
 
-type traceValue struct {
-	ID        string
-	IsSampled bool
-}
-
-func TraceIDFromContext(c context.Context, requireSampled bool) string {
-	v := c.Value(traceKey{})
-	// Return traceID if a) it is present and b) it is sampled when requireSampled param is true
-	if trace, ok := v.(traceValue); ok && (!requireSampled || trace.IsSampled) {
-		return trace.ID
-	}
-	return ""
-}
-
 type Opentracing struct {
 	enabled                  bool
 	address                  string

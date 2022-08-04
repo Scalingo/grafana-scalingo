@@ -41,6 +41,7 @@ export interface TimeRangePickerProps extends Themeable {
   onZoom: () => void;
   history?: TimeRange[];
   hideQuickRanges?: boolean;
+  widthOverride?: number;
 }
 
 export interface State {
@@ -64,6 +65,7 @@ export function UnthemedTimeRangePicker(props: TimeRangePickerProps): ReactEleme
     onChangeTimeZone,
     onChangeFiscalYearStartMonth,
     hideQuickRanges,
+    widthOverride,
   } = props;
 
   const onChange = (timeRange: TimeRange) => {
@@ -115,7 +117,7 @@ export function UnthemedTimeRangePicker(props: TimeRangePickerProps): ReactEleme
         </ToolbarButton>
       </Tooltip>
       {isOpen && (
-        <FocusScope contain autoFocus restoreFocus>
+        <FocusScope contain autoFocus>
           <section ref={ref} {...overlayProps} {...dialogProps}>
             <TimePickerContent
               timeZone={timeZone}
@@ -125,6 +127,7 @@ export function UnthemedTimeRangePicker(props: TimeRangePickerProps): ReactEleme
               quickOptions={quickOptions}
               history={history}
               showHistory
+              widthOverride={widthOverride}
               onChangeTimeZone={onChangeTimeZone}
               onChangeFiscalYearStartMonth={onChangeFiscalYearStartMonth}
               hideQuickRanges={hideQuickRanges}

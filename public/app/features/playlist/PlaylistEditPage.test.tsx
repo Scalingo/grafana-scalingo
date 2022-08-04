@@ -13,12 +13,18 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: () => backendSrv,
 }));
 
-async function getTestContext({ name, interval, items }: Partial<Playlist> = {}) {
+jest.mock('../../core/components/TagFilter/TagFilter', () => ({
+  TagFilter: () => {
+    return <>mocked-tag-filter</>;
+  },
+}));
+
+async function getTestContext({ name, interval, items, uid }: Partial<Playlist> = {}) {
   jest.clearAllMocks();
-  const playlist = { name, items, interval } as unknown as Playlist;
+  const playlist = { name, items, interval, uid } as unknown as Playlist;
   const queryParams = {};
   const route: any = {};
-  const match: any = { params: { id: 1 } };
+  const match: any = { params: { uid: 'foo' } };
   const location: any = {};
   const history: any = {};
   const navModel: any = {
@@ -31,6 +37,7 @@ async function getTestContext({ name, interval, items }: Partial<Playlist> = {})
     name: 'Test Playlist',
     interval: '5s',
     items: [{ title: 'First item', type: 'dashboard_by_id', order: 1, value: '1' }],
+    uid: 'foo',
   });
   const { rerender } = render(
     <PlaylistEditPage
@@ -64,13 +71,13 @@ describe('PlaylistEditPage', () => {
       const { putMock } = await getTestContext();
 
       expect(locationService.getLocation().pathname).toEqual('/');
-      userEvent.clear(screen.getByRole('textbox', { name: /playlist name/i }));
-      userEvent.type(screen.getByRole('textbox', { name: /playlist name/i }), 'A Name');
-      userEvent.clear(screen.getByRole('textbox', { name: /playlist interval/i }));
-      userEvent.type(screen.getByRole('textbox', { name: /playlist interval/i }), '10s');
+      await userEvent.clear(screen.getByRole('textbox', { name: /playlist name/i }));
+      await userEvent.type(screen.getByRole('textbox', { name: /playlist name/i }), 'A Name');
+      await userEvent.clear(screen.getByRole('textbox', { name: /playlist interval/i }));
+      await userEvent.type(screen.getByRole('textbox', { name: /playlist interval/i }), '10s');
       fireEvent.submit(screen.getByRole('button', { name: /save/i }));
       await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
-      expect(putMock).toHaveBeenCalledWith('/api/playlists/1', {
+      expect(putMock).toHaveBeenCalledWith('/api/playlists/foo', {
         name: 'A Name',
         interval: '10s',
         items: [{ title: 'First item', type: 'dashboard_by_id', order: 1, value: '1' }],

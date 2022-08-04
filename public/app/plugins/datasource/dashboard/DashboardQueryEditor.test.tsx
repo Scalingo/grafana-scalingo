@@ -81,7 +81,7 @@ describe('DashboardQueryEditor', () => {
     );
     const select = screen.getByText('Choose panel');
 
-    userEvent.click(select);
+    await userEvent.click(select);
 
     const myFirstPanel = await screen.findByText('My first panel');
     expect(myFirstPanel).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe('DashboardQueryEditor', () => {
     );
     const select = screen.getByText('Choose panel');
 
-    userEvent.click(select);
+    await userEvent.click(select);
 
     expect(screen.queryByText('My first panel')).not.toBeInTheDocument();
 

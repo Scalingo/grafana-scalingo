@@ -14,6 +14,7 @@ import {
   getFieldSeriesColor,
   getFieldDisplayName,
   getDisplayProcessor,
+  FieldColorModeId,
 } from '@grafana/data';
 import {
   AxisPlacement,
@@ -54,7 +55,14 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{
 }) => {
   const builder = new UPlotConfigBuilder(timeZone);
 
-  builder.setPrepData((frames) => preparePlotData2(frames[0], builder.getStackingGroups()));
+  let alignedFrame: DataFrame;
+
+  builder.setPrepData((frames) => {
+    // cache alignedFrame
+    alignedFrame = frames[0];
+
+    return preparePlotData2(frames[0], builder.getStackingGroups());
+  });
 
   // X is the first field in the aligned frame
   const xField = frame.fields[0];
@@ -296,6 +304,12 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{
       }
     }
 
+    let dynamicSeriesColor: ((seriesIdx: number) => string | undefined) | undefined = undefined;
+
+    if (colorMode.id === FieldColorModeId.Thresholds) {
+      dynamicSeriesColor = (seriesIdx) => getFieldSeriesColor(alignedFrame.fields[seriesIdx], theme).color;
+    }
+
     builder.addSeries({
       pathBuilder,
       pointsBuilder,
@@ -305,6 +319,7 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{
       colorMode,
       fillOpacity,
       theme,
+      dynamicSeriesColor,
       drawStyle: customConfig.drawStyle!,
       lineColor: customConfig.lineColor ?? seriesColor,
       lineWidth: customConfig.lineWidth,
@@ -450,10 +465,8 @@ export const preparePlotConfigBuilder: UPlotConfigPrepFn<{
           return true;
         },
       },
-      // ??? setSeries: syncMode === DashboardCursorSync.Tooltip,
-      //TODO: remove any once https://github.com/leeoniya/uPlot/pull/611 got merged or the typing is fixed
-      scales: [xScaleKey, null as any],
-      match: [() => true, () => true],
+      scales: [xScaleKey, yScaleKey],
+      // match: [() => true, (a, b) => a === b],
     };
   }
 

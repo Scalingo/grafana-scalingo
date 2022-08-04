@@ -10,6 +10,7 @@ import { ExploreId, ExploreQueryParams } from 'app/types/explore';
 import { Branding } from '../../core/components/Branding/Branding';
 import { getNavModel } from '../../core/selectors/navModel';
 
+import { ExploreActions } from './ExploreActions';
 import { ExplorePaneContainer } from './ExplorePaneContainer';
 import { lastSavedUrl, resetExploreAction, richHistoryUpdatedAction } from './state/main';
 
@@ -71,6 +72,7 @@ class WrapperUnconnected extends PureComponent<Props> {
 
     return (
       <div className="page-scrollbar-wrapper">
+        <ExploreActions exploreIdLeft={ExploreId.left} exploreIdRight={ExploreId.right} />
         <div className="explore-wrapper">
           <ErrorBoundaryAlert style="page">
             <ExplorePaneContainer split={hasSplit} exploreId={ExploreId.left} urlQuery={left} />

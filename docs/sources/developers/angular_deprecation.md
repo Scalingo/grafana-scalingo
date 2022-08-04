@@ -7,6 +7,7 @@ keywords:
   - developers
   - resources
 title: Angular support deprecation
+weight: 500
 ---
 
 # Angular support deprecation

@@ -16,6 +16,7 @@ import { css } from '@emotion/css';
 import React, { RefObject } from 'react';
 
 import { GrafanaTheme2, LinkModel } from '@grafana/data';
+import { reportInteraction } from '@grafana/runtime';
 import { stylesFactory, withTheme2 } from '@grafana/ui';
 
 import { Accessors } from '../ScrollManager';
@@ -27,7 +28,7 @@ import { TraceSpan, Trace, TraceLog, TraceKeyValuePair, TraceLink, TraceSpanRefe
 import ExternalLinkContext from '../url/externalLinkContext';
 
 import TimelineHeaderRow from './TimelineHeaderRow';
-import VirtualizedTraceView from './VirtualizedTraceView';
+import VirtualizedTraceView, { TopOfViewRefType } from './VirtualizedTraceView';
 import { TUpdateViewRangeTimeFunction, ViewRange, ViewRangeTimeUpdate } from './types';
 
 type TExtractUiFindFromStateReturn = {
@@ -76,6 +77,7 @@ type TProps = TExtractUiFindFromStateReturn & {
   scrollToFirstVisibleSpan: () => void;
   traceTimeline: TTraceTimeline;
   trace: Trace;
+  datasourceType: string;
   updateNextViewRangeTime: (update: ViewRangeTimeUpdate) => void;
   updateViewRangeTime: TUpdateViewRangeTimeFunction;
   viewRange: ViewRange;
@@ -109,7 +111,8 @@ type TProps = TExtractUiFindFromStateReturn & {
   focusedSpanId?: string;
   focusedSpanIdForSearch: string;
   createFocusSpanLink: (traceId: string, spanId: string) => LinkModel;
-  topOfExploreViewRef?: RefObject<HTMLDivElement>;
+  topOfViewRef?: RefObject<HTMLDivElement>;
+  topOfViewRefType?: TopOfViewRefType;
 };
 
 type State = {
@@ -142,18 +145,34 @@ export class UnthemedTraceTimelineViewer extends React.PureComponent<TProps, Sta
 
   collapseAll = () => {
     this.props.collapseAll(this.props.trace.spans);
+    reportInteraction('grafana_traces_traceID_expand_collapse_clicked', {
+      datasourceType: this.props.datasourceType,
+      type: 'collapseAll',
+    });
   };
 
   collapseOne = () => {
     this.props.collapseOne(this.props.trace.spans);
+    reportInteraction('grafana_traces_traceID_expand_collapse_clicked', {
+      datasourceType: this.props.datasourceType,
+      type: 'collapseOne',
+    });
   };
 
   expandAll = () => {
     this.props.expandAll();
+    reportInteraction('grafana_traces_traceID_expand_collapse_clicked', {
+      datasourceType: this.props.datasourceType,
+      type: 'expandAll',
+    });
   };
 
   expandOne = () => {
     this.props.expandOne(this.props.trace.spans);
+    reportInteraction('grafana_traces_traceID_expand_collapse_clicked', {
+      datasourceType: this.props.datasourceType,
+      type: 'expandOne',
+    });
   };
 
   render() {
@@ -165,7 +184,7 @@ export class UnthemedTraceTimelineViewer extends React.PureComponent<TProps, Sta
       createLinkToExternalSpan,
       traceTimeline,
       theme,
-      topOfExploreViewRef,
+      topOfViewRef,
       focusedSpanIdForSearch,
       ...rest
     } = this.props;
@@ -197,7 +216,7 @@ export class UnthemedTraceTimelineViewer extends React.PureComponent<TProps, Sta
             {...traceTimeline}
             setSpanNameColumnWidth={setSpanNameColumnWidth}
             currentViewRangeTime={viewRange.time.current}
-            topOfExploreViewRef={topOfExploreViewRef}
+            topOfViewRef={topOfViewRef}
             focusedSpanIdForSearch={focusedSpanIdForSearch}
           />
         </div>

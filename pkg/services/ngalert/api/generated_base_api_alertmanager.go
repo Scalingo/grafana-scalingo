@@ -4,7 +4,6 @@
  *
  *Do not manually edit these files, please find ngalert/api/swagger-codegen/ for commands on how to generate them.
  */
-
 package api
 
 import (
@@ -53,95 +52,90 @@ func (f *ForkedAlertmanagerApi) RouteCreateGrafanaSilence(ctx *models.ReqContext
 	}
 	return f.forkRouteCreateGrafanaSilence(ctx, conf)
 }
-
 func (f *ForkedAlertmanagerApi) RouteCreateSilence(ctx *models.ReqContext) response.Response {
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
 	conf := apimodels.PostableSilence{}
 	if err := web.Bind(ctx.Req, &conf); err != nil {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
-	return f.forkRouteCreateSilence(ctx, conf)
+	return f.forkRouteCreateSilence(ctx, conf, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteDeleteAlertingConfig(ctx *models.ReqContext) response.Response {
-	return f.forkRouteDeleteAlertingConfig(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteDeleteAlertingConfig(ctx, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteDeleteGrafanaAlertingConfig(ctx *models.ReqContext) response.Response {
 	return f.forkRouteDeleteGrafanaAlertingConfig(ctx)
 }
-
 func (f *ForkedAlertmanagerApi) RouteDeleteGrafanaSilence(ctx *models.ReqContext) response.Response {
-	return f.forkRouteDeleteGrafanaSilence(ctx)
+	silenceIdParam := web.Params(ctx.Req)[":SilenceId"]
+	return f.forkRouteDeleteGrafanaSilence(ctx, silenceIdParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteDeleteSilence(ctx *models.ReqContext) response.Response {
-	return f.forkRouteDeleteSilence(ctx)
+	silenceIdParam := web.Params(ctx.Req)[":SilenceId"]
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteDeleteSilence(ctx, silenceIdParam, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetAMAlertGroups(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetAMAlertGroups(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetAMAlertGroups(ctx, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetAMAlerts(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetAMAlerts(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetAMAlerts(ctx, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetAMStatus(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetAMStatus(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetAMStatus(ctx, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetAlertingConfig(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetAlertingConfig(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetAlertingConfig(ctx, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetGrafanaAMAlertGroups(ctx *models.ReqContext) response.Response {
 	return f.forkRouteGetGrafanaAMAlertGroups(ctx)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetGrafanaAMAlerts(ctx *models.ReqContext) response.Response {
 	return f.forkRouteGetGrafanaAMAlerts(ctx)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetGrafanaAMStatus(ctx *models.ReqContext) response.Response {
 	return f.forkRouteGetGrafanaAMStatus(ctx)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetGrafanaAlertingConfig(ctx *models.ReqContext) response.Response {
 	return f.forkRouteGetGrafanaAlertingConfig(ctx)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetGrafanaSilence(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetGrafanaSilence(ctx)
+	silenceIdParam := web.Params(ctx.Req)[":SilenceId"]
+	return f.forkRouteGetGrafanaSilence(ctx, silenceIdParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetGrafanaSilences(ctx *models.ReqContext) response.Response {
 	return f.forkRouteGetGrafanaSilences(ctx)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetSilence(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetSilence(ctx)
+	silenceIdParam := web.Params(ctx.Req)[":SilenceId"]
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetSilence(ctx, silenceIdParam, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RouteGetSilences(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetSilences(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetSilences(ctx, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RoutePostAMAlerts(ctx *models.ReqContext) response.Response {
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
 	conf := apimodels.PostableAlerts{}
 	if err := web.Bind(ctx.Req, &conf); err != nil {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
-	return f.forkRoutePostAMAlerts(ctx, conf)
+	return f.forkRoutePostAMAlerts(ctx, conf, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RoutePostAlertingConfig(ctx *models.ReqContext) response.Response {
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
 	conf := apimodels.PostableUserConfig{}
 	if err := web.Bind(ctx.Req, &conf); err != nil {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
-	return f.forkRoutePostAlertingConfig(ctx, conf)
+	return f.forkRoutePostAlertingConfig(ctx, conf, datasourceUIDParam)
 }
-
 func (f *ForkedAlertmanagerApi) RoutePostGrafanaAMAlerts(ctx *models.ReqContext) response.Response {
 	conf := apimodels.PostableAlerts{}
 	if err := web.Bind(ctx.Req, &conf); err != nil {
@@ -149,7 +143,6 @@ func (f *ForkedAlertmanagerApi) RoutePostGrafanaAMAlerts(ctx *models.ReqContext)
 	}
 	return f.forkRoutePostGrafanaAMAlerts(ctx, conf)
 }
-
 func (f *ForkedAlertmanagerApi) RoutePostGrafanaAlertingConfig(ctx *models.ReqContext) response.Response {
 	conf := apimodels.PostableUserConfig{}
 	if err := web.Bind(ctx.Req, &conf); err != nil {
@@ -157,7 +150,6 @@ func (f *ForkedAlertmanagerApi) RoutePostGrafanaAlertingConfig(ctx *models.ReqCo
 	}
 	return f.forkRoutePostGrafanaAlertingConfig(ctx, conf)
 }
-
 func (f *ForkedAlertmanagerApi) RoutePostTestGrafanaReceivers(ctx *models.ReqContext) response.Response {
 	conf := apimodels.TestReceiversConfigBodyParams{}
 	if err := web.Bind(ctx.Req, &conf); err != nil {
@@ -165,13 +157,13 @@ func (f *ForkedAlertmanagerApi) RoutePostTestGrafanaReceivers(ctx *models.ReqCon
 	}
 	return f.forkRoutePostTestGrafanaReceivers(ctx, conf)
 }
-
 func (f *ForkedAlertmanagerApi) RoutePostTestReceivers(ctx *models.ReqContext) response.Response {
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
 	conf := apimodels.TestReceiversConfigBodyParams{}
 	if err := web.Bind(ctx.Req, &conf); err != nil {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
-	return f.forkRoutePostTestReceivers(ctx, conf)
+	return f.forkRoutePostTestReceivers(ctx, conf, datasourceUIDParam)
 }
 
 func (api *API) RegisterAlertmanagerApiEndpoints(srv AlertmanagerApiForkingService, m *metrics.API) {
@@ -187,21 +179,21 @@ func (api *API) RegisterAlertmanagerApiEndpoints(srv AlertmanagerApiForkingServi
 			),
 		)
 		group.Post(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/silences"),
-			api.authorize(http.MethodPost, "/api/alertmanager/{Recipient}/api/v2/silences"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/silences"),
+			api.authorize(http.MethodPost, "/api/alertmanager/{DatasourceUID}/api/v2/silences"),
 			metrics.Instrument(
 				http.MethodPost,
-				"/api/alertmanager/{Recipient}/api/v2/silences",
+				"/api/alertmanager/{DatasourceUID}/api/v2/silences",
 				srv.RouteCreateSilence,
 				m,
 			),
 		)
 		group.Delete(
-			toMacaronPath("/api/alertmanager/{Recipient}/config/api/v1/alerts"),
-			api.authorize(http.MethodDelete, "/api/alertmanager/{Recipient}/config/api/v1/alerts"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/config/api/v1/alerts"),
+			api.authorize(http.MethodDelete, "/api/alertmanager/{DatasourceUID}/config/api/v1/alerts"),
 			metrics.Instrument(
 				http.MethodDelete,
-				"/api/alertmanager/{Recipient}/config/api/v1/alerts",
+				"/api/alertmanager/{DatasourceUID}/config/api/v1/alerts",
 				srv.RouteDeleteAlertingConfig,
 				m,
 			),
@@ -227,51 +219,51 @@ func (api *API) RegisterAlertmanagerApiEndpoints(srv AlertmanagerApiForkingServi
 			),
 		)
 		group.Delete(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/silence/{SilenceId}"),
-			api.authorize(http.MethodDelete, "/api/alertmanager/{Recipient}/api/v2/silence/{SilenceId}"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/silence/{SilenceId}"),
+			api.authorize(http.MethodDelete, "/api/alertmanager/{DatasourceUID}/api/v2/silence/{SilenceId}"),
 			metrics.Instrument(
 				http.MethodDelete,
-				"/api/alertmanager/{Recipient}/api/v2/silence/{SilenceId}",
+				"/api/alertmanager/{DatasourceUID}/api/v2/silence/{SilenceId}",
 				srv.RouteDeleteSilence,
 				m,
 			),
 		)
 		group.Get(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/alerts/groups"),
-			api.authorize(http.MethodGet, "/api/alertmanager/{Recipient}/api/v2/alerts/groups"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/alerts/groups"),
+			api.authorize(http.MethodGet, "/api/alertmanager/{DatasourceUID}/api/v2/alerts/groups"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/alertmanager/{Recipient}/api/v2/alerts/groups",
+				"/api/alertmanager/{DatasourceUID}/api/v2/alerts/groups",
 				srv.RouteGetAMAlertGroups,
 				m,
 			),
 		)
 		group.Get(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/alerts"),
-			api.authorize(http.MethodGet, "/api/alertmanager/{Recipient}/api/v2/alerts"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/alerts"),
+			api.authorize(http.MethodGet, "/api/alertmanager/{DatasourceUID}/api/v2/alerts"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/alertmanager/{Recipient}/api/v2/alerts",
+				"/api/alertmanager/{DatasourceUID}/api/v2/alerts",
 				srv.RouteGetAMAlerts,
 				m,
 			),
 		)
 		group.Get(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/status"),
-			api.authorize(http.MethodGet, "/api/alertmanager/{Recipient}/api/v2/status"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/status"),
+			api.authorize(http.MethodGet, "/api/alertmanager/{DatasourceUID}/api/v2/status"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/alertmanager/{Recipient}/api/v2/status",
+				"/api/alertmanager/{DatasourceUID}/api/v2/status",
 				srv.RouteGetAMStatus,
 				m,
 			),
 		)
 		group.Get(
-			toMacaronPath("/api/alertmanager/{Recipient}/config/api/v1/alerts"),
-			api.authorize(http.MethodGet, "/api/alertmanager/{Recipient}/config/api/v1/alerts"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/config/api/v1/alerts"),
+			api.authorize(http.MethodGet, "/api/alertmanager/{DatasourceUID}/config/api/v1/alerts"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/alertmanager/{Recipient}/config/api/v1/alerts",
+				"/api/alertmanager/{DatasourceUID}/config/api/v1/alerts",
 				srv.RouteGetAlertingConfig,
 				m,
 			),
@@ -337,41 +329,41 @@ func (api *API) RegisterAlertmanagerApiEndpoints(srv AlertmanagerApiForkingServi
 			),
 		)
 		group.Get(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/silence/{SilenceId}"),
-			api.authorize(http.MethodGet, "/api/alertmanager/{Recipient}/api/v2/silence/{SilenceId}"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/silence/{SilenceId}"),
+			api.authorize(http.MethodGet, "/api/alertmanager/{DatasourceUID}/api/v2/silence/{SilenceId}"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/alertmanager/{Recipient}/api/v2/silence/{SilenceId}",
+				"/api/alertmanager/{DatasourceUID}/api/v2/silence/{SilenceId}",
 				srv.RouteGetSilence,
 				m,
 			),
 		)
 		group.Get(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/silences"),
-			api.authorize(http.MethodGet, "/api/alertmanager/{Recipient}/api/v2/silences"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/silences"),
+			api.authorize(http.MethodGet, "/api/alertmanager/{DatasourceUID}/api/v2/silences"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/alertmanager/{Recipient}/api/v2/silences",
+				"/api/alertmanager/{DatasourceUID}/api/v2/silences",
 				srv.RouteGetSilences,
 				m,
 			),
 		)
 		group.Post(
-			toMacaronPath("/api/alertmanager/{Recipient}/api/v2/alerts"),
-			api.authorize(http.MethodPost, "/api/alertmanager/{Recipient}/api/v2/alerts"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/api/v2/alerts"),
+			api.authorize(http.MethodPost, "/api/alertmanager/{DatasourceUID}/api/v2/alerts"),
 			metrics.Instrument(
 				http.MethodPost,
-				"/api/alertmanager/{Recipient}/api/v2/alerts",
+				"/api/alertmanager/{DatasourceUID}/api/v2/alerts",
 				srv.RoutePostAMAlerts,
 				m,
 			),
 		)
 		group.Post(
-			toMacaronPath("/api/alertmanager/{Recipient}/config/api/v1/alerts"),
-			api.authorize(http.MethodPost, "/api/alertmanager/{Recipient}/config/api/v1/alerts"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/config/api/v1/alerts"),
+			api.authorize(http.MethodPost, "/api/alertmanager/{DatasourceUID}/config/api/v1/alerts"),
 			metrics.Instrument(
 				http.MethodPost,
-				"/api/alertmanager/{Recipient}/config/api/v1/alerts",
+				"/api/alertmanager/{DatasourceUID}/config/api/v1/alerts",
 				srv.RoutePostAlertingConfig,
 				m,
 			),
@@ -407,11 +399,11 @@ func (api *API) RegisterAlertmanagerApiEndpoints(srv AlertmanagerApiForkingServi
 			),
 		)
 		group.Post(
-			toMacaronPath("/api/alertmanager/{Recipient}/config/api/v1/receivers/test"),
-			api.authorize(http.MethodPost, "/api/alertmanager/{Recipient}/config/api/v1/receivers/test"),
+			toMacaronPath("/api/alertmanager/{DatasourceUID}/config/api/v1/receivers/test"),
+			api.authorize(http.MethodPost, "/api/alertmanager/{DatasourceUID}/config/api/v1/receivers/test"),
 			metrics.Instrument(
 				http.MethodPost,
-				"/api/alertmanager/{Recipient}/config/api/v1/receivers/test",
+				"/api/alertmanager/{DatasourceUID}/config/api/v1/receivers/test",
 				srv.RoutePostTestReceivers,
 				m,
 			),

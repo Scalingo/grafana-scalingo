@@ -8,9 +8,10 @@ import { Unsubscribable } from 'rxjs';
 
 import { AbsoluteTimeRange, DataQuery, GrafanaTheme2, LoadingState, RawTimeRange } from '@grafana/data';
 import { selectors } from '@grafana/e2e-selectors';
-import { Collapse, CustomScrollbar, ErrorBoundaryAlert, Themeable2, withTheme2 } from '@grafana/ui';
+import { Collapse, CustomScrollbar, ErrorBoundaryAlert, Themeable2, withTheme2, PanelContainer } from '@grafana/ui';
 import { FILTER_FOR_OPERATOR, FILTER_OUT_OPERATOR, FilterItem } from '@grafana/ui/src/components/Table/types';
 import appEvents from 'app/core/app_events';
+import { supportedFeatures } from 'app/core/history/richHistoryStorageProvider';
 import { getNodeGraphDataFrames } from 'app/plugins/panel/nodeGraph/utils';
 import { StoreState } from 'app/types';
 import { AbsoluteTimeEvent } from 'app/types/events';
@@ -24,6 +25,7 @@ import ExploreQueryInspector from './ExploreQueryInspector';
 import { ExploreToolbar } from './ExploreToolbar';
 import LogsContainer from './LogsContainer';
 import { LogsVolumePanel } from './LogsVolumePanel';
+import { NoData } from './NoData';
 import { NoDataSourceCallToAction } from './NoDataSourceCallToAction';
 import { NodeGraphContainer } from './NodeGraphContainer';
 import { QueryRows } from './QueryRows';
@@ -56,6 +58,13 @@ const getStyles = (theme: GrafanaTheme2) => {
       flex: unset !important;
       display: unset !important;
       padding: ${theme.spacing(1)};
+    `,
+    exploreContainer: css`
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      padding: ${theme.spacing(2)};
+      padding-top: 0;
     `,
   };
 };
@@ -103,7 +112,7 @@ export type Props = ExploreProps & ConnectedProps<typeof connector>;
 export class Explore extends React.PureComponent<Props, ExploreState> {
   scrollElement: HTMLDivElement | undefined;
   absoluteTimeUnsubsciber: Unsubscribable | undefined;
-  topOfExploreViewRef = createRef<HTMLDivElement>();
+  topOfViewRef = createRef<HTMLDivElement>();
 
   constructor(props: Props) {
     super(props);
@@ -207,12 +216,16 @@ export class Explore extends React.PureComponent<Props, ExploreState> {
     });
   };
 
-  renderEmptyState() {
+  renderEmptyState(exploreContainerStyles: string) {
     return (
-      <div className="explore-container">
+      <div className={cx(exploreContainerStyles)}>
         <NoDataSourceCallToAction />
       </div>
     );
+  }
+
+  renderNoData() {
+    return <NoData />;
   }
 
   renderGraphPanel(width: number) {
@@ -284,12 +297,15 @@ export class Explore extends React.PureComponent<Props, ExploreState> {
   }
 
   renderNodeGraphPanel() {
-    const { exploreId, showTrace, queryResponse } = this.props;
+    const { exploreId, showTrace, queryResponse, datasourceInstance } = this.props;
+    const datasourceType = datasourceInstance ? datasourceInstance?.type : 'unknown';
+
     return (
       <NodeGraphContainer
         dataFrames={this.memoizedGetNodeGraphDataFrames(queryResponse.series)}
         exploreId={exploreId}
         withTraceView={showTrace}
+        datasourceType={datasourceType}
       />
     );
   }
@@ -308,8 +324,8 @@ export class Explore extends React.PureComponent<Props, ExploreState> {
           dataFrames={dataFrames}
           splitOpenFn={splitOpen}
           scrollElement={this.scrollElement}
-          topOfExploreViewRef={this.topOfExploreViewRef}
           queryResponse={queryResponse}
+          topOfViewRef={this.topOfViewRef}
         />
       )
     );
@@ -335,28 +351,36 @@ export class Explore extends React.PureComponent<Props, ExploreState> {
     const styles = getStyles(theme);
     const showPanels = queryResponse && queryResponse.state !== LoadingState.NotStarted;
     const showRichHistory = openDrawer === ExploreDrawer.RichHistory;
+    const richHistoryRowButtonHidden = !supportedFeatures().queryHistoryAvailable;
     const showQueryInspector = openDrawer === ExploreDrawer.QueryInspector;
+    const showNoData =
+      queryResponse.state === LoadingState.Done &&
+      [
+        queryResponse.logsFrames,
+        queryResponse.graphFrames,
+        queryResponse.nodeGraphFrames,
+        queryResponse.tableFrames,
+        queryResponse.traceFrames,
+      ].every((e) => e.length === 0);
 
     return (
       <CustomScrollbar
+        testId={selectors.pages.Explore.General.scrollView}
         autoHeightMin={'100%'}
         scrollRefCallback={(scrollElement) => (this.scrollElement = scrollElement || undefined)}
       >
-        <ExploreToolbar
-          exploreId={exploreId}
-          onChangeTime={this.onChangeTime}
-          topOfExploreViewRef={this.topOfExploreViewRef}
-        />
-        {datasourceMissing ? this.renderEmptyState() : null}
+        <ExploreToolbar exploreId={exploreId} onChangeTime={this.onChangeTime} topOfViewRef={this.topOfViewRef} />
+        {datasourceMissing ? this.renderEmptyState(styles.exploreContainer) : null}
         {datasourceInstance && (
-          <div className="explore-container">
-            <div className={cx('panel-container', styles.queryContainer)}>
+          <div className={cx(styles.exploreContainer)}>
+            <PanelContainer className={styles.queryContainer}>
               <QueryRows exploreId={exploreId} />
               <SecondaryActions
                 addQueryRowButtonDisabled={isLive}
                 // We cannot show multiple traces at the same time right now so we do not show add query button.
                 //TODO:unification
                 addQueryRowButtonHidden={false}
+                richHistoryRowButtonHidden={richHistoryRowButtonHidden}
                 richHistoryButtonActive={showRichHistory}
                 queryInspectorButtonActive={showQueryInspector}
                 onClickAddQueryRowButton={this.onClickAddQueryRowButton}
@@ -364,7 +388,7 @@ export class Explore extends React.PureComponent<Props, ExploreState> {
                 onClickQueryInspectorButton={this.toggleShowQueryInspector}
               />
               <ResponseErrorContainer exploreId={exploreId} />
-            </div>
+            </PanelContainer>
             <AutoSizer onResize={this.onResize} disableHeight>
               {({ width }) => {
                 if (width === 0) {
@@ -384,6 +408,7 @@ export class Explore extends React.PureComponent<Props, ExploreState> {
                           {showLogs && <ErrorBoundaryAlert>{this.renderLogsPanel(width)}</ErrorBoundaryAlert>}
                           {showNodeGraph && <ErrorBoundaryAlert>{this.renderNodeGraphPanel()}</ErrorBoundaryAlert>}
                           {showTrace && <ErrorBoundaryAlert>{this.renderTraceViewPanel()}</ErrorBoundaryAlert>}
+                          {showNoData && <ErrorBoundaryAlert>{this.renderNoData()}</ErrorBoundaryAlert>}
                         </>
                       )}
                       {showRichHistory && (

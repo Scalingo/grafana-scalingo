@@ -36,8 +36,18 @@ export interface ThemeComponents {
     background: string;
     padding: number;
   };
+  textHighlight: {
+    background: string;
+    text: string;
+  };
   sidemenu: {
     width: number;
+  };
+  menuTabs: {
+    height: number;
+  };
+  horizontalDrawer: {
+    defaultHeight: number;
   };
 }
 
@@ -80,7 +90,17 @@ export function createComponents(colors: ThemeColors, shadows: ThemeShadows): Th
       background: colors.mode === 'dark' ? 'rgba(63, 62, 62, 0.45)' : 'rgba(208, 209, 211, 0.24)',
     },
     sidemenu: {
-      width: 48,
+      width: 57,
+    },
+    menuTabs: {
+      height: 41,
+    },
+    textHighlight: {
+      text: colors.warning.contrastText,
+      background: colors.warning.main,
+    },
+    horizontalDrawer: {
+      defaultHeight: 400,
     },
   };
 }

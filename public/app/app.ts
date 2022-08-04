@@ -7,11 +7,11 @@ import './polyfills/old-mediaquerylist'; // Safari < 14 does not have mql.addEve
 import 'file-saver';
 import 'jquery';
 
+import 'app/features/all';
+
 import _ from 'lodash'; // eslint-disable-line lodash/import-scope
 import React from 'react';
 import ReactDOM from 'react-dom';
-
-import 'app/features/all';
 
 import {
   locationUtil,

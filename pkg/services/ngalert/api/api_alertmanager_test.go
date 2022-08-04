@@ -358,7 +358,7 @@ func TestRouteCreateSilence(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:    "new silence, fine-grained access control is enabled, not authorized",
+			name:    "new silence, role-based access control is enabled, not authorized",
 			silence: silenceGen(withEmptyID),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New()
@@ -366,7 +366,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:    "new silence, fine-grained access control is enabled, authorized",
+			name:    "new silence, role-based access control is enabled, authorized",
 			silence: silenceGen(withEmptyID),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithPermissions([]*accesscontrol.Permission{
@@ -376,7 +376,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusAccepted,
 		},
 		{
-			name:    "new silence, fine-grained access control is disabled, Viewer",
+			name:    "new silence, role-based access control is disabled, Viewer",
 			silence: silenceGen(withEmptyID),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithDisabled()
@@ -385,7 +385,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:    "new silence, fine-grained access control is disabled, Editor",
+			name:    "new silence, role-based access control is disabled, Editor",
 			silence: silenceGen(withEmptyID),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithDisabled()
@@ -394,7 +394,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusAccepted,
 		},
 		{
-			name:    "new silence, fine-grained access control is disabled, Admin",
+			name:    "new silence, role-based access control is disabled, Admin",
 			silence: silenceGen(withEmptyID),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithDisabled()
@@ -403,7 +403,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusAccepted,
 		},
 		{
-			name:    "update silence, fine-grained access control is enabled, not authorized",
+			name:    "update silence, role-based access control is enabled, not authorized",
 			silence: silenceGen(),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New()
@@ -411,7 +411,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:    "update silence, fine-grained access control is enabled, authorized",
+			name:    "update silence, role-based access control is enabled, authorized",
 			silence: silenceGen(),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithPermissions([]*accesscontrol.Permission{
@@ -421,7 +421,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusAccepted,
 		},
 		{
-			name:    "update silence, fine-grained access control is disabled, Viewer",
+			name:    "update silence, role-based access control is disabled, Viewer",
 			silence: silenceGen(),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithDisabled()
@@ -430,7 +430,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:    "update silence, fine-grained access control is disabled, Editor",
+			name:    "update silence, role-based access control is disabled, Editor",
 			silence: silenceGen(),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithDisabled()
@@ -439,7 +439,7 @@ func TestRouteCreateSilence(t *testing.T) {
 			expectedStatus: http.StatusAccepted,
 		},
 		{
-			name:    "update silence, fine-grained access control is disabled, Admin",
+			name:    "update silence, role-based access control is disabled, Admin",
 			silence: silenceGen(),
 			accessControl: func() accesscontrol.AccessControl {
 				return acMock.New().WithDisabled()

@@ -17,6 +17,7 @@ import { discoverFeatures } from './api/buildInfo';
 import { fetchRules } from './api/prometheus';
 import { deleteNamespace, deleteRulerRulesGroup, fetchRulerRules, setRulerRuleGroup } from './api/ruler';
 import {
+  disableRBAC,
   enableRBAC,
   grantUserPermissions,
   mockDataSource,
@@ -126,6 +127,7 @@ describe('RuleList', () => {
   });
 
   it('load & show rule groups from multiple cloud data sources', async () => {
+    disableRBAC();
     mocks.getAllDataSourcesMock.mockReturnValue(Object.values(dataSources));
 
     setDataSourceSrv(new MockDataSourceSrv(dataSources));
@@ -214,7 +216,7 @@ describe('RuleList', () => {
     expect(errors).not.toHaveTextContent(
       'Failed to load rules state from Prometheus-broken: this datasource is broken'
     );
-    userEvent.click(ui.moreErrorsButton.get());
+    await userEvent.click(ui.moreErrorsButton.get());
     expect(errors).toHaveTextContent('Failed to load rules state from Prometheus-broken: this datasource is broken');
   });
 
@@ -305,7 +307,7 @@ describe('RuleList', () => {
 
     // expand second group to see rules table
     expect(ui.rulesTable.query()).not.toBeInTheDocument();
-    userEvent.click(ui.groupCollapseToggle.get(groups[1]));
+    await userEvent.click(ui.groupCollapseToggle.get(groups[1]));
     const table = await ui.rulesTable.find(groups[1]);
 
     // check that rule rows are rendered properly
@@ -327,7 +329,7 @@ describe('RuleList', () => {
     expect(byText('Labels').query()).not.toBeInTheDocument();
 
     // expand alert details
-    userEvent.click(ui.ruleCollapseToggle.get(ruleRows[1]));
+    await userEvent.click(ui.ruleCollapseToggle.get(ruleRows[1]));
 
     const ruleDetails = ui.expandedContent.get(ruleRows[1]);
 
@@ -346,17 +348,17 @@ describe('RuleList', () => {
     expect(instanceRows![1]).toHaveTextContent('Firingfoo=bazseverity=error2021-03-18 13:47:05');
 
     // expand details of an instance
-    userEvent.click(ui.ruleCollapseToggle.get(instanceRows![0]));
+    await userEvent.click(ui.ruleCollapseToggle.get(instanceRows![0]));
 
     const alertDetails = byTestId('expanded-content').get(instanceRows[0]);
     expect(alertDetails).toHaveTextContent('Value2e+10');
     expect(alertDetails).toHaveTextContent('messagefirst alert message');
 
     // collapse everything again
-    userEvent.click(ui.ruleCollapseToggle.get(instanceRows![0]));
+    await userEvent.click(ui.ruleCollapseToggle.get(instanceRows![0]));
     expect(byTestId('expanded-content').query(instanceRows[0])).not.toBeInTheDocument();
-    userEvent.click(ui.ruleCollapseToggle.getAll(ruleRows[1])[0]);
-    userEvent.click(ui.groupCollapseToggle.get(groups[1]));
+    await userEvent.click(ui.ruleCollapseToggle.getAll(ruleRows[1])[0]);
+    await userEvent.click(ui.groupCollapseToggle.get(groups[1]));
     expect(ui.rulesTable.query()).not.toBeInTheDocument();
   });
 
@@ -468,33 +470,36 @@ describe('RuleList', () => {
     expect(groups).toHaveLength(2);
 
     const filterInput = ui.rulesFilterInput.get();
-    userEvent.type(filterInput, '{{foo="bar"}');
+    await userEvent.type(filterInput, '{{foo="bar"}');
 
     // Input is debounced so wait for it to be visible
     await waitFor(() => expect(filterInput).toHaveValue('{foo="bar"}'));
     // Group doesn't contain matching labels
     await waitFor(() => expect(ui.ruleGroup.queryAll()).toHaveLength(1));
 
-    userEvent.click(ui.groupCollapseToggle.get(groups[0]));
+    await userEvent.click(ui.groupCollapseToggle.get(groups[0]));
 
     const ruleRows = ui.ruleRow.getAll(groups[0]);
     expect(ruleRows).toHaveLength(1);
 
-    userEvent.click(ui.ruleCollapseToggle.get(ruleRows[0]));
+    await userEvent.click(ui.ruleCollapseToggle.get(ruleRows[0]));
     const ruleDetails = ui.expandedContent.get(ruleRows[0]);
 
     expect(ruleDetails).toHaveTextContent('Labelsseverity=warningfoo=bar');
 
     // Check for different label matchers
-    userEvent.type(filterInput, '{selectall}{del}{{foo!="bar",foo!="baz"}');
+    await userEvent.clear(filterInput);
+    await userEvent.type(filterInput, '{{foo!="bar",foo!="baz"}');
     // Group doesn't contain matching labels
     await waitFor(() => expect(ui.ruleGroup.queryAll()).toHaveLength(1));
     await waitFor(() => expect(ui.ruleGroup.get()).toHaveTextContent('group-2'));
 
-    userEvent.type(filterInput, '{selectall}{del}{{foo=~"b.+"}');
+    await userEvent.clear(filterInput);
+    await userEvent.type(filterInput, '{{foo=~"b.+"}');
     await waitFor(() => expect(ui.ruleGroup.queryAll()).toHaveLength(2));
 
-    userEvent.type(filterInput, '{selectall}{del}{{region="US"}');
+    await userEvent.clear(filterInput);
+    await userEvent.type(filterInput, '{{region="US"}');
     await waitFor(() => expect(ui.ruleGroup.queryAll()).toHaveLength(1));
     await waitFor(() => expect(ui.ruleGroup.get()).toHaveTextContent('group-2'));
   });
@@ -533,7 +538,7 @@ describe('RuleList', () => {
         expect(groups).toHaveLength(3);
 
         // open edit dialog
-        userEvent.click(ui.editCloudGroupIcon.get(groups[0]));
+        await userEvent.click(ui.editCloudGroupIcon.get(groups[0]));
 
         expect(ui.editGroupModal.namespaceInput.get()).toHaveValue('namespace1');
         expect(ui.editGroupModal.ruleGroupInput.get()).toHaveValue('group1');
@@ -543,16 +548,16 @@ describe('RuleList', () => {
 
     testCase('rename both lotex namespace and group', async () => {
       // make changes to form
-      userEvent.clear(ui.editGroupModal.namespaceInput.get());
-      userEvent.type(ui.editGroupModal.namespaceInput.get(), 'super namespace');
+      await userEvent.clear(ui.editGroupModal.namespaceInput.get());
+      await userEvent.type(ui.editGroupModal.namespaceInput.get(), 'super namespace');
 
-      userEvent.clear(ui.editGroupModal.ruleGroupInput.get());
-      userEvent.type(ui.editGroupModal.ruleGroupInput.get(), 'super group');
+      await userEvent.clear(ui.editGroupModal.ruleGroupInput.get());
+      await userEvent.type(ui.editGroupModal.ruleGroupInput.get(), 'super group');
 
-      userEvent.type(ui.editGroupModal.intervalInput.get(), '5m');
+      await userEvent.type(ui.editGroupModal.intervalInput.get(), '5m');
 
       // submit, check that appropriate calls were made
-      userEvent.click(ui.editGroupModal.saveButton.get());
+      await userEvent.click(ui.editGroupModal.saveButton.get());
 
       await waitFor(() => expect(ui.editGroupModal.namespaceInput.query()).not.toBeInTheDocument());
 
@@ -584,12 +589,12 @@ describe('RuleList', () => {
 
     testCase('rename just the lotex group', async () => {
       // make changes to form
-      userEvent.clear(ui.editGroupModal.ruleGroupInput.get());
-      userEvent.type(ui.editGroupModal.ruleGroupInput.get(), 'super group');
-      userEvent.type(ui.editGroupModal.intervalInput.get(), '5m');
+      await userEvent.clear(ui.editGroupModal.ruleGroupInput.get());
+      await userEvent.type(ui.editGroupModal.ruleGroupInput.get(), 'super group');
+      await userEvent.type(ui.editGroupModal.intervalInput.get(), '5m');
 
       // submit, check that appropriate calls were made
-      userEvent.click(ui.editGroupModal.saveButton.get());
+      await userEvent.click(ui.editGroupModal.saveButton.get());
 
       await waitFor(() => expect(ui.editGroupModal.namespaceInput.query()).not.toBeInTheDocument());
 
@@ -616,10 +621,10 @@ describe('RuleList', () => {
 
     testCase('edit lotex group eval interval, no renaming', async () => {
       // make changes to form
-      userEvent.type(ui.editGroupModal.intervalInput.get(), '5m');
+      await userEvent.type(ui.editGroupModal.intervalInput.get(), '5m');
 
       // submit, check that appropriate calls were made
-      userEvent.click(ui.editGroupModal.saveButton.get());
+      await userEvent.click(ui.editGroupModal.saveButton.get());
 
       await waitFor(() => expect(ui.editGroupModal.namespaceInput.query()).not.toBeInTheDocument());
 

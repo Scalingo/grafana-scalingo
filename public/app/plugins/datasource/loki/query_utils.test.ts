@@ -6,6 +6,36 @@ describe('getHighlighterExpressionsFromQuery', () => {
     expect(getHighlighterExpressionsFromQuery('')).toEqual([]);
   });
 
+  it('returns no expression for query with empty filter ', () => {
+    expect(getHighlighterExpressionsFromQuery('{foo="bar"} |= ``')).toEqual([]);
+  });
+
+  it('returns no expression for query with empty filter and parser', () => {
+    expect(getHighlighterExpressionsFromQuery('{foo="bar"} |= `` | json count="counter" | __error__=``')).toEqual([]);
+  });
+
+  it('returns no expression for query with empty filter and chained filter', () => {
+    expect(
+      getHighlighterExpressionsFromQuery('{foo="bar"} |= `` |= `highlight` | json count="counter" | __error__=``')
+    ).toEqual(['highlight']);
+  });
+
+  it('returns no expression for query with empty filter, chained and regex filter', () => {
+    expect(
+      getHighlighterExpressionsFromQuery(
+        '{foo="bar"} |= `` |= `highlight` |~ `high.ight` | json count="counter" | __error__=``'
+      )
+    ).toEqual(['highlight', 'high.ight']);
+  });
+
+  it('returns no expression for query with empty filter, chained and regex quotes filter', () => {
+    expect(
+      getHighlighterExpressionsFromQuery(
+        '{foo="bar"} |= `` |= `highlight` |~ "highlight\\\\d" | json count="counter" | __error__=``'
+      )
+    ).toEqual(['highlight', 'highlight\\d']);
+  });
+
   it('returns an expression for query with filter using quotes', () => {
     expect(getHighlighterExpressionsFromQuery('{foo="bar"} |= "x"')).toEqual(['x']);
   });
@@ -96,5 +126,17 @@ describe('getNormalizedLokiQuery', () => {
 
   it('handles new<>old conflict (new wins), instant', () => {
     expectNormalized({ instant: true, range: false, queryType: LokiQueryType.Instant }, LokiQueryType.Instant);
+  });
+
+  it('handles invalid new, range', () => {
+    expectNormalized({ queryType: 'invalid' }, LokiQueryType.Range);
+  });
+
+  it('handles invalid new, when old-range exists, use old', () => {
+    expectNormalized({ instant: false, range: true, queryType: 'invalid' }, LokiQueryType.Range);
+  });
+
+  it('handles invalid new, when old-instant exists, use old', () => {
+    expectNormalized({ instant: true, range: false, queryType: 'invalid' }, LokiQueryType.Instant);
   });
 });

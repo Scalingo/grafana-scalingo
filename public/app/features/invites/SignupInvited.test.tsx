@@ -105,7 +105,7 @@ describe('SignupInvitedPage', () => {
     it('then required fields should show error messages and nothing should be posted', async () => {
       const { postSpy } = await setupTestContext({ get: { email: '', invitedBy: '', name: '', username: '' } });
 
-      userEvent.click(screen.getByRole('button', { name: /sign up/i }));
+      await userEvent.click(screen.getByRole('button', { name: /sign up/i }));
 
       await waitFor(() => expect(screen.getByText(/email is required/i)).toBeInTheDocument());
       expect(screen.getByText(/username is required/i)).toBeInTheDocument();
@@ -118,8 +118,8 @@ describe('SignupInvitedPage', () => {
     it('then correct form data should be posted', async () => {
       const { postSpy } = await setupTestContext();
 
-      userEvent.type(screen.getByPlaceholderText(/password/i), 'pass@word1');
-      userEvent.click(screen.getByRole('button', { name: /sign up/i }));
+      await userEvent.type(screen.getByPlaceholderText(/password/i), 'pass@word1');
+      await userEvent.click(screen.getByRole('button', { name: /sign up/i }));
 
       await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
       expect(postSpy).toHaveBeenCalledWith('/api/user/invite/complete', {

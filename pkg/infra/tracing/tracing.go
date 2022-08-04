@@ -28,32 +28,55 @@ const (
 )
 
 func ProvideService(cfg *setting.Cfg) (Tracer, error) {
-	ts := &Opentracing{
-		Cfg: cfg,
-		log: log.New("tracing"),
-	}
-
-	if err := ts.parseSettings(); err != nil {
+	ts, ots, err := parseSettings(cfg)
+	if err != nil {
 		return nil, err
 	}
 
 	if ts.enabled {
-		return ts, ts.initGlobalTracer()
+		return ts, ts.initJaegerGlobalTracer()
+	}
+
+	return ots, ots.initOpentelemetryTracer()
+}
+
+func parseSettings(cfg *setting.Cfg) (*Opentracing, *Opentelemetry, error) {
+	ts := &Opentracing{
+		Cfg: cfg,
+		log: log.New("tracing"),
+	}
+	err := ts.parseSettings()
+	if err != nil {
+		return ts, nil, err
+	}
+	if ts.enabled {
+		cfg.Logger.Warn("[Deprecated] the configuration setting 'tracing.jaeger' is deprecated, please use 'tracing.opentelemetry.jaeger' instead")
+		return ts, nil, nil
 	}
 
 	ots := &Opentelemetry{
 		Cfg: cfg,
 		log: log.New("tracing"),
 	}
-
-	if err := ots.parseSettingsOpentelemetry(); err != nil {
-		return nil, err
-	}
-
-	return ots, ots.initOpentelemetryTracer()
+	err = ots.parseSettingsOpentelemetry()
+	return ts, ots, err
 }
 
 type traceKey struct{}
+type traceValue struct {
+	ID        string
+	IsSampled bool
+}
+
+func TraceIDFromContext(c context.Context, requireSampled bool) string {
+	v := c.Value(traceKey{})
+	// Return traceID if a) it is present and b) it is sampled when requireSampled param is true
+	if trace, ok := v.(traceValue); ok && (!requireSampled || trace.IsSampled) {
+		return trace.ID
+	}
+	return ""
+}
+
 type traceValue struct {
 	ID        string
 	IsSampled bool
@@ -136,7 +159,7 @@ func (ts *Opentracing) initJaegerCfg() (jaegercfg.Configuration, error) {
 	return cfg, nil
 }
 
-func (ts *Opentracing) initGlobalTracer() error {
+func (ts *Opentracing) initJaegerGlobalTracer() error {
 	cfg, err := ts.initJaegerCfg()
 	if err != nil {
 		return err

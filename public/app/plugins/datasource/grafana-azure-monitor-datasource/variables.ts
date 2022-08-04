@@ -47,17 +47,6 @@ export class VariableSupport extends CustomVariableSupport<DataSource, AzureMoni
   }
 
   callGrafanaTemplateVariableFn(query: GrafanaTemplateVariableQuery): Promise<MetricFindValue[]> | null {
-    // deprecated app insights template variables (will most likely remove in grafana 9)
-    if (this.datasource.insightsAnalyticsDatasource) {
-      if (query.kind === 'AppInsightsMetricNameQuery') {
-        return this.datasource.insightsAnalyticsDatasource.getMetricNames();
-      }
-
-      if (query.kind === 'AppInsightsGroupByQuery') {
-        return this.datasource.insightsAnalyticsDatasource.getGroupBys(getTemplateSrv().replace(query.metricName));
-      }
-    }
-
     if (query.kind === 'SubscriptionsQuery') {
       return this.datasource.getSubscriptions();
     }
@@ -82,22 +71,11 @@ export class VariableSupport extends CustomVariableSupport<DataSource, AzureMoni
     }
 
     if (query.kind === 'MetricNamespaceQuery') {
-      return this.datasource.getMetricNamespaces(
-        this.replaceVariable(query.subscription),
-        this.replaceVariable(query.resourceGroup),
-        this.replaceVariable(query.metricDefinition),
-        this.replaceVariable(query.resourceName)
-      );
+      return this.datasource.azureMonitorDatasource.getMetricNamespaces(query);
     }
 
     if (query.kind === 'MetricNamesQuery') {
-      return this.datasource.getMetricNames(
-        this.replaceVariable(query.subscription),
-        this.replaceVariable(query.resourceGroup),
-        this.replaceVariable(query.metricDefinition),
-        this.replaceVariable(query.resourceName),
-        this.replaceVariable(query.metricNamespace)
-      );
+      return this.datasource.azureMonitorDatasource.getMetricNames(query);
     }
 
     if (query.kind === 'WorkspacesQuery') {

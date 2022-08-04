@@ -1,6 +1,7 @@
 package accesscontrol
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,7 +11,7 @@ import (
 
 type RoleRegistry interface {
 	// RegisterFixedRoles registers all roles declared to AccessControl
-	RegisterFixedRoles() error
+	RegisterFixedRoles(ctx context.Context) error
 }
 
 // Roles definition
@@ -52,14 +53,14 @@ var (
 		DisplayName: "Organization user writer",
 		Description: "Within a single organization, add a user, invite a user, read information about a user and their role, remove a user from that organization, or change the role of a user.",
 		Group:       "User administration (organizational)",
-		Version:     3,
+		Version:     4,
 		Permissions: ConcatPermissions(orgUsersReaderRole.Permissions, []Permission{
 			{
 				Action: ActionOrgUsersAdd,
 				Scope:  ScopeUsersAll,
 			},
 			{
-				Action: ActionOrgUsersRoleUpdate,
+				Action: ActionOrgUsersWrite,
 				Scope:  ScopeUsersAll,
 			},
 			{
@@ -115,14 +116,10 @@ var (
 		DisplayName: "User reader",
 		Description: "Read all users and their information, such as team memberships, authentication tokens, and quotas.",
 		Group:       "User administration (global)",
-		Version:     4,
+		Version:     6,
 		Permissions: []Permission{
 			{
 				Action: ActionUsersRead,
-				Scope:  ScopeGlobalUsersAll,
-			},
-			{
-				Action: ActionUsersTeamRead,
 				Scope:  ScopeGlobalUsersAll,
 			},
 			{
@@ -141,7 +138,7 @@ var (
 		DisplayName: "User writer",
 		Description: "Read and update all attributes and settings for all users in Grafana: update user information, read user information, create or enable or disable a user, make a user a Grafana administrator, sign out a user, update a user’s authentication token, or update quotas for all users.",
 		Group:       "User administration (global)",
-		Version:     4,
+		Version:     5,
 		Permissions: ConcatPermissions(usersReaderRole.Permissions, []Permission{
 			{
 				Action: ActionUsersPasswordUpdate,
@@ -274,5 +271,54 @@ func (m *RegistrationList) Range(f func(registration RoleRegistration) bool) {
 		if ok := f(registration); !ok {
 			return
 		}
+	}
+}
+
+func BuildBasicRoleDefinitions() map[string]*RoleDTO {
+	return map[string]*RoleDTO{
+		string(models.ROLE_ADMIN): {
+			Name:        BasicRolePrefix + "admin",
+			UID:         BasicRoleUIDPrefix + "admin",
+			OrgID:       GlobalOrgID,
+			Version:     1,
+			DisplayName: string(models.ROLE_ADMIN),
+			Description: "Admin role",
+			Group:       "Basic",
+			Permissions: []Permission{},
+			Hidden:      true,
+		},
+		string(models.ROLE_EDITOR): {
+			Name:        BasicRolePrefix + "editor",
+			UID:         BasicRoleUIDPrefix + "editor",
+			OrgID:       GlobalOrgID,
+			Version:     1,
+			DisplayName: string(models.ROLE_EDITOR),
+			Description: "Editor role",
+			Group:       "Basic",
+			Permissions: []Permission{},
+			Hidden:      true,
+		},
+		string(models.ROLE_VIEWER): {
+			Name:        BasicRolePrefix + "viewer",
+			UID:         BasicRoleUIDPrefix + "viewer",
+			OrgID:       GlobalOrgID,
+			Version:     1,
+			DisplayName: string(models.ROLE_VIEWER),
+			Description: "Viewer role",
+			Group:       "Basic",
+			Permissions: []Permission{},
+			Hidden:      true,
+		},
+		RoleGrafanaAdmin: {
+			Name:        BasicRolePrefix + "grafana_admin",
+			UID:         BasicRoleUIDPrefix + "grafana_admin",
+			OrgID:       GlobalOrgID,
+			Version:     1,
+			DisplayName: RoleGrafanaAdmin,
+			Description: "Grafana Admin role",
+			Group:       "Basic",
+			Permissions: []Permission{},
+			Hidden:      true,
+		},
 	}
 }

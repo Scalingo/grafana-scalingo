@@ -1,6 +1,6 @@
-import { configureStore as reduxConfigureStore } from '@reduxjs/toolkit';
-import { ThunkMiddlewareFor } from '@reduxjs/toolkit/src/getDefaultMiddleware';
+import { configureStore as reduxConfigureStore, MiddlewareArray } from '@reduxjs/toolkit';
 import { AnyAction } from 'redux';
+import { ThunkMiddleware } from 'redux-thunk';
 
 import { StoreState } from 'app/types/store';
 
@@ -17,11 +17,7 @@ export function addRootReducer(reducers: any) {
 }
 
 export function configureStore(initialState?: Partial<StoreState>) {
-  const store = reduxConfigureStore<
-    StoreState,
-    AnyAction,
-    ReadonlyArray<ThunkMiddlewareFor<StoreState, { thunk: true }>>
-  >({
+  const store = reduxConfigureStore<StoreState, AnyAction, MiddlewareArray<[ThunkMiddleware<StoreState, AnyAction>]>>({
     reducer: createRootReducer(),
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware({ thunk: true, serializableCheck: false, immutableCheck: false }),

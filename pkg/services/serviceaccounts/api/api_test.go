@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
 	accesscontrolmock "github.com/grafana/grafana/pkg/services/accesscontrol/mock"
+	"github.com/grafana/grafana/pkg/services/contexthandler/ctxkey"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/serviceaccounts"
 	"github.com/grafana/grafana/pkg/services/serviceaccounts/database"
@@ -35,14 +36,14 @@ func TestServiceAccountsAPI_CreateServiceAccount(t *testing.T) {
 	store := sqlstore.InitTestDB(t)
 	svcmock := tests.ServiceAccountMock{}
 
-	autoAssignOrg := setting.AutoAssignOrg
-	setting.AutoAssignOrg = true
+	autoAssignOrg := store.Cfg.AutoAssignOrg
+	store.Cfg.AutoAssignOrg = true
 	defer func() {
-		setting.AutoAssignOrg = autoAssignOrg
+		store.Cfg.AutoAssignOrg = autoAssignOrg
 	}()
 
 	orgCmd := &models.CreateOrgCommand{Name: "Some Test Org"}
-	err := sqlstore.CreateOrg(context.Background(), orgCmd)
+	err := store.CreateOrg(context.Background(), orgCmd)
 	require.Nil(t, err)
 
 	type testCreateSATestCase struct {
@@ -238,6 +239,9 @@ func setupTestServer(t *testing.T, svc *tests.ServiceAccountMock,
 			Logger:       log.New("serviceaccounts-test"),
 		}
 		c.Map(ctx)
+
+		c.Req = c.Req.WithContext(ctxkey.Set(c.Req.Context(), ctx))
+		c.Map(c.Req)
 	})
 	a.RouterRegister.Register(m.Router)
 	return m, a

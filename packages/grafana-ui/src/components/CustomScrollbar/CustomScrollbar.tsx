@@ -11,6 +11,7 @@ export type ScrollbarPosition = positionValues;
 
 interface Props {
   className?: string;
+  testId?: string;
   autoHide?: boolean;
   autoHideTimeout?: number;
   autoHeightMax?: string;
@@ -32,6 +33,7 @@ export const CustomScrollbar: FC<Props> = ({
   autoHideTimeout = 200,
   setScrollTop,
   className,
+  testId,
   autoHeightMin = '0',
   autoHeightMax = '100%',
   hideTracksWhenNotNeeded = false,
@@ -113,6 +115,7 @@ export const CustomScrollbar: FC<Props> = ({
 
   return (
     <Scrollbars
+      data-testid={testId}
       ref={ref}
       className={classNames(styles.customScrollbar, className)}
       onScrollStop={onScrollStop}

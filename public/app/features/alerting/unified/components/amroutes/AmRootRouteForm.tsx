@@ -36,7 +36,7 @@ export const AmRootRouteForm: FC<AmRootRouteFormProps> = ({
   const [groupByOptions, setGroupByOptions] = useState(stringsToSelectableValues(routes.groupBy));
 
   return (
-    <Form defaultValues={{ ...routes, overrideTimings: true }} onSubmit={onSave}>
+    <Form defaultValues={{ ...routes, overrideTimings: true, overrideGrouping: true }} onSubmit={onSave}>
       {({ control, errors, setValue }) => (
         <>
           <Field label="Default contact point" invalid={!!errors.receiver} error={errors.receiver?.message}>
@@ -50,7 +50,6 @@ export const AmRootRouteForm: FC<AmRootRouteFormProps> = ({
                       className={styles.input}
                       onChange={(value) => onChange(mapSelectValueToString(value))}
                       options={receivers}
-                      menuShouldPortal
                     />
                   )}
                   control={control}
@@ -77,7 +76,6 @@ export const AmRootRouteForm: FC<AmRootRouteFormProps> = ({
               render={({ field: { onChange, ref, ...field } }) => (
                 <MultiSelect
                   aria-label="Group by"
-                  menuShouldPortal
                   {...field}
                   allowCustomValue
                   className={styles.input}
@@ -124,7 +122,6 @@ export const AmRootRouteForm: FC<AmRootRouteFormProps> = ({
                   <InputControl
                     render={({ field: { onChange, ref, ...field } }) => (
                       <Select
-                        menuShouldPortal
                         {...field}
                         className={styles.input}
                         onChange={(value) => onChange(mapSelectValueToString(value))}
@@ -160,7 +157,6 @@ export const AmRootRouteForm: FC<AmRootRouteFormProps> = ({
                   <InputControl
                     render={({ field: { onChange, ref, ...field } }) => (
                       <Select
-                        menuShouldPortal
                         {...field}
                         className={styles.input}
                         onChange={(value) => onChange(mapSelectValueToString(value))}
@@ -196,7 +192,6 @@ export const AmRootRouteForm: FC<AmRootRouteFormProps> = ({
                   <InputControl
                     render={({ field: { onChange, ref, ...field } }) => (
                       <Select
-                        menuShouldPortal
                         {...field}
                         className={styles.input}
                         menuPlacement="top"

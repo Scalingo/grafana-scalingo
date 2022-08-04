@@ -25,6 +25,7 @@ func ProvideAuthInfoStore(sqlStore sqlstore.Store, secretsService secrets.Servic
 		secretsService: secretsService,
 		logger:         log.New("login.authinfo.store"),
 	}
+	InitMetrics()
 	return store
 }
 
@@ -142,6 +143,22 @@ func (s *AuthInfoStore) SetAuthInfo(ctx context.Context, cmd *models.SetAuthInfo
 
 	return s.sqlStore.WithTransactionalDbSession(ctx, func(sess *sqlstore.DBSession) error {
 		_, err := sess.Insert(authUser)
+		return err
+	})
+}
+
+// UpdateAuthInfoDate updates the auth info for the user with the latest date.
+// Avoids overlapping entries hiding the last used one (ex: LDAP->SAML->LDAP).
+func (s *AuthInfoStore) UpdateAuthInfoDate(ctx context.Context, authInfo *models.UserAuth) error {
+	authInfo.Created = GetTime()
+
+	cond := &models.UserAuth{
+		Id:         authInfo.Id,
+		UserId:     authInfo.UserId,
+		AuthModule: authInfo.AuthModule,
+	}
+	return s.sqlStore.WithTransactionalDbSession(ctx, func(sess *sqlstore.DBSession) error {
+		_, err := sess.Cols("created").Update(authInfo, cond)
 		return err
 	})
 }

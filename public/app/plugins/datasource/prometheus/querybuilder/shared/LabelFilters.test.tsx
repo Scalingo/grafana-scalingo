@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { selectOptionInTest } from 'test/helpers/selectOptionInTest';
 
-import { selectOptionInTest } from '../../../../../../../packages/grafana-ui';
 import { getLabelSelects } from '../testUtils';
 
 import { LabelFilters } from './LabelFilters';
@@ -31,9 +31,24 @@ describe('LabelFilters', () => {
     expect(getAddButton()).toBeInTheDocument();
   });
 
+  it('renders multiple values for regex selectors', async () => {
+    setup([
+      { label: 'bar', op: '!~', value: 'baz|bat|bau' },
+      { label: 'foo', op: '!~', value: 'fop|for|fos' },
+    ]);
+    expect(screen.getByText(/bar/)).toBeInTheDocument();
+    expect(screen.getByText(/baz/)).toBeInTheDocument();
+    expect(screen.getByText(/bat/)).toBeInTheDocument();
+    expect(screen.getByText(/bau/)).toBeInTheDocument();
+    expect(screen.getByText(/foo/)).toBeInTheDocument();
+    expect(screen.getByText(/for/)).toBeInTheDocument();
+    expect(screen.getByText(/fos/)).toBeInTheDocument();
+    expect(getAddButton()).toBeInTheDocument();
+  });
+
   it('adds new label', async () => {
     const { onChange } = setup([{ label: 'foo', op: '=', value: 'bar' }]);
-    userEvent.click(getAddButton());
+    await userEvent.click(getAddButton());
     expect(screen.getAllByText(/Choose/)).toHaveLength(2);
     const { name, value } = getLabelSelects(1);
     await selectOptionInTest(name, 'baz');
@@ -46,7 +61,7 @@ describe('LabelFilters', () => {
 
   it('removes label', async () => {
     const { onChange } = setup([{ label: 'foo', op: '=', value: 'bar' }]);
-    userEvent.click(screen.getByLabelText(/remove/));
+    await userEvent.click(screen.getByLabelText(/remove/));
     expect(onChange).toBeCalledWith([]);
   });
 

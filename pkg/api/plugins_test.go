@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,10 +18,88 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/infra/log/logtest"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/web/webtest"
 )
+
+func Test_PluginsInstallAndUninstall(t *testing.T) {
+	type tc struct {
+		pluginAdminEnabled               bool
+		pluginAdminExternalManageEnabled bool
+		expectedHTTPStatus               int
+		expectedHTTPBody                 string
+	}
+	tcs := []tc{
+		{pluginAdminEnabled: true, pluginAdminExternalManageEnabled: true, expectedHTTPStatus: 404, expectedHTTPBody: "404 page not found\n"},
+		{pluginAdminEnabled: true, pluginAdminExternalManageEnabled: false, expectedHTTPStatus: 200, expectedHTTPBody: ""},
+		{pluginAdminEnabled: false, pluginAdminExternalManageEnabled: true, expectedHTTPStatus: 404, expectedHTTPBody: "404 page not found\n"},
+		{pluginAdminEnabled: false, pluginAdminExternalManageEnabled: false, expectedHTTPStatus: 404, expectedHTTPBody: "404 page not found\n"},
+	}
+
+	testName := func(action string, testCase tc) string {
+		return fmt.Sprintf("%s request returns %d when adminEnabled: %t and externalEnabled: %t",
+			action, testCase.expectedHTTPStatus, testCase.pluginAdminEnabled, testCase.pluginAdminExternalManageEnabled)
+	}
+
+	ps := fakePluginStore{
+		plugins: make(map[string]plugins.PluginDTO),
+	}
+	for _, tc := range tcs {
+		srv := SetupAPITestServer(t, func(hs *HTTPServer) {
+			hs.Cfg = &setting.Cfg{
+				PluginAdminEnabled:               tc.pluginAdminEnabled,
+				PluginAdminExternalManageEnabled: tc.pluginAdminExternalManageEnabled,
+			}
+			hs.pluginStore = ps
+		})
+
+		t.Run(testName("Install", tc), func(t *testing.T) {
+			req := srv.NewPostRequest("/api/plugins/test/install", strings.NewReader("{ \"version\": \"1.0.2\" }"))
+			webtest.RequestWithSignedInUser(req, &models.SignedInUser{UserId: 1, OrgId: 1, OrgRole: models.ROLE_EDITOR, IsGrafanaAdmin: true})
+			resp, err := srv.SendJSON(req)
+			require.NoError(t, err)
+
+			body := new(strings.Builder)
+			_, err = io.Copy(body, resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedHTTPBody, body.String())
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, tc.expectedHTTPStatus, resp.StatusCode)
+
+			if tc.expectedHTTPStatus == 200 {
+				require.Equal(t, plugins.PluginDTO{
+					JSONData: plugins.JSONData{
+						ID: "test",
+						Info: plugins.Info{
+							Version: "1.0.2",
+						},
+					},
+				}, ps.plugins["test"])
+			}
+		})
+
+		t.Run(testName("Uninstall", tc), func(t *testing.T) {
+			req := srv.NewPostRequest("/api/plugins/test/uninstall", strings.NewReader("{}"))
+			webtest.RequestWithSignedInUser(req, &models.SignedInUser{UserId: 1, OrgId: 1, OrgRole: models.ROLE_VIEWER, IsGrafanaAdmin: true})
+			resp, err := srv.SendJSON(req)
+			require.NoError(t, err)
+
+			body := new(strings.Builder)
+			_, err = io.Copy(body, resp.Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedHTTPBody, body.String())
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, tc.expectedHTTPStatus, resp.StatusCode)
+
+			if tc.expectedHTTPStatus == 200 {
+				require.Empty(t, ps.plugins)
+			}
+		})
+	}
+}
 
 func Test_GetPluginAssets(t *testing.T) {
 	pluginID := "test-plugin"
@@ -55,7 +135,7 @@ func Test_GetPluginAssets(t *testing.T) {
 				pluginID: p,
 			},
 		}
-		l := &logger{}
+		l := &logtest.Fake{}
 
 		url := fmt.Sprintf("/public/plugins/%s/%s", pluginID, requestedFile)
 		pluginAssetScenario(t, "When calling GET on", url, "/public/plugins/:pluginId/*", service, l,
@@ -64,7 +144,7 @@ func Test_GetPluginAssets(t *testing.T) {
 
 				require.Equal(t, 200, sc.resp.Code)
 				assert.Equal(t, expectedBody, sc.resp.Body.String())
-				assert.Empty(t, l.warnings)
+				assert.Zero(t, l.WarnLogs.Calls)
 			})
 	})
 
@@ -80,7 +160,7 @@ func Test_GetPluginAssets(t *testing.T) {
 				pluginID: p,
 			},
 		}
-		l := &logger{}
+		l := &logtest.Fake{}
 
 		url := fmt.Sprintf("/public/plugins/%s/%s", pluginID, tmpFileInParentDir.Name())
 		pluginAssetScenario(t, "When calling GET on", url, "/public/plugins/:pluginId/*", service, l,
@@ -103,7 +183,7 @@ func Test_GetPluginAssets(t *testing.T) {
 				pluginID: p,
 			},
 		}
-		l := &logger{}
+		l := &logtest.Fake{}
 
 		url := fmt.Sprintf("/public/plugins/%s/%s", pluginID, requestedFile)
 		pluginAssetScenario(t, "When calling GET on", url, "/public/plugins/:pluginId/*", service, l,
@@ -112,7 +192,7 @@ func Test_GetPluginAssets(t *testing.T) {
 
 				require.Equal(t, 200, sc.resp.Code)
 				assert.Equal(t, expectedBody, sc.resp.Body.String())
-				assert.Empty(t, l.warnings)
+				assert.Zero(t, l.WarnLogs.Calls)
 			})
 	})
 
@@ -128,7 +208,7 @@ func Test_GetPluginAssets(t *testing.T) {
 				pluginID: p,
 			},
 		}
-		l := &logger{}
+		l := &logtest.Fake{}
 
 		requestedFile := "nonExistent"
 		url := fmt.Sprintf("/public/plugins/%s/%s", pluginID, requestedFile)
@@ -141,7 +221,7 @@ func Test_GetPluginAssets(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, 404, sc.resp.Code)
 				assert.Equal(t, "Plugin file not found", respJson["message"])
-				assert.Empty(t, l.warnings)
+				assert.Zero(t, l.WarnLogs.Calls)
 			})
 	})
 
@@ -149,7 +229,7 @@ func Test_GetPluginAssets(t *testing.T) {
 		service := &fakePluginStore{
 			plugins: map[string]plugins.PluginDTO{},
 		}
-		l := &logger{}
+		l := &logtest.Fake{}
 
 		requestedFile := "nonExistent"
 		url := fmt.Sprintf("/public/plugins/%s/%s", pluginID, requestedFile)
@@ -162,7 +242,7 @@ func Test_GetPluginAssets(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, 404, sc.resp.Code)
 				assert.Equal(t, "Plugin not found", respJson["message"])
-				assert.Empty(t, l.warnings)
+				assert.Zero(t, l.WarnLogs.Calls)
 			})
 	})
 
@@ -174,7 +254,7 @@ func Test_GetPluginAssets(t *testing.T) {
 				},
 			},
 		}
-		l := &logger{}
+		l := &logtest.Fake{}
 
 		url := fmt.Sprintf("/public/plugins/%s/%s", pluginID, requestedFile)
 		pluginAssetScenario(t, "When calling GET on", url, "/public/plugins/:pluginId/*", service, l,
@@ -183,7 +263,7 @@ func Test_GetPluginAssets(t *testing.T) {
 
 				require.Equal(t, 200, sc.resp.Code)
 				assert.Equal(t, expectedBody, sc.resp.Body.String())
-				assert.Empty(t, l.warnings)
+				assert.Zero(t, l.WarnLogs.Calls)
 			})
 	})
 }
@@ -233,16 +313,6 @@ func pluginAssetScenario(t *testing.T, desc string, url string, urlPattern strin
 
 		fn(sc)
 	})
-}
-
-type logger struct {
-	log.Logger
-
-	warnings []string
-}
-
-func (l *logger) Warn(msg string, ctx ...interface{}) {
-	l.warnings = append(l.warnings, msg)
 }
 
 type fakePluginClient struct {

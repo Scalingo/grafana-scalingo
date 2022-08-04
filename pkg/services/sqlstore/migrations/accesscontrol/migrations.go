@@ -6,8 +6,6 @@ import (
 
 const CodeMigrationSQL = "code migration"
 
-const CodeMigrationSQL = "code migration"
-
 func AddMigration(mg *migrator.Migrator) {
 	permissionV1 := migrator.Table{
 		Name: "permission",

@@ -23,7 +23,7 @@ const getTabsBarStyles = stylesFactory((theme: GrafanaTheme2, hideBorder = false
     tabs: css`
       position: relative;
       display: flex;
-      height: 41px;
+      height: ${theme.components.menuTabs.height}px;
     `,
   };
 });
@@ -34,7 +34,9 @@ export const TabsBar = React.forwardRef<HTMLDivElement, Props>(({ children, clas
 
   return (
     <div className={cx(tabsStyles.tabsWrapper, className)} ref={ref}>
-      <ul className={tabsStyles.tabs}>{children}</ul>
+      <div className={tabsStyles.tabs} role="tablist">
+        {children}
+      </div>
     </div>
   );
 });

@@ -19,18 +19,16 @@ export default function NotEnabled(): JSX.Element | null {
   return (
     <Page navModel={navModel}>
       <Page.Contents>
-        <PluginPage>
-          To enable installing plugins via catalog, please refer to the{' '}
-          <a
-            className={css`
-              text-decoration: underline;
-            `}
-            href="https://grafana.com/docs/grafana/latest/plugins/catalog"
-          >
-            Plugin Catalog
-          </a>{' '}
-          instructions
-        </PluginPage>
+        To enable installing plugins via catalog, please refer to the{' '}
+        <a
+          className={css`
+            text-decoration: underline;
+          `}
+          href="https://grafana.com/docs/grafana/latest/plugins/catalog"
+        >
+          Plugin Catalog
+        </a>{' '}
+        instructions
       </Page.Contents>
     </Page>
   );

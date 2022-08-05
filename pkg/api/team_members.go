@@ -53,7 +53,7 @@ func (hs *HTTPServer) GetTeamMembers(c *models.ReqContext) response.Response {
 		filteredMembers = append(filteredMembers, member)
 	}
 
-	return response.JSON(200, filteredMembers)
+	return response.JSON(http.StatusOK, filteredMembers)
 }
 
 // POST /api/teams/:teamId/members
@@ -88,7 +88,7 @@ func (hs *HTTPServer) AddTeamMember(c *models.ReqContext) response.Response {
 		return response.Error(500, "Failed to add Member to Team", err)
 	}
 
-	return response.JSON(200, &util.DynMap{
+	return response.JSON(http.StatusOK, &util.DynMap{
 		"message": "Member added to Team",
 	})
 }
@@ -176,7 +176,7 @@ func (hs *HTTPServer) RemoveTeamMember(c *models.ReqContext) response.Response {
 // addOrUpdateTeamMember adds or updates a team member.
 //
 // Stubbable by tests.
-var addOrUpdateTeamMember = func(ctx context.Context, resourcePermissionService accesscontrol.PermissionsService, userID, orgID, teamID int64, permission string) error {
+var addOrUpdateTeamMember = func(ctx context.Context, resourcePermissionService accesscontrol.TeamPermissionsService, userID, orgID, teamID int64, permission string) error {
 	teamIDString := strconv.FormatInt(teamID, 10)
 	if _, err := resourcePermissionService.SetUserPermission(ctx, orgID, accesscontrol.User{ID: userID}, teamIDString, permission); err != nil {
 		return fmt.Errorf("failed setting permissions for user %d in team %d: %w", userID, teamID, err)

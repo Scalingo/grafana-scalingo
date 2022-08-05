@@ -34,6 +34,7 @@ import { getDatasourceSrv } from 'app/features/plugins/datasource_srv';
 
 import { RowActionComponents } from './QueryActionComponent';
 import { QueryEditorRowHeader } from './QueryEditorRowHeader';
+import { QueryErrorAlert } from './QueryErrorAlert';
 
 interface Props<TQuery extends DataQuery> {
   data: PanelData;
@@ -384,7 +385,7 @@ export class QueryEditorRow<TQuery extends DataQuery> extends PureComponent<Prop
 
   render() {
     const { query, id, index, visualization } = this.props;
-    const { datasource, showingHelp } = this.state;
+    const { datasource, showingHelp, data } = this.state;
     const isDisabled = query.hide;
 
     const rowClasses = classNames('query-editor-row', {
@@ -422,6 +423,7 @@ export class QueryEditorRow<TQuery extends DataQuery> extends PureComponent<Prop
               )}
               {editor}
             </ErrorBoundaryAlert>
+            {data?.error && data.error.refId === query.refId && <QueryErrorAlert error={data.error} />}
             {visualization}
           </div>
         </QueryOperationRow>
@@ -466,16 +468,12 @@ export interface AngularQueryComponentScope<TQuery extends DataQuery> {
 export function filterPanelDataToQuery(data: PanelData, refId: string): PanelData | undefined {
   const series = data.series.filter((series) => series.refId === refId);
 
-  // No matching series
-  if (!series.length) {
-    // If there was an error with no data, pass it to the QueryEditors
-    if (data.error && !data.series.length) {
-      return {
-        ...data,
-        state: LoadingState.Error,
-      };
-    }
-    return undefined;
+  // If there was an error with no data, pass it to the QueryEditors
+  if (data.error && !data.series.length) {
+    return {
+      ...data,
+      state: LoadingState.Error,
+    };
   }
 
   // Only say this is an error if the error links to the query

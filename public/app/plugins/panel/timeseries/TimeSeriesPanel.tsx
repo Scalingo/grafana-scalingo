@@ -36,10 +36,18 @@ export const TimeSeriesPanel: React.FC<TimeSeriesPanelProps> = ({
     return getFieldLinksForExplore({ field, rowIndex, splitOpenFn: onSplitOpen, range: timeRange });
   };
 
-  const frames = useMemo(() => prepareGraphableFields(data.series, config.theme2), [data]);
+  const frames = useMemo(() => prepareGraphableFields(data.series, config.theme2, timeRange), [data, timeRange]);
 
   if (!frames) {
-    return <PanelDataErrorView panelId={id} data={data} needsTimeField={true} needsNumberField={true} />;
+    return (
+      <PanelDataErrorView
+        panelId={id}
+        fieldConfig={fieldConfig}
+        data={data}
+        needsTimeField={true}
+        needsNumberField={true}
+      />
+    );
   }
 
   const enableAnnotationCreation = Boolean(canAddAnnotations && canAddAnnotations());

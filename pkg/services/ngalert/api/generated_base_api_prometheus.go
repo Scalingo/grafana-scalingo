@@ -4,7 +4,6 @@
  *
  *Do not manually edit these files, please find ngalert/api/swagger-codegen/ for commands on how to generate them.
  */
-
 package api
 
 import (
@@ -15,6 +14,7 @@ import (
 	"github.com/grafana/grafana/pkg/middleware"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/ngalert/metrics"
+	"github.com/grafana/grafana/pkg/web"
 )
 
 type PrometheusApiForkingService interface {
@@ -25,29 +25,28 @@ type PrometheusApiForkingService interface {
 }
 
 func (f *ForkedPrometheusApi) RouteGetAlertStatuses(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetAlertStatuses(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetAlertStatuses(ctx, datasourceUIDParam)
 }
-
 func (f *ForkedPrometheusApi) RouteGetGrafanaAlertStatuses(ctx *models.ReqContext) response.Response {
 	return f.forkRouteGetGrafanaAlertStatuses(ctx)
 }
-
 func (f *ForkedPrometheusApi) RouteGetGrafanaRuleStatuses(ctx *models.ReqContext) response.Response {
 	return f.forkRouteGetGrafanaRuleStatuses(ctx)
 }
-
 func (f *ForkedPrometheusApi) RouteGetRuleStatuses(ctx *models.ReqContext) response.Response {
-	return f.forkRouteGetRuleStatuses(ctx)
+	datasourceUIDParam := web.Params(ctx.Req)[":DatasourceUID"]
+	return f.forkRouteGetRuleStatuses(ctx, datasourceUIDParam)
 }
 
 func (api *API) RegisterPrometheusApiEndpoints(srv PrometheusApiForkingService, m *metrics.API) {
 	api.RouteRegister.Group("", func(group routing.RouteRegister) {
 		group.Get(
-			toMacaronPath("/api/prometheus/{Recipient}/api/v1/alerts"),
-			api.authorize(http.MethodGet, "/api/prometheus/{Recipient}/api/v1/alerts"),
+			toMacaronPath("/api/prometheus/{DatasourceUID}/api/v1/alerts"),
+			api.authorize(http.MethodGet, "/api/prometheus/{DatasourceUID}/api/v1/alerts"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/prometheus/{Recipient}/api/v1/alerts",
+				"/api/prometheus/{DatasourceUID}/api/v1/alerts",
 				srv.RouteGetAlertStatuses,
 				m,
 			),
@@ -73,11 +72,11 @@ func (api *API) RegisterPrometheusApiEndpoints(srv PrometheusApiForkingService, 
 			),
 		)
 		group.Get(
-			toMacaronPath("/api/prometheus/{Recipient}/api/v1/rules"),
-			api.authorize(http.MethodGet, "/api/prometheus/{Recipient}/api/v1/rules"),
+			toMacaronPath("/api/prometheus/{DatasourceUID}/api/v1/rules"),
+			api.authorize(http.MethodGet, "/api/prometheus/{DatasourceUID}/api/v1/rules"),
 			metrics.Instrument(
 				http.MethodGet,
-				"/api/prometheus/{Recipient}/api/v1/rules",
+				"/api/prometheus/{DatasourceUID}/api/v1/rules",
 				srv.RouteGetRuleStatuses,
 				m,
 			),

@@ -1,3 +1,4 @@
+import { uniqBy } from 'lodash';
 import React, { useState } from 'react';
 
 import { SelectableValue, toOption } from '@grafana/data';
@@ -24,7 +25,7 @@ export function LabelFilterItem({ item, defaultOp, onChange, onDelete, onGetLabe
   }>({});
 
   const isMultiSelect = () => {
-    return item.op === operators[0].label;
+    return operators.find((op) => op.label === item.op)?.isMultiValue;
   };
 
   const getSelectOptionsFromString = (item?: string): string[] => {
@@ -38,7 +39,11 @@ export function LabelFilterItem({ item, defaultOp, onChange, onDelete, onGetLabe
   };
 
   const getOptions = (): SelectableValue[] => {
-    return [...getSelectOptionsFromString(item?.value).map(toOption), ...(state.labelValues ?? [])];
+    const labelValues = state.labelValues ? [...state.labelValues] : [];
+    const selectedOptions = getSelectOptionsFromString(item?.value).map(toOption);
+
+    // Remove possible duplicated values
+    return uniqBy([...selectedOptions, ...labelValues], 'value');
   };
 
   return (
@@ -119,8 +124,8 @@ export function LabelFilterItem({ item, defaultOp, onChange, onDelete, onGetLabe
 }
 
 const operators = [
-  { label: '=~', value: '=~' },
-  { label: '=', value: '=' },
-  { label: '!=', value: '!=' },
-  { label: '!~', value: '!~' },
+  { label: '=~', value: '=~', isMultiValue: true },
+  { label: '=', value: '=', isMultiValue: false },
+  { label: '!=', value: '!=', isMultiValue: false },
+  { label: '!~', value: '!~', isMultiValue: true },
 ];

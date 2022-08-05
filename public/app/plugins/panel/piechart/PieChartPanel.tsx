@@ -10,6 +10,7 @@ import {
   getFieldDisplayValues,
   PanelProps,
 } from '@grafana/data';
+import { PanelDataErrorView } from '@grafana/runtime';
 import { LegendDisplayMode } from '@grafana/schema';
 import {
   SeriesVisibilityChangeBehavior,
@@ -37,7 +38,7 @@ interface Props extends PanelProps<PieChartOptions> {}
  * @beta
  */
 export function PieChartPanel(props: Props) {
-  const { data, timeZone, fieldConfig, replaceVariables, width, height, options } = props;
+  const { data, timeZone, fieldConfig, replaceVariables, width, height, options, id } = props;
 
   const theme = useTheme2();
   const highlightedTitle = useSliceHighlightState();
@@ -51,11 +52,7 @@ export function PieChartPanel(props: Props) {
   });
 
   if (!hasFrames(fieldDisplayValues)) {
-    return (
-      <div className="panel-empty">
-        <p>No data</p>
-      </div>
-    );
+    return <PanelDataErrorView panelId={id} fieldConfig={fieldConfig} data={data} />;
   }
 
   return (

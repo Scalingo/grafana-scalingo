@@ -28,7 +28,7 @@ import { ExploreGraphStyle, ExploreId, ExploreItemState } from 'app/types/explor
 
 import { datasourceReducer } from './datasource';
 import { historyReducer } from './history';
-import { richHistoryUpdatedAction, stateSave } from './main';
+import { richHistorySearchFiltersUpdatedAction, richHistoryUpdatedAction, stateSave } from './main';
 import { queryReducer, runQueries, setQueriesAction } from './query';
 import { timeReducer, updateTime } from './time';
 import {
@@ -257,9 +257,19 @@ export const paneReducer = (state: ExploreItemState = makeExplorePaneState(), ac
   state = historyReducer(state, action);
 
   if (richHistoryUpdatedAction.match(action)) {
+    const { richHistory, total } = action.payload.richHistoryResults;
     return {
       ...state,
-      richHistory: action.payload.richHistory,
+      richHistory,
+      richHistoryTotal: total,
+    };
+  }
+
+  if (richHistorySearchFiltersUpdatedAction.match(action)) {
+    const richHistorySearchFilters = action.payload.filters;
+    return {
+      ...state,
+      richHistorySearchFilters,
     };
   }
 

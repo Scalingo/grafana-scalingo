@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import uPlot, { Scale } from 'uplot';
+import uPlot, { TypedArray, Scale } from 'uplot';
 
 import { AbsoluteTimeRange } from '@grafana/data';
 import { UPlotConfigBuilder, Button } from '@grafana/ui';
@@ -11,7 +11,7 @@ interface ThresholdControlsPluginProps {
 
 export const OutsideRangePlugin: React.FC<ThresholdControlsPluginProps> = ({ config, onChangeTimeRange }) => {
   const plotInstance = useRef<uPlot>();
-  const [timevalues, setTimeValues] = useState<number[]>([]);
+  const [timevalues, setTimeValues] = useState<number[] | TypedArray>([]);
   const [timeRange, setTimeRange] = useState<Scale | undefined>();
 
   useLayoutEffect(() => {

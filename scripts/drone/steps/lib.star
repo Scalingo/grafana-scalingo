@@ -1,8 +1,8 @@
 load('scripts/drone/vault.star', 'from_secret', 'github_token', 'pull_secret', 'drone_token', 'prerelease_bucket')
 
-grabpl_version = 'v2.9.50'
-build_image = 'grafana/build-container:1.5.5'
-publish_image = 'grafana/grafana-ci-deploy:1.3.1'
+grabpl_version = 'v2.9.50-go1.17.12'
+build_image = 'grafana/build-container:1.5.8'
+publish_image = 'grafana/grafana-ci-deploy:1.3.3'
 deploy_docker_image = 'us.gcr.io/kubernetes-dev/drone/plugins/deploy-image'
 alpine_image = 'alpine:3.15'
 curl_image = 'byrnedo/alpine-curl:0.1.8'
@@ -181,26 +181,37 @@ def lint_drone_step():
         ],
     }
 
-
-def enterprise_downstream_step(edition):
+def enterprise_downstream_step(edition, ver_mode):
     if edition in ('enterprise', 'enterprise2'):
         return None
 
-    return {
+    repo = 'grafana/grafana-enterprise@'
+    if ver_mode == 'pr':
+        repo += '${DRONE_SOURCE_BRANCH}'
+    else:
+        repo += 'main'
+
+    step = {
         'name': 'trigger-enterprise-downstream',
         'image': 'grafana/drone-downstream',
         'settings': {
             'server': 'https://drone.grafana.net',
             'token': from_secret(drone_token),
             'repositories': [
-                'grafana/grafana-enterprise@main',
+                repo,
             ],
             'params': [
                 'SOURCE_BUILD_NUMBER=${DRONE_COMMIT}',
                 'SOURCE_COMMIT=${DRONE_COMMIT}',
+                'OSS_PULL_REQUEST=${DRONE_PULL_REQUEST}',
             ],
         },
     }
+
+    if ver_mode == 'pr':
+        step.update({ 'failure': 'ignore' })
+
+    return step
 
 
 def lint_backend_step(edition):
@@ -215,8 +226,7 @@ def lint_backend_step(edition):
             'wire-install',
         ],
         'commands': [
-            # Don't use Make since it will re-download the linters
-            './bin/grabpl lint-backend --edition {}'.format(edition),
+            'make lint-go',
         ],
     }
 
@@ -510,6 +520,19 @@ def test_backend_integration_step(edition):
         'commands': [
             './bin/grabpl integration-tests --edition {}'.format(edition),
         ],
+    }
+
+def betterer_frontend_step():
+    return {
+        'name': 'betterer-frontend',
+        'image': build_image,
+        'depends_on': [
+            'yarn-install',
+        ],
+        'commands': [
+            'yarn betterer ci',
+        ],
+        'failure': 'ignore',
     }
 
 

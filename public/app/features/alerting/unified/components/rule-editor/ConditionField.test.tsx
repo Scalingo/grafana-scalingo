@@ -32,6 +32,8 @@ describe('ConditionField', () => {
     );
 
     render(form);
-    expect(screen.getByText('B')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^A/)).not.toBeChecked();
+    expect(screen.getByLabelText(/^B/)).toBeChecked();
+    expect(screen.getByLabelText(/^C/)).not.toBeChecked();
   });
 });

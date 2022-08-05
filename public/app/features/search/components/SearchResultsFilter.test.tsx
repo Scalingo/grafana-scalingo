@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
-
-import { selectOptionInTest } from '@grafana/ui';
+import { selectOptionInTest } from 'test/helpers/selectOptionInTest';
 
 import { SearchLayout } from '../types';
 
@@ -86,6 +85,7 @@ describe('SearchResultsFilter', () => {
       query: { ...searchQuery, tag: [] },
     });
     const tagComponent = await screen.findByLabelText('Tag filter');
+    await tagComponent.focus();
     await selectOptionInTest(tagComponent, 'tag1');
 
     expect(mockFilterByTags).toHaveBeenCalledTimes(1);

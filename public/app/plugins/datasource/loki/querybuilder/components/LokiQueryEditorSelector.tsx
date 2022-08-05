@@ -1,64 +1,70 @@
-import { css } from '@emotion/css';
-import React, { useCallback, useState } from 'react';
+import React, { SyntheticEvent, useCallback, useEffect, useState } from 'react';
 
-import { GrafanaTheme2, LoadingState } from '@grafana/data';
+import { CoreApp, LoadingState } from '@grafana/data';
 import { EditorHeader, EditorRows, FlexItem, InlineSelect, Space } from '@grafana/experimental';
-import { Button, useStyles2, ConfirmModal } from '@grafana/ui';
+import { reportInteraction } from '@grafana/runtime';
+import { Button, ConfirmModal } from '@grafana/ui';
+import { FeedbackLink } from 'app/plugins/datasource/prometheus/querybuilder/shared/FeedbackLink';
 import { QueryEditorModeToggle } from 'app/plugins/datasource/prometheus/querybuilder/shared/QueryEditorModeToggle';
+import { QueryHeaderSwitch } from 'app/plugins/datasource/prometheus/querybuilder/shared/QueryHeaderSwitch';
 import { QueryEditorMode } from 'app/plugins/datasource/prometheus/querybuilder/shared/types';
 
 import { LokiQueryEditorProps } from '../../components/types';
 import { LokiQuery } from '../../types';
 import { lokiQueryModeller } from '../LokiQueryModeller';
 import { buildVisualQueryFromString } from '../parsing';
-import { getQueryWithDefaults } from '../state';
-import { getDefaultEmptyQuery, LokiVisualQuery } from '../types';
+import { changeEditorMode, getQueryWithDefaults, useRawQuery } from '../state';
 
-import { LokiQueryBuilder } from './LokiQueryBuilder';
-import { LokiQueryBuilderExplained } from './LokiQueryBuilderExplaind';
+import { LokiQueryBuilderContainer } from './LokiQueryBuilderContainer';
+import { LokiQueryBuilderExplained } from './LokiQueryBuilderExplained';
 import { LokiQueryBuilderOptions } from './LokiQueryBuilderOptions';
 import { LokiQueryCodeEditor } from './LokiQueryCodeEditor';
 
 export const LokiQueryEditorSelector = React.memo<LokiQueryEditorProps>((props) => {
-  const { onChange, onRunQuery, data } = props;
-  const styles = useStyles2(getStyles);
-  const query = getQueryWithDefaults(props.query);
-  const [visualQuery, setVisualQuery] = useState<LokiVisualQuery>(query.visualQuery ?? getDefaultEmptyQuery());
+  const { onChange, onRunQuery, data, app } = props;
   const [parseModalOpen, setParseModalOpen] = useState(false);
-  const [pendingChange, setPendingChange] = useState<LokiQuery | undefined>(undefined);
+  const [dataIsStale, setDataIsStale] = useState(false);
+
+  const query = getQueryWithDefaults(props.query);
+  const [rawQuery, setRawQuery] = useRawQuery();
+  // This should be filled in from the defaults by now.
+  const editorMode = query.editorMode!;
 
   const onEditorModeChange = useCallback(
-    (newMetricEditorMode: QueryEditorMode) => {
-      const change = { ...query, editorMode: newMetricEditorMode };
-      if (newMetricEditorMode === QueryEditorMode.Builder) {
-        const result = buildVisualQueryFromString(query.expr);
-        change.visualQuery = result.query;
+    (newEditorMode: QueryEditorMode) => {
+      reportInteraction('grafana_loki_editor_mode_clicked', {
+        newEditor: newEditorMode,
+        previousEditor: query.editorMode ?? '',
+        newQuery: !query.expr,
+        app: app ?? '',
+      });
+
+      if (newEditorMode === QueryEditorMode.Builder) {
+        const result = buildVisualQueryFromString(query.expr || '');
         // If there are errors, give user a chance to decide if they want to go to builder as that can loose some data.
         if (result.errors.length) {
           setParseModalOpen(true);
-          setPendingChange(change);
           return;
         }
-        setVisualQuery(change.visualQuery);
       }
-      onChange(change);
+      changeEditorMode(query, newEditorMode, onChange);
     },
-    [onChange, query]
+    [onChange, query, app]
   );
 
-  const onChangeViewModel = (updatedQuery: LokiVisualQuery) => {
-    setVisualQuery(updatedQuery);
+  useEffect(() => {
+    setDataIsStale(false);
+  }, [data]);
 
-    onChange({
-      ...query,
-      expr: lokiQueryModeller.renderQuery(updatedQuery),
-      visualQuery: updatedQuery,
-      editorMode: QueryEditorMode.Builder,
-    });
+  const onChangeInternal = (query: LokiQuery) => {
+    setDataIsStale(true);
+    onChange(query);
   };
 
-  // If no expr (ie new query) then default to builder
-  const editorMode = query.editorMode ?? (query.expr ? QueryEditorMode.Code : QueryEditorMode.Builder);
+  const onQueryPreviewChange = (event: SyntheticEvent<HTMLInputElement>) => {
+    const isEnabled = event.currentTarget.checked;
+    setRawQuery(isEnabled);
+  };
 
   return (
     <>
@@ -68,53 +74,61 @@ export const LokiQueryEditorSelector = React.memo<LokiQueryEditorProps>((props) 
         body="There were errors while trying to parse the query. Continuing to visual builder may loose some parts of the query."
         confirmText="Continue"
         onConfirm={() => {
-          setVisualQuery(pendingChange!.visualQuery!);
-          onChange(pendingChange!);
+          onChange({ ...query, editorMode: QueryEditorMode.Builder });
           setParseModalOpen(false);
         }}
         onDismiss={() => setParseModalOpen(false)}
       />
       <EditorHeader>
-        <FlexItem grow={1} />
-        <Button
-          className={styles.runQuery}
-          variant="secondary"
-          size="sm"
-          fill="outline"
-          onClick={onRunQuery}
-          icon={data?.state === LoadingState.Loading ? 'fa fa-spinner' : undefined}
-          disabled={data?.state === LoadingState.Loading}
-        >
-          Run query
-        </Button>
         <InlineSelect
           value={null}
           placeholder="Query patterns"
           allowCustomValue
           onChange={({ value }) => {
-            onChangeViewModel({
-              ...visualQuery,
-              operations: value?.operations!,
+            const result = buildVisualQueryFromString(query.expr || '');
+            result.query.operations = value?.operations!;
+            onChange({
+              ...query,
+              expr: lokiQueryModeller.renderQuery(result.query),
             });
           }}
           options={lokiQueryModeller.getQueryPatterns().map((x) => ({ label: x.name, value: x }))}
         />
-        <QueryEditorModeToggle mode={editorMode} onChange={onEditorModeChange} />
+        {editorMode === QueryEditorMode.Builder && (
+          <>
+            <QueryHeaderSwitch label="Raw query" value={rawQuery} onChange={onQueryPreviewChange} />
+            <FeedbackLink feedbackUrl="https://github.com/grafana/grafana/discussions/50785" />
+          </>
+        )}
+        <FlexItem grow={1} />
+        {app !== CoreApp.Explore && (
+          <Button
+            variant={dataIsStale ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={onRunQuery}
+            icon={data?.state === LoadingState.Loading ? 'fa fa-spinner' : undefined}
+            disabled={data?.state === LoadingState.Loading}
+          >
+            Run queries
+          </Button>
+        )}
+        <QueryEditorModeToggle mode={editorMode!} onChange={onEditorModeChange} />
       </EditorHeader>
       <Space v={0.5} />
       <EditorRows>
-        {editorMode === QueryEditorMode.Code && <LokiQueryCodeEditor {...props} />}
+        {editorMode === QueryEditorMode.Code && <LokiQueryCodeEditor {...props} onChange={onChangeInternal} />}
         {editorMode === QueryEditorMode.Builder && (
-          <LokiQueryBuilder
+          <LokiQueryBuilderContainer
             datasource={props.datasource}
-            query={visualQuery}
-            onChange={onChangeViewModel}
+            query={query}
+            onChange={onChangeInternal}
             onRunQuery={props.onRunQuery}
+            showRawQuery={rawQuery}
           />
         )}
-        {editorMode === QueryEditorMode.Explain && <LokiQueryBuilderExplained query={visualQuery} />}
+        {editorMode === QueryEditorMode.Explain && <LokiQueryBuilderExplained query={query.expr} />}
         {editorMode !== QueryEditorMode.Explain && (
-          <LokiQueryBuilderOptions query={query} onChange={onChange} onRunQuery={onRunQuery} />
+          <LokiQueryBuilderOptions query={query} onChange={onChange} onRunQuery={onRunQuery} app={app} />
         )}
       </EditorRows>
     </>
@@ -122,15 +136,3 @@ export const LokiQueryEditorSelector = React.memo<LokiQueryEditorProps>((props) 
 });
 
 LokiQueryEditorSelector.displayName = 'LokiQueryEditorSelector';
-
-const getStyles = (theme: GrafanaTheme2) => {
-  return {
-    runQuery: css({
-      color: theme.colors.text.secondary,
-    }),
-    switchLabel: css({
-      color: theme.colors.text.secondary,
-      fontSize: theme.typography.bodySmall.fontSize,
-    }),
-  };
-};

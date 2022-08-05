@@ -37,7 +37,8 @@ func Initialize(cfg *setting.Cfg) (Runner, error) {
 	if err != nil {
 		return Runner{}, err
 	}
-	sqlStore, err := sqlstore.ProvideService(cfg, cacheService, ossMigrations, tracer)
+	inProcBus := bus.ProvideBus(tracer)
+	sqlStore, err := sqlstore.ProvideService(cfg, cacheService, ossMigrations, inProcBus, tracer)
 	if err != nil {
 		return Runner{}, err
 	}

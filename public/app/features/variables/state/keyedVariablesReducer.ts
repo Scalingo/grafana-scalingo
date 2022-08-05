@@ -1,4 +1,4 @@
-import { createAction, PayloadAction } from '@reduxjs/toolkit';
+import { PayloadAction } from '@reduxjs/toolkit';
 import { AnyAction } from 'redux';
 
 import { toStateKey } from '../utils';
@@ -18,15 +18,27 @@ export interface KeyedAction {
   action: PayloadAction<any>;
 }
 
-const keyedAction = createAction<KeyedAction>('templating/keyedAction');
+const keyedAction = (payload: KeyedAction) => ({
+  type: `templating/keyed/${payload.action.type.replace(/^templating\//, '')}`,
+  payload,
+});
 
 export function toKeyedAction(key: string, action: PayloadAction<any>): PayloadAction<KeyedAction> {
   const keyAsString = toStateKey(key);
   return keyedAction({ key: keyAsString, action });
 }
 
+const isKeyedAction = (action: AnyAction): action is PayloadAction<KeyedAction> => {
+  return (
+    typeof action.type === 'string' &&
+    action.type.startsWith('templating/keyed') &&
+    'payload' in action &&
+    typeof action.payload.key === 'string'
+  );
+};
+
 export function keyedVariablesReducer(state = initialKeyedVariablesState, outerAction: AnyAction): KeyedVariablesState {
-  if (keyedAction.match(outerAction)) {
+  if (isKeyedAction(outerAction)) {
     const { key, action } = outerAction.payload;
     const stringKey = toStateKey(key);
     const lastKey = variablesInitTransaction.match(action) ? stringKey : state.lastKey;

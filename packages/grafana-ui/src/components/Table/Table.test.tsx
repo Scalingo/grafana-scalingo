@@ -161,11 +161,11 @@ describe('Table', () => {
   });
 
   describe('when sorting with column header', () => {
-    it('then correct rows should be rendered', () => {
+    it('then correct rows should be rendered', async () => {
       getTestContext();
 
-      userEvent.click(within(getColumnHeader(/temperature/)).getByText(/temperature/i));
-      userEvent.click(within(getColumnHeader(/temperature/)).getByText(/temperature/i));
+      await userEvent.click(within(getColumnHeader(/temperature/)).getByText(/temperature/i));
+      await userEvent.click(within(getColumnHeader(/temperature/)).getByText(/temperature/i));
 
       const rows = within(getTable()).getAllByRole('row');
       expect(rows).toHaveLength(5);
@@ -179,7 +179,7 @@ describe('Table', () => {
   });
 
   describe('on filtering', () => {
-    it('the rows should be filtered', () => {
+    it('the rows should be filtered', async () => {
       getTestContext({
         data: toDataFrame({
           name: 'A',
@@ -200,9 +200,9 @@ describe('Table', () => {
 
       expect(within(getTable()).getAllByRole('row')).toHaveLength(9);
 
-      userEvent.click(within(getColumnHeader(/number/)).getByRole('filterIcon'));
-      userEvent.click(screen.getByLabelText('1'));
-      userEvent.click(screen.getByText('Ok'));
+      await userEvent.click(within(getColumnHeader(/number/)).getByRole('filterIcon'));
+      await userEvent.click(screen.getByLabelText('1'));
+      await userEvent.click(screen.getByText('Ok'));
 
       // 3 + header row
       expect(within(getTable()).getAllByRole('row')).toHaveLength(4);

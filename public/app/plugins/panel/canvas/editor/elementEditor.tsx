@@ -86,7 +86,7 @@ export function getElementEditor(opts: CanvasEditorOptions): NestedPanelOptions<
         category: ['Layout'],
         id: 'content',
         path: '__', // not used
-        name: 'Anchor',
+        name: 'Quick placement',
         editor: PlacementEditor,
         settings: opts,
       });

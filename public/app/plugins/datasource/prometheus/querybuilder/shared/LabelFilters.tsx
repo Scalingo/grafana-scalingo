@@ -2,7 +2,7 @@ import { isEqual } from 'lodash';
 import React, { useEffect, useState } from 'react';
 
 import { SelectableValue } from '@grafana/data';
-import { EditorField, EditorFieldGroup, EditorList } from '@grafana/experimental';
+import { EditorFieldGroup, EditorList, EditorField } from '@grafana/experimental';
 
 import { QueryBuilderLabelFilter } from '../shared/types';
 
@@ -13,9 +13,10 @@ export interface Props {
   onChange: (labelFilters: QueryBuilderLabelFilter[]) => void;
   onGetLabelNames: (forLabel: Partial<QueryBuilderLabelFilter>) => Promise<SelectableValue[]>;
   onGetLabelValues: (forLabel: Partial<QueryBuilderLabelFilter>) => Promise<SelectableValue[]>;
+  error?: string;
 }
 
-export function LabelFilters({ labelsFilters, onChange, onGetLabelNames, onGetLabelValues }: Props) {
+export function LabelFilters({ labelsFilters, onChange, onGetLabelNames, onGetLabelValues, error }: Props) {
   const defaultOp = '=';
   const [items, setItems] = useState<Array<Partial<QueryBuilderLabelFilter>>>([{ op: defaultOp }]);
 
@@ -39,7 +40,7 @@ export function LabelFilters({ labelsFilters, onChange, onGetLabelNames, onGetLa
 
   return (
     <EditorFieldGroup>
-      <EditorField label="Labels">
+      <EditorField label="Labels" error={error} invalid={!!error}>
         <EditorList
           items={items}
           onChange={onLabelsChange}

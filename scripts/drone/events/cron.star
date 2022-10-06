@@ -9,12 +9,18 @@ def cronjobs(edition):
         name='grafana-com-nightly',
         steps=[compile_build_cmd(),post_to_grafana_com_step()]
     )
+    run_test_cron_pipeline = cron_job_pipeline(
+        cronName='run-test-cron',
+        name='run-test-cron',
+        steps=[run_tests_as_crons_step()]
+    )
     return [
         scan_docker_image_pipeline(edition, 'latest'),
         scan_docker_image_pipeline(edition, 'main'),
         scan_docker_image_pipeline(edition, 'latest-ubuntu'),
         scan_docker_image_pipeline(edition, 'main-ubuntu'),
         grafana_com_nightly_pipeline,
+        run_test_cron_pipeline,
     ]
 
 def cron_job_pipeline(cronName, name, steps):
@@ -97,3 +103,17 @@ def post_to_grafana_com_step():
             'commands': ['./bin/build publish grafana-com --edition oss'],
         }
 
+def run_tests_as_crons_step():
+    return {
+                'name': 'run-test-cron',
+                'image': publish_image,
+                'environment': {
+                    'GITHUB_TOKEN': from_secret('github_token'),
+                    'TEST_TAG': 'v0.0.1-test',
+                },
+                'commands': [
+                            'git fetch https://$${GITHUB_TOKEN}@github.com/grafana/grafana.git "refs/tags/*:refs/tags/*" && git fetch',
+                            'if git show-ref --tags $${TEST_TAG} --quiet; then git tag -d $${TEST_TAG} && git push --delete https://$${GITHUB_TOKEN}@github.com/grafana/grafana.git $${TEST_TAG}; fi',
+                            'git tag $${TEST_TAG} && git push https://$${GITHUB_TOKEN}@github.com/grafana/grafana.git $${TEST_TAG}',
+                        ],
+            }

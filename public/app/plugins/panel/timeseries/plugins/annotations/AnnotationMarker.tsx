@@ -7,6 +7,7 @@ import { Portal, useStyles2, usePanelContext } from '@grafana/ui';
 import { getTooltipContainerStyles } from '@grafana/ui/src/themes/mixins';
 
 import { getCommonAnnotationStyles } from '../styles';
+import { AnnotationsDataFrameViewDTO } from '../types';
 
 import { AnnotationEditorForm } from './AnnotationEditorForm';
 import { AnnotationTooltip } from './AnnotationTooltip';
@@ -95,8 +96,8 @@ export function AnnotationMarker({ annotation, timeZone, width }: Props) {
         timeFormatter={timeFormatter}
         onEdit={onAnnotationEdit}
         onDelete={onAnnotationDelete}
-        canEdit={canEditAnnotations!(annotation.dashboardId)}
-        canDelete={canDeleteAnnotations!(annotation.dashboardId)}
+        canEdit={canEditAnnotations!(annotation.dashboardUID)}
+        canDelete={canDeleteAnnotations!(annotation.dashboardUID)}
       />
     );
   }, [canEditAnnotations, canDeleteAnnotations, onAnnotationDelete, onAnnotationEdit, timeFormatter, annotation]);

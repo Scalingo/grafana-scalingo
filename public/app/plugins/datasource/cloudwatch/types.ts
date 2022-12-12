@@ -1,6 +1,7 @@
 import { AwsAuthDataSourceJsonData, AwsAuthDataSourceSecureJsonData } from '@grafana/aws-sdk';
-import { DataQuery, DataSourceRef, SelectableValue } from '@grafana/data';
+import { DataFrame, DataQuery, DataSourceRef, SelectableValue } from '@grafana/data';
 
+import { SelectableResourceValue } from './api';
 import {
   QueryEditorArrayExpression,
   QueryEditorFunctionExpression,
@@ -64,6 +65,7 @@ export interface MetricStat {
   dimensions?: Dimensions;
   matchExact?: boolean;
   period?: string;
+  accountId?: string;
   statistic?: string;
   /**
    * @deprecated use statistic
@@ -77,6 +79,7 @@ export interface CloudWatchMathExpressionQuery extends DataQuery {
 
 export type LogAction =
   | 'DescribeLogGroups'
+  | 'DescribeAllLogGroups'
   | 'GetQueryResults'
   | 'GetLogGroupFields'
   | 'GetLogEvents'
@@ -97,8 +100,10 @@ export interface CloudWatchLogsQuery extends DataQuery {
   id: string;
   region: string;
   expression?: string;
-  logGroupNames?: string[];
   statsGroups?: string[];
+  logGroups?: SelectableResourceValue[];
+  /* not quite deprecated yet, but will be soon */
+  logGroupNames?: string[];
 }
 
 export type CloudWatchQuery = CloudWatchMetricsQuery | CloudWatchLogsQuery | CloudWatchAnnotationQuery;
@@ -121,6 +126,7 @@ export interface CloudWatchJsonData extends AwsAuthDataSourceJsonData {
   logsTimeout?: string;
   // Used to create links if logs contain traceId.
   tracingDatasourceUid?: string;
+  defaultLogGroups?: string[];
 }
 
 export interface CloudWatchSecureJsonData extends AwsAuthDataSourceSecureJsonData {
@@ -215,24 +221,6 @@ export interface GetQueryResultsResponse {
    */
   status?: QueryStatus;
 }
-
-export interface DescribeLogGroupsRequest {
-  /**
-   * The prefix to match.
-   */
-  logGroupNamePrefix?: string;
-  /**
-   * The token for the next set of items to return. (You received this token from a previous call.)
-   */
-  nextToken?: string;
-  /**
-   * The maximum number of items returned. If you don't specify a value, the default is up to 50 items.
-   */
-  limit?: number;
-  refId?: string;
-  region: string;
-}
-
 export interface TSDBResponse<T = any> {
   results: Record<string, TSDBQueryResult<T>>;
   message?: string;
@@ -242,6 +230,7 @@ export interface TSDBQueryResult<T = any> {
   refId: string;
   series: TSDBTimeSeries[];
   tables: Array<TSDBTable<T>>;
+  frames: DataFrame[];
 
   error?: string;
   meta?: any;
@@ -250,6 +239,15 @@ export interface TSDBQueryResult<T = any> {
 export interface TSDBTable<T = any> {
   columns: Array<{ text: string }>;
   rows: T[];
+}
+
+export interface DataQueryError<CloudWatchMetricsQuery> {
+  data?: {
+    message?: string;
+    error?: string;
+    results: Record<string, TSDBQueryResult<CloudWatchMetricsQuery>>;
+  };
+  message?: string;
 }
 
 export interface TSDBTimeSeries {
@@ -378,6 +376,7 @@ export enum VariableQueryType {
   ResourceArns = 'resourceARNs',
   Statistics = 'statistics',
   LogGroups = 'logGroups',
+  Accounts = 'accounts',
 }
 
 export interface OldVariableQuery extends DataQuery {
@@ -437,4 +436,61 @@ export interface LegacyAnnotationQuery extends MetricStat, DataQuery {
     type: string;
   };
   type: string;
+}
+
+export interface MetricResponse {
+  name: string;
+  namespace: string;
+}
+
+export interface ResourceRequest {
+  region: string;
+  accountId?: string;
+}
+
+export interface GetDimensionKeysRequest extends ResourceRequest {
+  metricName?: string;
+  namespace?: string;
+  dimensionFilters?: Dimensions;
+}
+
+export interface GetDimensionValuesRequest extends ResourceRequest {
+  dimensionKey: string;
+  namespace: string;
+  metricName?: string;
+  dimensionFilters?: Dimensions;
+}
+
+export interface GetMetricsRequest extends ResourceRequest {
+  namespace?: string;
+}
+
+export interface DescribeLogGroupsRequest extends ResourceRequest {
+  logGroupNamePrefix?: string;
+  logGroupPattern?: string;
+  // used by legacy requests, in the future deprecate these fields
+  refId?: string;
+  limit?: number;
+}
+
+export interface Account {
+  arn: string;
+  id: string;
+  label: string;
+  isMonitoringAccount: boolean;
+}
+
+export interface LogGroupResponse {
+  arn: string;
+  name: string;
+}
+
+export interface MetricResponse {
+  name: string;
+  namespace: string;
+}
+
+export interface ResourceResponse<T> {
+  accountId?: string;
+  value: T;
 }

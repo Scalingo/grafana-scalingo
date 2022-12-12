@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { getPluginId } from '../utils/getPluginId';
+
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 const supportedExtensions = ['css', 'scss', 'less', 'sass'];
@@ -92,7 +94,9 @@ export const getStyleLoaders = () => {
         {
           loader: require.resolve('less-loader'),
           options: {
-            javascriptEnabled: true,
+            lessOptions: {
+              javascriptEnabled: true,
+            },
           },
         },
       ],
@@ -109,7 +113,7 @@ export const getFileLoaders = () => {
       test: /\.(png|jpe?g|gif|svg)$/,
       type: 'asset/resource',
       generator: {
-        publicPath: `img/`,
+        publicPath: `public/plugins/${getPluginId()}/img/`,
         outputPath: 'img/',
       },
     },
@@ -117,7 +121,7 @@ export const getFileLoaders = () => {
       test: /\.(woff|woff2|eot|ttf|otf)(\?v=\d+\.\d+\.\d+)?$/,
       type: 'asset/resource',
       generator: {
-        publicPath: `fonts/`,
+        publicPath: `public/plugins/${getPluginId()}/fonts/`,
         outputPath: 'fonts/',
       },
     },

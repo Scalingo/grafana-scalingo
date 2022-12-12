@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/grafana/pkg/infra/serverlock"
-
+	"github.com/grafana/grafana/pkg/infra/db"
 	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/infra/serverlock"
 	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
+	"github.com/grafana/grafana/pkg/services/quota"
+	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
 )
@@ -23,7 +24,7 @@ var getTime = time.Now
 
 const urgentRotateTime = 1 * time.Minute
 
-func ProvideUserAuthTokenService(sqlStore *sqlstore.SQLStore, serverLockService *serverlock.ServerLockService,
+func ProvideUserAuthTokenService(sqlStore db.DB, serverLockService *serverlock.ServerLockService,
 	cfg *setting.Cfg) *UserAuthTokenService {
 	s := &UserAuthTokenService{
 		SQLStore:          sqlStore,
@@ -35,29 +36,67 @@ func ProvideUserAuthTokenService(sqlStore *sqlstore.SQLStore, serverLockService 
 }
 
 type UserAuthTokenService struct {
-	SQLStore          *sqlstore.SQLStore
+	SQLStore          db.DB
 	ServerLockService *serverlock.ServerLockService
 	Cfg               *setting.Cfg
 	log               log.Logger
 }
 
-func (s *UserAuthTokenService) ActiveTokenCount(ctx context.Context) (int64, error) {
+type ActiveTokenService interface {
+	ActiveTokenCount(ctx context.Context, _ *quota.ScopeParameters) (*quota.Map, error)
+}
+
+type ActiveAuthTokenService struct {
+	cfg      *setting.Cfg
+	sqlStore db.DB
+}
+
+func ProvideActiveAuthTokenService(cfg *setting.Cfg, sqlStore db.DB, quotaService quota.Service) (*ActiveAuthTokenService, error) {
+	s := &ActiveAuthTokenService{
+		cfg:      cfg,
+		sqlStore: sqlStore,
+	}
+
+	defaultLimits, err := readQuotaConfig(cfg)
+	if err != nil {
+		return s, err
+	}
+
+	if err := quotaService.RegisterQuotaReporter(&quota.NewUsageReporter{
+		TargetSrv:     QuotaTargetSrv,
+		DefaultLimits: defaultLimits,
+		Reporter:      s.ActiveTokenCount,
+	}); err != nil {
+		return s, err
+	}
+
+	return s, nil
+}
+
+func (a *ActiveAuthTokenService) ActiveTokenCount(ctx context.Context, _ *quota.ScopeParameters) (*quota.Map, error) {
 	var count int64
 	var err error
-	err = s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	err = a.sqlStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 		var model userAuthToken
 		count, err = dbSession.Where(`created_at > ? AND rotated_at > ? AND revoked_at = 0`,
-			s.createdAfterParam(),
-			s.rotatedAfterParam()).
+			getTime().Add(-a.cfg.LoginMaxLifetime).Unix(),
+			getTime().Add(-a.cfg.LoginMaxInactiveLifetime).Unix()).
 			Count(&model)
 
 		return err
 	})
 
-	return count, err
+	tag, err := quota.NewTag(QuotaTargetSrv, QuotaTarget, quota.GlobalScope)
+	if err != nil {
+		return nil, err
+	}
+	u := &quota.Map{}
+	u.Set(tag, count)
+
+	return u, err
 }
 
-func (s *UserAuthTokenService) CreateToken(ctx context.Context, user *models.User, clientIP net.IP, userAgent string) (*models.UserToken, error) {
+func (s *UserAuthTokenService) CreateToken(ctx context.Context, user *user.User, clientIP net.IP, userAgent string) (*models.UserToken, error) {
 	token, err := util.RandomHex(16)
 	if err != nil {
 		return nil, err
@@ -72,7 +111,7 @@ func (s *UserAuthTokenService) CreateToken(ctx context.Context, user *models.Use
 	}
 
 	userAuthToken := userAuthToken{
-		UserId:        user.Id,
+		UserId:        user.ID,
 		AuthToken:     hashedToken,
 		PrevAuthToken: hashedToken,
 		ClientIp:      clientIPStr,
@@ -85,7 +124,7 @@ func (s *UserAuthTokenService) CreateToken(ctx context.Context, user *models.Use
 		AuthTokenSeen: false,
 	}
 
-	err = s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	err = s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 		_, err = dbSession.Insert(&userAuthToken)
 		return err
 	})
@@ -96,7 +135,8 @@ func (s *UserAuthTokenService) CreateToken(ctx context.Context, user *models.Use
 
 	userAuthToken.UnhashedToken = token
 
-	s.log.Debug("user auth token created", "tokenId", userAuthToken.Id, "userId", userAuthToken.UserId, "clientIP", userAuthToken.ClientIp, "userAgent", userAuthToken.UserAgent, "authToken", userAuthToken.AuthToken)
+	ctxLogger := s.log.FromContext(ctx)
+	ctxLogger.Debug("user auth token created", "tokenId", userAuthToken.Id, "userId", userAuthToken.UserId, "clientIP", userAuthToken.ClientIp, "userAgent", userAuthToken.UserAgent, "authToken", userAuthToken.AuthToken)
 
 	var userToken models.UserToken
 	err = userAuthToken.toUserToken(&userToken)
@@ -109,7 +149,7 @@ func (s *UserAuthTokenService) LookupToken(ctx context.Context, unhashedToken st
 	var model userAuthToken
 	var exists bool
 	var err error
-	err = s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	err = s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 		exists, err = dbSession.Where("(auth_token = ? OR prev_auth_token = ?)",
 			hashedToken,
 			hashedToken).
@@ -125,7 +165,10 @@ func (s *UserAuthTokenService) LookupToken(ctx context.Context, unhashedToken st
 		return nil, models.ErrUserTokenNotFound
 	}
 
+	ctxLogger := s.log.FromContext(ctx)
+
 	if model.RevokedAt > 0 {
+		ctxLogger.Debug("user token has been revoked", "user ID", model.UserId, "token ID", model.Id)
 		return nil, &models.TokenRevokedError{
 			UserID:  model.UserId,
 			TokenID: model.Id,
@@ -133,6 +176,7 @@ func (s *UserAuthTokenService) LookupToken(ctx context.Context, unhashedToken st
 	}
 
 	if model.CreatedAt <= s.createdAfterParam() || model.RotatedAt <= s.rotatedAfterParam() {
+		ctxLogger.Debug("user token has expired", "user ID", model.UserId, "token ID", model.Id)
 		return nil, &models.TokenExpiredError{
 			UserID:  model.UserId,
 			TokenID: model.Id,
@@ -145,7 +189,7 @@ func (s *UserAuthTokenService) LookupToken(ctx context.Context, unhashedToken st
 		expireBefore := getTime().Add(-urgentRotateTime).Unix()
 
 		var affectedRows int64
-		err = s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+		err = s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *db.Session) error {
 			affectedRows, err = dbSession.Where("id = ? AND prev_auth_token = ? AND rotated_at < ?",
 				modelCopy.Id,
 				modelCopy.PrevAuthToken,
@@ -160,9 +204,9 @@ func (s *UserAuthTokenService) LookupToken(ctx context.Context, unhashedToken st
 		}
 
 		if affectedRows == 0 {
-			s.log.Debug("prev seen token unchanged", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
+			ctxLogger.Debug("prev seen token unchanged", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
 		} else {
-			s.log.Debug("prev seen token", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
+			ctxLogger.Debug("prev seen token", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
 		}
 	}
 
@@ -172,7 +216,7 @@ func (s *UserAuthTokenService) LookupToken(ctx context.Context, unhashedToken st
 		modelCopy.SeenAt = getTime().Unix()
 
 		var affectedRows int64
-		err = s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+		err = s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *db.Session) error {
 			affectedRows, err = dbSession.Where("id = ? AND auth_token = ?",
 				modelCopy.Id,
 				modelCopy.AuthToken).
@@ -190,9 +234,9 @@ func (s *UserAuthTokenService) LookupToken(ctx context.Context, unhashedToken st
 		}
 
 		if affectedRows == 0 {
-			s.log.Debug("seen wrong token", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
+			ctxLogger.Debug("seen wrong token", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
 		} else {
-			s.log.Debug("seen token", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
+			ctxLogger.Debug("seen token", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "authToken", model.AuthToken)
 		}
 	}
 
@@ -229,7 +273,8 @@ func (s *UserAuthTokenService) TryRotateToken(ctx context.Context, token *models
 		return false, nil
 	}
 
-	s.log.Debug("token needs rotation", "tokenId", model.Id, "authTokenSeen", model.AuthTokenSeen, "rotatedAt", rotatedAt)
+	ctxLogger := s.log.FromContext(ctx)
+	ctxLogger.Debug("token needs rotation", "tokenId", model.Id, "authTokenSeen", model.AuthTokenSeen, "rotatedAt", rotatedAt)
 
 	clientIPStr := clientIP.String()
 	if len(clientIP) == 0 {
@@ -255,9 +300,9 @@ func (s *UserAuthTokenService) TryRotateToken(ctx context.Context, token *models
 		WHERE id = ? AND (auth_token_seen = ? OR rotated_at < ?)`
 
 	var affected int64
-	err = s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
-		res, err := dbSession.Exec(sql, userAgent, clientIPStr, s.SQLStore.Dialect.BooleanStr(true), hashedToken,
-			s.SQLStore.Dialect.BooleanStr(false), now.Unix(), model.Id, s.SQLStore.Dialect.BooleanStr(true),
+	err = s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *db.Session) error {
+		res, err := dbSession.Exec(sql, userAgent, clientIPStr, s.SQLStore.GetDialect().BooleanStr(true), hashedToken,
+			s.SQLStore.GetDialect().BooleanStr(false), now.Unix(), model.Id, s.SQLStore.GetDialect().BooleanStr(true),
 			now.Add(-30*time.Second).Unix())
 		if err != nil {
 			return err
@@ -271,7 +316,7 @@ func (s *UserAuthTokenService) TryRotateToken(ctx context.Context, token *models
 		return false, err
 	}
 
-	s.log.Debug("auth token rotated", "affected", affected, "auth_token_id", model.Id, "userId", model.UserId)
+	ctxLogger.Debug("auth token rotated", "affected", affected, "auth_token_id", model.Id, "userId", model.UserId)
 	if affected > 0 {
 		model.UnhashedToken = newToken
 		if err := model.toUserToken(token); err != nil {
@@ -297,12 +342,12 @@ func (s *UserAuthTokenService) RevokeToken(ctx context.Context, token *models.Us
 
 	if soft {
 		model.RevokedAt = getTime().Unix()
-		err = s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+		err = s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 			rowsAffected, err = dbSession.ID(model.Id).Update(model)
 			return err
 		})
 	} else {
-		err = s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+		err = s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 			rowsAffected, err = dbSession.Delete(model)
 			return err
 		})
@@ -312,18 +357,20 @@ func (s *UserAuthTokenService) RevokeToken(ctx context.Context, token *models.Us
 		return err
 	}
 
+	ctxLogger := s.log.FromContext(ctx)
+
 	if rowsAffected == 0 {
-		s.log.Debug("user auth token not found/revoked", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent)
+		ctxLogger.Debug("user auth token not found/revoked", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent)
 		return models.ErrUserTokenNotFound
 	}
 
-	s.log.Debug("user auth token revoked", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "soft", soft)
+	ctxLogger.Debug("user auth token revoked", "tokenId", model.Id, "userId", model.UserId, "clientIP", model.ClientIp, "userAgent", model.UserAgent, "soft", soft)
 
 	return nil
 }
 
 func (s *UserAuthTokenService) RevokeAllUserTokens(ctx context.Context, userId int64) error {
-	return s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	return s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 		sql := `DELETE from user_auth_token WHERE user_id = ?`
 		res, err := dbSession.Exec(sql, userId)
 		if err != nil {
@@ -335,14 +382,14 @@ func (s *UserAuthTokenService) RevokeAllUserTokens(ctx context.Context, userId i
 			return err
 		}
 
-		s.log.Debug("all user tokens for user revoked", "userId", userId, "count", affected)
+		s.log.FromContext(ctx).Debug("all user tokens for user revoked", "userId", userId, "count", affected)
 
 		return err
 	})
 }
 
 func (s *UserAuthTokenService) BatchRevokeAllUserTokens(ctx context.Context, userIds []int64) error {
-	return s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	return s.SQLStore.WithTransactionalDbSession(ctx, func(dbSession *db.Session) error {
 		if len(userIds) == 0 {
 			return nil
 		}
@@ -365,7 +412,7 @@ func (s *UserAuthTokenService) BatchRevokeAllUserTokens(ctx context.Context, use
 			return err
 		}
 
-		s.log.Debug("all user tokens for given users revoked", "usersCount", len(userIds), "count", affected)
+		s.log.FromContext(ctx).Debug("all user tokens for given users revoked", "usersCount", len(userIds), "count", affected)
 
 		return err
 	})
@@ -373,7 +420,7 @@ func (s *UserAuthTokenService) BatchRevokeAllUserTokens(ctx context.Context, use
 
 func (s *UserAuthTokenService) GetUserToken(ctx context.Context, userId, userTokenId int64) (*models.UserToken, error) {
 	var result models.UserToken
-	err := s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	err := s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 		var token userAuthToken
 		exists, err := dbSession.Where("id = ? AND user_id = ?", userTokenId, userId).Get(&token)
 		if err != nil {
@@ -392,7 +439,7 @@ func (s *UserAuthTokenService) GetUserToken(ctx context.Context, userId, userTok
 
 func (s *UserAuthTokenService) GetUserTokens(ctx context.Context, userId int64) ([]*models.UserToken, error) {
 	result := []*models.UserToken{}
-	err := s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	err := s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 		var tokens []*userAuthToken
 		err := dbSession.Where("user_id = ? AND created_at > ? AND rotated_at > ? AND revoked_at = 0",
 			userId,
@@ -419,7 +466,7 @@ func (s *UserAuthTokenService) GetUserTokens(ctx context.Context, userId int64) 
 
 func (s *UserAuthTokenService) GetUserRevokedTokens(ctx context.Context, userId int64) ([]*models.UserToken, error) {
 	result := []*models.UserToken{}
-	err := s.SQLStore.WithDbSession(ctx, func(dbSession *sqlstore.DBSession) error {
+	err := s.SQLStore.WithDbSession(ctx, func(dbSession *db.Session) error {
 		var tokens []*userAuthToken
 		err := dbSession.Where("user_id = ? AND revoked_at > 0", userId).Find(&tokens)
 		if err != nil {
@@ -451,4 +498,20 @@ func (s *UserAuthTokenService) rotatedAfterParam() int64 {
 func hashToken(token string) string {
 	hashBytes := sha256.Sum256([]byte(token + setting.SecretKey))
 	return hex.EncodeToString(hashBytes[:])
+}
+
+func readQuotaConfig(cfg *setting.Cfg) (*quota.Map, error) {
+	limits := &quota.Map{}
+
+	if cfg == nil {
+		return limits, nil
+	}
+
+	globalQuotaTag, err := quota.NewTag(QuotaTargetSrv, QuotaTarget, quota.GlobalScope)
+	if err != nil {
+		return limits, err
+	}
+
+	limits.Set(globalQuotaTag, cfg.Quota.Global.Session)
+	return limits, nil
 }

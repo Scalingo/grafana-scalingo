@@ -1,11 +1,12 @@
 import { render, waitFor } from '@testing-library/react';
 import React from 'react';
+import { Provider } from 'react-redux';
 
 import { contextSrv } from 'app/core/services/context_srv';
 
-import { locationService } from '../../../../packages/grafana-runtime/src';
+import { configureStore } from '../../store/configureStore';
 
-import { PlaylistPage, PlaylistPageProps } from './PlaylistPage';
+import { PlaylistPage } from './PlaylistPage';
 
 const fnMock = jest.fn();
 
@@ -22,32 +23,20 @@ jest.mock('app/core/services/context_srv', () => ({
   },
 }));
 
-function getTestContext(propOverrides?: object) {
-  const props: PlaylistPageProps = {
-    navModel: {
-      main: {
-        text: 'Playlist',
-      },
-      node: {
-        text: 'playlist',
-      },
-    },
-    route: {
-      path: '/playlists',
-      component: jest.fn(),
-    },
-    queryParams: { state: 'ok' },
-    match: { params: { name: 'playlist', sourceName: 'test playlist' }, isExact: false, url: 'asdf', path: '' },
-    history: locationService.getHistory(),
-    location: { pathname: '', hash: '', search: '', state: '' },
-  };
-
-  Object.assign(props, propOverrides);
-
-  return render(<PlaylistPage {...props} />);
+function getTestContext() {
+  const store = configureStore();
+  return render(
+    <Provider store={store}>
+      <PlaylistPage />
+    </Provider>
+  );
 }
 
 describe('PlaylistPage', () => {
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
   describe('when mounted without a playlist', () => {
     it('page should load', () => {
       fnMock.mockResolvedValue([]);
@@ -83,9 +72,9 @@ describe('PlaylistPage', () => {
           name: 'A test playlist',
           interval: '10m',
           items: [
-            { title: 'First item', type: 'dashboard_by_id', order: 1, value: '1' },
-            { title: 'Middle item', type: 'dashboard_by_id', order: 2, value: '2' },
-            { title: 'Last item', type: 'dashboard_by_tag', order: 2, value: 'Last item' },
+            { title: 'First item', type: 'dashboard_by_uid', value: '1' },
+            { title: 'Middle item', type: 'dashboard_by_uid', value: '2' },
+            { title: 'Last item', type: 'dashboard_by_tag', value: 'Last item' },
           ],
           uid: 'playlist-0',
         },

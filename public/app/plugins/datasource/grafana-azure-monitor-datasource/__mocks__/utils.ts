@@ -30,7 +30,6 @@ export function createTemplateVariables(templateableProps: string[]): Map<string
       state: 'Done' as LoadingState,
       error: null,
       description: null,
-      label: variableName,
     };
     templateVariables.set(prop, {
       variableName,

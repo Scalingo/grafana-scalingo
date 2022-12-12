@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { EditorRows, EditorRow, EditorFieldGroup } from '@grafana/experimental';
+import { EditorFieldGroup, EditorRow, EditorRows } from '@grafana/experimental';
 import { Alert } from '@grafana/ui';
 
 import Datasource from '../../datasource';
@@ -10,7 +10,6 @@ import { ResourceRowType } from '../ResourcePicker/types';
 
 import FormatAsField from './FormatAsField';
 import QueryField from './QueryField';
-import { setResource } from './setQueryValue';
 import useMigrations from './useMigrations';
 
 interface LogsQueryEditorProps {
@@ -54,8 +53,7 @@ const LogsQueryEditor: React.FC<LogsQueryEditorProps> = ({
                 ResourceRowType.Resource,
                 ResourceRowType.Variable,
               ]}
-              setResource={setResource}
-              resourceUri={query.azureLogAnalytics?.resource}
+              resource={query.azureLogAnalytics?.resource ?? ''}
               queryType="logs"
             />
           </EditorFieldGroup>

@@ -4,20 +4,26 @@ import React from 'react';
 import {
   DataSourceJsonData,
   DataSourcePluginOptionsEditorProps,
-  GrafanaTheme,
+  GrafanaTheme2,
+  KeyValue,
   updateDatasourcePluginJsonDataOption,
 } from '@grafana/data';
 import { DataSourcePicker } from '@grafana/runtime';
-import { Button, InlineField, InlineFieldRow, Input, useStyles } from '@grafana/ui';
+import { Button, InlineField, InlineFieldRow, Input, useStyles2 } from '@grafana/ui';
+
+import KeyValueInput from '../TraceToLogs/KeyValueInput';
 
 export interface TraceToMetricsOptions {
   datasourceUid?: string;
+  tags?: Array<KeyValue<string>>;
   queries: TraceToMetricQuery[];
+  spanStartTimeShift?: string;
+  spanEndTimeShift?: string;
 }
 
 export interface TraceToMetricQuery {
   name?: string;
-  query: string;
+  query?: string;
 }
 
 export interface TraceToMetricsData extends DataSourceJsonData {
@@ -27,7 +33,7 @@ export interface TraceToMetricsData extends DataSourceJsonData {
 interface Props extends DataSourcePluginOptionsEditorProps<TraceToMetricsData> {}
 
 export function TraceToMetricsSettings({ options, onOptionsChange }: Props) {
-  const styles = useStyles(getStyles);
+  const styles = useStyles2(getStyles);
 
   return (
     <div className={css({ width: '100%' })}>
@@ -71,6 +77,65 @@ export function TraceToMetricsSettings({ options, onOptionsChange }: Props) {
         ) : null}
       </InlineFieldRow>
 
+      <InlineFieldRow>
+        <InlineField tooltip="Tags that will be used in the metrics query." label="Tags" labelWidth={26}>
+          <KeyValueInput
+            keyPlaceholder="Tag"
+            values={options.jsonData.tracesToMetrics?.tags ?? []}
+            onChange={(v) =>
+              updateDatasourcePluginJsonDataOption({ onOptionsChange, options }, 'tracesToMetrics', {
+                ...options.jsonData.tracesToMetrics,
+                tags: v,
+              })
+            }
+          />
+        </InlineField>
+      </InlineFieldRow>
+
+      <InlineFieldRow>
+        <InlineField
+          label="Span start time shift"
+          labelWidth={26}
+          grow
+          tooltip="Shifts the start time of the span. Default 0 (Time units can be used here, for example: 5s, 1m, 3h)"
+        >
+          <Input
+            type="text"
+            placeholder="-1h"
+            width={40}
+            onChange={(v) =>
+              updateDatasourcePluginJsonDataOption({ onOptionsChange, options }, 'tracesToMetrics', {
+                ...options.jsonData.tracesToMetrics,
+                spanStartTimeShift: v.currentTarget.value,
+              })
+            }
+            value={options.jsonData.tracesToMetrics?.spanStartTimeShift || ''}
+          />
+        </InlineField>
+      </InlineFieldRow>
+
+      <InlineFieldRow>
+        <InlineField
+          label="Span end time shift"
+          labelWidth={26}
+          grow
+          tooltip="Shifts the end time of the span. Default 0 Time units can be used here, for example: 5s, 1m, 3h"
+        >
+          <Input
+            type="text"
+            placeholder="1h"
+            width={40}
+            onChange={(v) =>
+              updateDatasourcePluginJsonDataOption({ onOptionsChange, options }, 'tracesToMetrics', {
+                ...options.jsonData.tracesToMetrics,
+                spanEndTimeShift: v.currentTarget.value,
+              })
+            }
+            value={options.jsonData.tracesToMetrics?.spanEndTimeShift || ''}
+          />
+        </InlineField>
+      </InlineFieldRow>
+
       {options.jsonData.tracesToMetrics?.queries?.map((query, i) => (
         <div key={i} className={styles.queryRow}>
           <InlineField label="Link Label" labelWidth={10}>
@@ -92,7 +157,7 @@ export function TraceToMetricsSettings({ options, onOptionsChange }: Props) {
           <InlineField
             label="Query"
             labelWidth={10}
-            tooltip="The Prometheus query that will run when navigating from a trace to metrics"
+            tooltip="The Prometheus query that will run when navigating from a trace to metrics. Interpolate tags using the `$__tags` keyword."
             grow
           >
             <Input
@@ -146,10 +211,10 @@ export function TraceToMetricsSettings({ options, onOptionsChange }: Props) {
   );
 }
 
-const getStyles = (theme: GrafanaTheme) => ({
+const getStyles = (theme: GrafanaTheme2) => ({
   infoText: css`
-    padding-bottom: ${theme.spacing.md};
-    color: ${theme.colors.textSemiWeak};
+    padding-bottom: ${theme.spacing(2)};
+    color: ${theme.colors.text.secondary};
   `,
   row: css`
     label: row;

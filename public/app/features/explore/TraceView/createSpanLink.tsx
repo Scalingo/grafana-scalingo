@@ -20,7 +20,7 @@ import { getTemplateSrv } from '@grafana/runtime';
 import { Icon } from '@grafana/ui';
 import { SpanLinkFunc, TraceSpan } from '@jaegertracing/jaeger-ui-components';
 import { TraceToLogsOptions } from 'app/core/components/TraceToLogs/TraceToLogsSettings';
-import { TraceToMetricsOptions } from 'app/core/components/TraceToMetrics/TraceToMetricsSettings';
+import { TraceToMetricQuery, TraceToMetricsOptions } from 'app/core/components/TraceToMetrics/TraceToMetricsSettings';
 import { getDatasourceSrv } from 'app/features/plugins/datasource_srv';
 import { PromQuery } from 'app/plugins/datasource/prometheus/types';
 
@@ -103,7 +103,7 @@ function legacyCreateSpanLinkFactory(
     // the moment. Issue is that the trace itself isn't clearly mapped to dataFrame (right now it's just a json blob
     // inside a single field) so the dataLinks as config of that dataFrame abstraction breaks down a bit and we do
     // it manually here instead of leaving it for the data source to supply the config.
-    let dataLink: DataLink<LokiQuery | DataQuery> | undefined = {} as DataLink<LokiQuery | DataQuery> | undefined;
+    let dataLink: DataLink | undefined;
 
     // Get logs link
     if (logsDataSourceSettings && traceToLogsOptions) {
@@ -113,6 +113,12 @@ function legacyCreateSpanLinkFactory(
           break;
         case 'grafana-splunk-datasource':
           dataLink = getLinkForSplunk(span, traceToLogsOptions, logsDataSourceSettings);
+          break;
+        case 'elasticsearch':
+          dataLink = getLinkForElasticsearchOrOpensearch(span, traceToLogsOptions, logsDataSourceSettings);
+          break;
+        case 'grafana-opensearch-datasource':
+          dataLink = getLinkForElasticsearchOrOpensearch(span, traceToLogsOptions, logsDataSourceSettings);
           break;
       }
 
@@ -150,10 +156,9 @@ function legacyCreateSpanLinkFactory(
 
     // Get metrics links
     if (metricsDataSourceSettings && traceToMetricsOptions?.queries) {
-      const defaultQuery = `histogram_quantile(0.5, sum(rate(tempo_spanmetrics_latency_bucket{operation="${span.operationName}"}[5m])) by (le))`;
-
       links.metricLinks = [];
       for (const query of traceToMetricsOptions.queries) {
+        const expr = buildMetricsQuery(query, traceToMetricsOptions?.tags, span);
         const dataLink: DataLink<PromQuery> = {
           title: metricsDataSourceSettings.name,
           url: '',
@@ -161,7 +166,7 @@ function legacyCreateSpanLinkFactory(
             datasourceUid: metricsDataSourceSettings.uid,
             datasourceName: metricsDataSourceSettings.name,
             query: {
-              expr: query.query || defaultQuery,
+              expr,
               refId: 'A',
             },
           },
@@ -172,8 +177,12 @@ function legacyCreateSpanLinkFactory(
           internalLink: dataLink.internal!,
           scopedVars: {},
           range: getTimeRangeFromSpan(span, {
-            startMs: 0,
-            endMs: 0,
+            startMs: traceToMetricsOptions.spanStartTimeShift
+              ? rangeUtil.intervalToMs(traceToMetricsOptions.spanStartTimeShift)
+              : 0,
+            endMs: traceToMetricsOptions.spanEndTimeShift
+              ? rangeUtil.intervalToMs(traceToMetricsOptions.spanEndTimeShift)
+              : 0,
           }),
           field: {} as Field,
           onClickFn: splitOpenFn,
@@ -277,6 +286,71 @@ function getLinkForLoki(span: TraceSpan, options: TraceToLogsOptions, dataSource
   return dataLink;
 }
 
+// we do not have access to the dataquery type for opensearch,
+// so here is a minimal interface that handles both elasticsearch and opensearch.
+interface ElasticsearchOrOpensearchQuery extends DataQuery {
+  query: string;
+  metrics: Array<{
+    id: string;
+    type: 'logs';
+  }>;
+}
+
+function getLinkForElasticsearchOrOpensearch(
+  span: TraceSpan,
+  options: TraceToLogsOptions,
+  dataSourceSettings: DataSourceInstanceSettings
+) {
+  const { tags: keys, filterByTraceID, filterBySpanID, mapTagNamesEnabled, mappedTags } = options;
+  const tags = [...span.process.tags, ...span.tags].reduce((acc: string[], tag) => {
+    if (mapTagNamesEnabled && mappedTags?.length) {
+      const keysToCheck = mappedTags;
+      const keyValue = keysToCheck.find((keyValue) => keyValue.key === tag.key);
+      if (keyValue) {
+        acc.push(`${keyValue.value ? keyValue.value : keyValue.key}:"${tag.value}"`);
+      }
+    } else {
+      const keysToCheck = keys?.length ? keys : defaultKeys;
+      if (keysToCheck.includes(tag.key)) {
+        acc.push(`${tag.key}:"${tag.value}"`);
+      }
+    }
+    return acc;
+  }, []);
+
+  let query = '';
+  if (tags.length > 0) {
+    query += `${tags.join(' AND ')}`;
+  }
+  if (filterByTraceID && span.traceID) {
+    query = `"${span.traceID}" AND ` + query;
+  }
+  if (filterBySpanID && span.spanID) {
+    query = `"${span.spanID}" AND ` + query;
+  }
+
+  const dataLink: DataLink<ElasticsearchOrOpensearchQuery> = {
+    title: dataSourceSettings.name,
+    url: '',
+    internal: {
+      datasourceUid: dataSourceSettings.uid,
+      datasourceName: dataSourceSettings.name,
+      query: {
+        query: query,
+        refId: '',
+        metrics: [
+          {
+            id: '1',
+            type: 'logs',
+          },
+        ],
+      },
+    },
+  };
+
+  return dataLink;
+}
+
 function getLinkForSplunk(
   span: TraceSpan,
   options: TraceToLogsOptions,
@@ -361,4 +435,28 @@ function getTimeRangeFromSpan(
       to,
     },
   };
+}
+
+// Interpolates span attributes into trace to metric query, or returns default query
+function buildMetricsQuery(query: TraceToMetricQuery, tags: Array<KeyValue<string>> = [], span: TraceSpan): string {
+  if (!query.query) {
+    return `histogram_quantile(0.5, sum(rate(tempo_spanmetrics_latency_bucket{operation="${span.operationName}"}[5m])) by (le))`;
+  }
+
+  let expr = query.query;
+  if (tags.length && expr.indexOf('$__tags') !== -1) {
+    const spanTags = [...span.process.tags, ...span.tags];
+    const labels = tags.reduce((acc, tag) => {
+      const tagValue = spanTags.find((t) => t.key === tag.key)?.value;
+      if (tagValue) {
+        acc.push(`${tag.value ? tag.value : tag.key}="${tagValue}"`);
+      }
+      return acc;
+    }, [] as string[]);
+
+    const labelsQuery = labels?.join(', ');
+    expr = expr.replace('$__tags', labelsQuery);
+  }
+
+  return expr;
 }

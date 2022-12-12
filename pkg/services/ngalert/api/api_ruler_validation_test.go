@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/rand"
 
-	models2 "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/folder"
 	apimodels "github.com/grafana/grafana/pkg/services/ngalert/api/tooling/definitions"
 	"github.com/grafana/grafana/pkg/services/ngalert/models"
 	"github.com/grafana/grafana/pkg/services/ngalert/store"
@@ -42,9 +42,10 @@ func config(t *testing.T) *setting.UnifiedAlertingSettings {
 }
 
 func validRule() apimodels.PostableExtendedRuleNode {
+	forDuration := model.Duration(rand.Int63n(1000))
 	return apimodels.PostableExtendedRuleNode{
 		ApiRuleNode: &apimodels.ApiRuleNode{
-			For: model.Duration(rand.Int63n(1000)),
+			For: &forDuration,
 			Labels: map[string]string{
 				"test-label": "data",
 			},
@@ -82,18 +83,18 @@ func validGroup(cfg *setting.UnifiedAlertingSettings, rules ...apimodels.Postabl
 	}
 }
 
-func randFolder() *models2.Folder {
-	return &models2.Folder{
-		Id:        rand.Int63(),
-		Uid:       util.GenerateShortUID(),
-		Title:     "TEST-FOLDER-" + util.GenerateShortUID(),
-		Url:       "",
-		Version:   0,
-		Created:   time.Time{},
-		Updated:   time.Time{},
-		UpdatedBy: 0,
-		CreatedBy: 0,
-		HasAcl:    false,
+func randFolder() *folder.Folder {
+	return &folder.Folder{
+		ID:    rand.Int63(),
+		UID:   util.GenerateShortUID(),
+		Title: "TEST-FOLDER-" + util.GenerateShortUID(),
+		// URL:       "",
+		// Version:   0,
+		Created: time.Time{},
+		Updated: time.Time{},
+		// UpdatedBy: 0,
+		// CreatedBy: 0,
+		// HasACL:    false,
 	}
 }
 
@@ -234,13 +235,13 @@ func TestValidateRuleNode_NoUID(t *testing.T) {
 				require.Equal(t, int64(interval.Seconds()), alert.IntervalSeconds)
 				require.Equal(t, int64(0), alert.Version)
 				require.Equal(t, api.GrafanaManagedAlert.UID, alert.UID)
-				require.Equal(t, folder.Uid, alert.NamespaceUID)
+				require.Equal(t, folder.UID, alert.NamespaceUID)
 				require.Nil(t, alert.DashboardUID)
 				require.Nil(t, alert.PanelID)
 				require.Equal(t, name, alert.RuleGroup)
 				require.Equal(t, models.NoDataState(api.GrafanaManagedAlert.NoDataState), alert.NoDataState)
 				require.Equal(t, models.ExecutionErrorState(api.GrafanaManagedAlert.ExecErrState), alert.ExecErrState)
-				require.Equal(t, time.Duration(api.ApiRuleNode.For), alert.For)
+				require.Equal(t, time.Duration(*api.ApiRuleNode.For), alert.For)
 				require.Equal(t, api.ApiRuleNode.Annotations, alert.Annotations)
 				require.Equal(t, api.ApiRuleNode.Labels, alert.Labels)
 			},

@@ -1,14 +1,14 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/grafana/grafana/pkg/services/org"
+	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/setting"
-	"golang.org/x/oauth2"
-)
 
-const (
-	AuthModuleLDAP = "ldap"
+	"golang.org/x/oauth2"
 )
 
 type UserAuth struct {
@@ -33,14 +33,18 @@ type ExternalUserInfo struct {
 	Login          string
 	Name           string
 	Groups         []string
-	OrgRoles       map[int64]RoleType
+	OrgRoles       map[int64]org.RoleType
 	IsGrafanaAdmin *bool // This is a pointer to know if we should sync this or not (nil = ignore sync)
 	IsDisabled     bool
 }
 
+func (e *ExternalUserInfo) String() string {
+	return fmt.Sprintf("%+v", *e)
+}
+
 type LoginInfo struct {
 	AuthModule    string
-	User          *User
+	User          *user.User
 	ExternalUser  ExternalUserInfo
 	LoginUsername string
 	HTTPStatus    int
@@ -58,8 +62,9 @@ type UpsertUserCommand struct {
 	ReqContext   *ReqContext
 	ExternalUser *ExternalUserInfo
 	UserLookupParams
-	Result        *User
 	SignupAllowed bool
+
+	Result *user.User
 }
 
 type SetAuthInfoCommand struct {
@@ -87,7 +92,7 @@ type LoginUserQuery struct {
 	ReqContext *ReqContext
 	Username   string
 	Password   string
-	User       *User
+	User       *user.User
 	IpAddress  string
 	AuthModule string
 	Cfg        *setting.Cfg

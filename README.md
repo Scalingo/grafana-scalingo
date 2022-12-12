@@ -9,7 +9,7 @@ To login, use the environment variables value defined in:
 * `GF_SECURITY_ADMIN_USER`
 * `GF_SECURITY_ADMIN_PASSWORD`
 
-Default Version: v9.0.6
+Default Version: v9.3.1
 
 [![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://dashboard.scalingo.com/create/app?source=https://github.com/Scalingo/grafana-scalingo)
 
@@ -57,7 +57,7 @@ Grafana allows you to query, visualize, alert on and understand your metrics no 
 ## Get started
 
 - [Get Grafana](https://grafana.com/get)
-- [Installation guides](http://docs.grafana.org/installation/)
+- [Installation guides](https://grafana.com/docs/grafana/latest/setup-grafana/installation/)
 
 Unsure if Grafana is for you? Watch Grafana in action on [play.grafana.org](https://play.grafana.org/)!
 

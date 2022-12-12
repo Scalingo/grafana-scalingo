@@ -20,7 +20,7 @@ COPY emails emails
 ENV NODE_ENV production
 RUN yarn build
 
-FROM golang:1.17.12-alpine3.15 as go-builder
+FROM golang:1.19.3-alpine3.15 as go-builder
 
 RUN apk add --no-cache gcc g++ make
 
@@ -39,7 +39,7 @@ RUN go mod verify
 RUN make build-go
 
 # Final stage
-FROM alpine:3.15
+FROM alpine:3.15.6
 
 LABEL maintainer="Grafana team <hello@grafana.com>"
 
@@ -57,8 +57,6 @@ ENV PATH="/usr/share/grafana/bin:$PATH" \
 WORKDIR $GF_PATHS_HOME
 
 RUN apk add --no-cache ca-certificates bash tzdata musl-utils
-RUN apk add --no-cache openssl ncurses-libs ncurses-terminfo-base --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main
-RUN apk upgrade ncurses-libs ncurses-terminfo-base --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main
 RUN apk info -vv | sort
 
 COPY conf ./conf
@@ -75,6 +73,7 @@ RUN export GF_GID_NAME=$(getent group $GF_GID | cut -d':' -f1) && \
   "$GF_PATHS_PROVISIONING/notifiers" \
   "$GF_PATHS_PROVISIONING/plugins" \
   "$GF_PATHS_PROVISIONING/access-control" \
+  "$GF_PATHS_PROVISIONING/alerting" \
   "$GF_PATHS_LOGS" \
   "$GF_PATHS_PLUGINS" \
   "$GF_PATHS_DATA" && \

@@ -8,7 +8,13 @@ import (
 	"testing"
 	"time"
 
+	prometheus "github.com/prometheus/alertmanager/config"
+	"github.com/prometheus/alertmanager/timeinterval"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/grafana/pkg/components/simplejson"
+	"github.com/grafana/grafana/pkg/infra/db"
 	"github.com/grafana/grafana/pkg/infra/log"
 	gfcore "github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/ngalert/api/tooling/definitions"
@@ -17,11 +23,9 @@ import (
 	"github.com/grafana/grafana/pkg/services/ngalert/store"
 	"github.com/grafana/grafana/pkg/services/secrets"
 	secrets_fakes "github.com/grafana/grafana/pkg/services/secrets/fakes"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
+	"github.com/grafana/grafana/pkg/services/user"
+	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/web"
-	prometheus "github.com/prometheus/alertmanager/config"
-	"github.com/prometheus/alertmanager/timeinterval"
-	"github.com/stretchr/testify/require"
 )
 
 func TestProvisioningApi(t *testing.T) {
@@ -73,7 +77,7 @@ func TestProvisioningApi(t *testing.T) {
 			t.Run("GET returns 404", func(t *testing.T) {
 				sut := createProvisioningSrvSut(t)
 				rc := createTestRequestCtx()
-				rc.SignedInUser.OrgId = 2
+				rc.SignedInUser.OrgID = 2
 
 				response := sut.RouteGetPolicyTree(&rc)
 
@@ -83,7 +87,7 @@ func TestProvisioningApi(t *testing.T) {
 			t.Run("POST returns 404", func(t *testing.T) {
 				sut := createProvisioningSrvSut(t)
 				rc := createTestRequestCtx()
-				rc.SignedInUser.OrgId = 2
+				rc.SignedInUser.OrgID = 2
 
 				response := sut.RouteGetPolicyTree(&rc)
 
@@ -225,7 +229,7 @@ func TestProvisioningApi(t *testing.T) {
 
 	t.Run("alert rules", func(t *testing.T) {
 		t.Run("are invalid", func(t *testing.T) {
-			t.Run("POST returns 400", func(t *testing.T) {
+			t.Run("POST returns 400 on wrong body params", func(t *testing.T) {
 				sut := createProvisioningSrvSut(t)
 				rc := createTestRequestCtx()
 				rule := createInvalidAlertRule()
@@ -237,17 +241,55 @@ func TestProvisioningApi(t *testing.T) {
 				require.Contains(t, string(response.Body()), "invalid alert rule")
 			})
 
-			t.Run("PUT returns 400", func(t *testing.T) {
+			t.Run("PUT returns 400 on wrong body params", func(t *testing.T) {
 				sut := createProvisioningSrvSut(t)
 				rc := createTestRequestCtx()
-				insertRule(t, sut, createTestAlertRule("rule", 1))
-				rule := createInvalidAlertRule()
+				uid := "123123"
+				rule := createTestAlertRule("rule", 1)
+				rule.UID = uid
+				insertRule(t, sut, rule)
+				rule = createInvalidAlertRule()
 
-				response := sut.RoutePutAlertRule(&rc, rule, "rule")
-
+				response := sut.RoutePutAlertRule(&rc, rule, uid)
 				require.Equal(t, 400, response.Status())
 				require.NotEmpty(t, response.Body())
 				require.Contains(t, string(response.Body()), "invalid alert rule")
+			})
+		})
+
+		t.Run("exist in non-default orgs", func(t *testing.T) {
+			t.Run("POST sets expected fields with no provenance", func(t *testing.T) {
+				sut := createProvisioningSrvSut(t)
+				rc := createTestRequestCtx()
+				rc.Req.Header = map[string][]string{"X-Disable-Provenance": {"true"}}
+				rc.OrgID = 3
+				rule := createTestAlertRule("rule", 1)
+
+				response := sut.RoutePostAlertRule(&rc, rule)
+
+				require.Equal(t, 201, response.Status())
+				created := deserializeRule(t, response.Body())
+				require.Equal(t, int64(3), created.OrgID)
+				require.Equal(t, models.ProvenanceNone, created.Provenance)
+			})
+
+			t.Run("PUT sets expected fields with no provenance", func(t *testing.T) {
+				sut := createProvisioningSrvSut(t)
+				uid := t.Name()
+				rule := createTestAlertRule("rule", 1)
+				rule.UID = uid
+				insertRuleInOrg(t, sut, rule, 3)
+				rc := createTestRequestCtx()
+				rc.Req.Header = map[string][]string{"X-Disable-Provenance": {"hello"}}
+				rc.OrgID = 3
+				rule.OrgID = 1 // Set the org back to something wrong, we should still prefer the value from the req context.
+
+				response := sut.RoutePutAlertRule(&rc, rule, rule.UID)
+
+				require.Equal(t, 200, response.Status())
+				created := deserializeRule(t, response.Body())
+				require.Equal(t, int64(3), created.OrgID)
+				require.Equal(t, models.ProvenanceNone, created.Provenance)
 			})
 		})
 
@@ -296,6 +338,37 @@ func TestProvisioningApi(t *testing.T) {
 
 			require.Equal(t, 404, response.Status())
 		})
+
+		t.Run("are invalid at group level", func(t *testing.T) {
+			t.Run("PUT returns 400", func(t *testing.T) {
+				sut := createProvisioningSrvSut(t)
+				rc := createTestRequestCtx()
+				insertRule(t, sut, createTestAlertRule("rule", 1))
+				group := createInvalidAlertRuleGroup()
+				group.Interval = 0
+
+				response := sut.RoutePutAlertRuleGroup(&rc, group, "folder-uid", group.Title)
+
+				require.Equal(t, 400, response.Status())
+				require.NotEmpty(t, response.Body())
+				require.Contains(t, string(response.Body()), "invalid alert rule")
+			})
+		})
+
+		t.Run("are invalid at rule level", func(t *testing.T) {
+			t.Run("PUT returns 400", func(t *testing.T) {
+				sut := createProvisioningSrvSut(t)
+				rc := createTestRequestCtx()
+				insertRule(t, sut, createTestAlertRule("rule", 1))
+				group := createInvalidAlertRuleGroup()
+
+				response := sut.RoutePutAlertRuleGroup(&rc, group, "folder-uid", group.Title)
+
+				require.Equal(t, 400, response.Status())
+				require.NotEmpty(t, response.Body())
+				require.Contains(t, string(response.Body()), "invalid alert rule")
+			})
+		})
 	})
 }
 
@@ -320,10 +393,12 @@ func createTestEnv(t *testing.T) testEnvironment {
 		GetsConfig(models.AlertConfiguration{
 			AlertmanagerConfiguration: testConfig,
 		})
-	sqlStore := sqlstore.InitTestDB(t)
+	sqlStore := db.InitTestDB(t)
 	store := store.DBstore{
-		SQLStore:     sqlStore,
-		BaseInterval: time.Second * 10,
+		SQLStore: sqlStore,
+		Cfg: setting.UnifiedAlertingSettings{
+			BaseInterval: time.Second * 10,
+		},
 	}
 	quotas := &provisioning.MockQuotaChecker{}
 	quotas.EXPECT().LimitOK()
@@ -368,8 +443,8 @@ func createTestRequestCtx() gfcore.ReqContext {
 		Context: &web.Context{
 			Req: &http.Request{},
 		},
-		SignedInUser: &gfcore.SignedInUser{
-			OrgId: 1,
+		SignedInUser: &user.SignedInUser{
+			OrgID: 1,
 		},
 	}
 }
@@ -468,12 +543,20 @@ func createInvalidMuteTiming() definitions.MuteTimeInterval {
 	}
 }
 
-func createInvalidAlertRule() definitions.AlertRule {
-	return definitions.AlertRule{}
+func createInvalidAlertRule() definitions.ProvisionedAlertRule {
+	return definitions.ProvisionedAlertRule{}
 }
 
-func createTestAlertRule(title string, orgID int64) definitions.AlertRule {
-	return definitions.AlertRule{
+func createInvalidAlertRuleGroup() definitions.AlertRuleGroup {
+	return definitions.AlertRuleGroup{
+		Title:    "invalid",
+		Interval: 10,
+		Rules:    []definitions.ProvisionedAlertRule{{}},
+	}
+}
+
+func createTestAlertRule(title string, orgID int64) definitions.ProvisionedAlertRule {
+	return definitions.ProvisionedAlertRule{
 		OrgID:     orgID,
 		Title:     title,
 		Condition: "A",
@@ -489,18 +572,32 @@ func createTestAlertRule(title string, orgID int64) definitions.AlertRule {
 		},
 		RuleGroup:    "my-cool-group",
 		FolderUID:    "folder-uid",
-		For:          time.Second * 60,
+		For:          model.Duration(60),
 		NoDataState:  models.OK,
 		ExecErrState: models.OkErrState,
 	}
 }
 
-func insertRule(t *testing.T, srv ProvisioningSrv, rule definitions.AlertRule) {
+func insertRule(t *testing.T, srv ProvisioningSrv, rule definitions.ProvisionedAlertRule) {
+	insertRuleInOrg(t, srv, rule, 1)
+}
+
+func insertRuleInOrg(t *testing.T, srv ProvisioningSrv, rule definitions.ProvisionedAlertRule, orgID int64) {
 	t.Helper()
 
 	rc := createTestRequestCtx()
+	rc.OrgID = orgID
 	resp := srv.RoutePostAlertRule(&rc, rule)
 	require.Equal(t, 201, resp.Status())
+}
+
+func deserializeRule(t *testing.T, data []byte) definitions.ProvisionedAlertRule {
+	t.Helper()
+
+	var rule definitions.ProvisionedAlertRule
+	err := json.Unmarshal(data, &rule)
+	require.NoError(t, err)
+	return rule
 }
 
 var testConfig = `

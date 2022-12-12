@@ -1,16 +1,27 @@
 //  🌟 This was machine generated.  Do not edit. 🌟
 //  
 //  Frame[0] {
+<<<<<<<< HEAD:pkg/tsdb/prometheus/testdata/range_infinity.result.golden.jsonc
+//      "type": "timeseries-many",
+========
 //      "type": "timeseries-wide",
+>>>>>>>> v9.3.1:pkg/tsdb/prometheus/testdata/range_infinity.result.streaming-wide.golden.jsonc
 //      "custom": {
 //          "resultType": "matrix"
 //      },
 //      "executedQueryString": "Expr: 1 / 0\nStep: 1s"
 //  }
+<<<<<<<< HEAD:pkg/tsdb/prometheus/testdata/range_infinity.result.golden.jsonc
+//  Name: 1 / 0
+//  Dimensions: 2 Fields by 3 Rows
+//  +-------------------------------+------------------+
+//  | Name: Time                    | Name: Value      |
+========
 //  Name: 
 //  Dimensions: 2 Fields by 3 Rows
 //  +-------------------------------+------------------+
 //  | Name: Time                    | Name: 1 / 0      |
+>>>>>>>> v9.3.1:pkg/tsdb/prometheus/testdata/range_infinity.result.streaming-wide.golden.jsonc
 //  | Labels:                       | Labels:          |
 //  | Type: []time.Time             | Type: []*float64 |
 //  +-------------------------------+------------------+
@@ -22,6 +33,7 @@
 //  
 //  🌟 This was machine generated.  Do not edit. 🌟
 {
+  "status": 200,
   "frames": [
     {
       "schema": {

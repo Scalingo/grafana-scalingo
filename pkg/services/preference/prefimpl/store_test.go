@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package prefimpl
 
 import (
@@ -9,15 +6,20 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/grafana/grafana/pkg/models"
-	pref "github.com/grafana/grafana/pkg/services/preference"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/grafana/pkg/infra/db"
+	pref "github.com/grafana/grafana/pkg/services/preference"
+	"github.com/grafana/grafana/pkg/services/user"
 )
 
-func TestIntegrationPreferencesDataAccess(t *testing.T) {
-	ss := sqlstore.InitTestDB(t)
-	prefStore := sqlStore{db: ss}
+type getStore func(db.DB) store
+
+func testIntegrationPreferencesDataAccess(t *testing.T, fn getStore) {
+	t.Helper()
+	weekStartOne := "1"
+	ss := db.InitTestDB(t)
+	prefStore := fn(ss)
 	orgNavbarPreferences := pref.NavbarPreference{
 		SavedItems: []pref.NavLink{{
 			ID:   "alerting",
@@ -114,14 +116,14 @@ func TestIntegrationPreferencesDataAccess(t *testing.T) {
 	})
 
 	t.Run("Update for a user should only modify a single value", func(t *testing.T) {
-		ss := sqlstore.InitTestDB(t)
-		prefStore := sqlStore{db: ss}
+		ss := db.InitTestDB(t)
+		prefStore := fn(ss)
 		id, err := prefStore.Insert(context.Background(), &pref.Preference{
-			UserID:          models.SignedInUser{}.UserId,
+			UserID:          user.SignedInUser{}.UserID,
 			Theme:           "dark",
 			Timezone:        "browser",
 			HomeDashboardID: 5,
-			WeekStart:       "1",
+			WeekStart:       &weekStartOne,
 			JSONData:        &pref.PreferenceJSONData{Navbar: orgNavbarPreferences},
 			Created:         time.Now(),
 			Updated:         time.Now(),
@@ -133,7 +135,7 @@ func TestIntegrationPreferencesDataAccess(t *testing.T) {
 			Theme:           "dark",
 			HomeDashboardID: 5,
 			Timezone:        "browser",
-			WeekStart:       "1",
+			WeekStart:       &weekStartOne,
 			Created:         time.Now(),
 			Updated:         time.Now(),
 			JSONData:        &pref.PreferenceJSONData{},
@@ -147,7 +149,7 @@ func TestIntegrationPreferencesDataAccess(t *testing.T) {
 			Version:         prefs[0].Version,
 			HomeDashboardID: 5,
 			Timezone:        "browser",
-			WeekStart:       "1",
+			WeekStart:       &weekStartOne,
 			Theme:           "dark",
 			JSONData:        prefs[0].JSONData,
 			Created:         prefs[0].Created,
@@ -160,11 +162,18 @@ func TestIntegrationPreferencesDataAccess(t *testing.T) {
 	t.Run("insert preference that does not exist", func(t *testing.T) {
 		_, err := prefStore.Insert(context.Background(),
 			&pref.Preference{
-				UserID:   models.SignedInUser{}.UserId,
+				UserID:   user.SignedInUser{}.UserID,
 				Created:  time.Now(),
 				Updated:  time.Now(),
 				JSONData: &pref.PreferenceJSONData{},
 			})
 		require.NoError(t, err)
+	})
+	t.Run("delete preference by user", func(t *testing.T) {
+		err := prefStore.DeleteByUser(context.Background(), user.SignedInUser{}.UserID)
+		require.NoError(t, err)
+		query := &pref.Preference{OrgID: 0, UserID: user.SignedInUser{}.UserID, TeamID: 0}
+		_, err = prefStore.Get(context.Background(), query)
+		require.EqualError(t, err, pref.ErrPrefNotFound.Error())
 	})
 }

@@ -1,31 +1,16 @@
-import createMockQuery from '../../__mocks__/query';
+import { setCustomNamespace } from './setQueryValue';
 
-import { setResource } from './setQueryValue';
+describe('setQueryValue', () => {
+  describe('setCustomNamespace', () => {
+    it('The metricnamespace must be: microsoft.storage/storageaccounts for storage accounts.', () => {
+      const result = setCustomNamespace({ refId: 'A' }, 'microsoft.storage/storageaccounts/fileservices');
+      expect(result.azureMonitor?.customNamespace).toBeUndefined();
+      expect(result.azureMonitor?.metricNamespace).toEqual('microsoft.storage/storageaccounts/fileservices');
+    });
 
-describe('setResource', () => {
-  it('should set a resource URI', () => {
-    const q = setResource(createMockQuery(), '/new-uri');
-    expect(q.azureMonitor?.resourceUri).toEqual('/new-uri');
-  });
-
-  it('should remove clean up dependent fields', () => {
-    const q = createMockQuery();
-    expect(q.azureMonitor?.metricNamespace).not.toEqual(undefined);
-    expect(q.azureMonitor?.metricName).not.toEqual(undefined);
-    expect(q.azureMonitor?.metricDefinition).not.toEqual(undefined);
-    expect(q.azureMonitor?.aggregation).not.toEqual(undefined);
-    expect(q.azureMonitor?.metricDefinition).not.toEqual(undefined);
-    expect(q.azureMonitor?.metricDefinition).not.toEqual(undefined);
-    expect(q.azureMonitor?.timeGrain).not.toEqual('');
-    expect(q.azureMonitor?.timeGrain).not.toEqual([]);
-    const newQ = setResource(createMockQuery(), '/new-uri');
-    expect(newQ.azureMonitor).toMatchObject({
-      metricNamespace: undefined,
-      metricName: undefined,
-      aggregation: undefined,
-      metricDefinition: undefined,
-      timeGrain: '',
-      dimensionFilters: [],
+    it('Set a custom namespace for non storage accounts.', () => {
+      const result = setCustomNamespace({ refId: 'A' }, 'foo/bar');
+      expect(result.azureMonitor?.customNamespace).toEqual('foo/bar');
     });
   });
 });

@@ -1,42 +1,54 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { Provider } from 'react-redux';
 
-import { NavModel } from '@grafana/data';
+import { BackendSrv, setBackendSrv } from '@grafana/runtime';
 
-import { CreateTeam, Props } from './CreateTeam';
+import { configureStore } from '../../store/configureStore';
+
+import { CreateTeam } from './CreateTeam';
 
 beforeEach(() => {
   jest.clearAllMocks();
 });
 
+jest.mock('app/core/core', () => ({
+  contextSrv: {
+    licensedAccessControlEnabled: () => false,
+    hasPermission: () => true,
+    hasPermissionInMetadata: () => true,
+    user: { orgId: 1 },
+  },
+}));
+
+jest.mock('app/core/components/RolePicker/hooks', () => ({
+  useRoleOptions: jest.fn().mockReturnValue([{ roleOptions: [] }, jest.fn()]),
+}));
+
 const mockPost = jest.fn(() => {
   return Promise.resolve({});
 });
 
-jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: () => {
-    return {
-      post: mockPost,
-    };
-  },
-  config: {
-    buildInfo: {},
-    licenseInfo: {},
-  },
-}));
+setBackendSrv({
+  post: mockPost,
+} as unknown as BackendSrv);
 
 const setup = () => {
-  const props: Props = {
-    navModel: { node: {}, main: {} } as NavModel,
-  };
-  return render(<CreateTeam {...props} />);
+  const store = configureStore();
+  return render(
+    <Provider store={store}>
+      <CreateTeam />
+    </Provider>
+  );
 };
 
 describe('Create team', () => {
   it('should render component', () => {
     setup();
-    expect(screen.getByText(/new team/i)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /name/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByRole('button')).toBeInTheDocument();
   });
 
   it('should send correct data to the server', async () => {

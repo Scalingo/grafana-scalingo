@@ -1,5 +1,4 @@
 import { deprecationWarning } from '@grafana/data';
-import { GrafanaRootScope } from 'app/angular/GrafanaCtrl';
 import { appEvents } from 'app/core/app_events';
 
 import { HideModalEvent, ShowModalEvent } from '../../types/events';

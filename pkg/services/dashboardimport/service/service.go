@@ -12,25 +12,26 @@ import (
 	"github.com/grafana/grafana/pkg/services/dashboardimport/api"
 	"github.com/grafana/grafana/pkg/services/dashboardimport/utils"
 	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/folder"
 	"github.com/grafana/grafana/pkg/services/librarypanels"
 	"github.com/grafana/grafana/pkg/services/plugindashboards"
 	"github.com/grafana/grafana/pkg/services/quota"
-	"github.com/grafana/grafana/pkg/services/schemaloader"
 )
 
 func ProvideService(routeRegister routing.RouteRegister,
-	quotaService *quota.QuotaService, schemaLoaderService *schemaloader.SchemaLoaderService,
+	quotaService quota.Service,
 	pluginDashboardService plugindashboards.Service, pluginStore plugins.Store,
 	libraryPanelService librarypanels.Service, dashboardService dashboards.DashboardService,
-	ac accesscontrol.AccessControl,
+	ac accesscontrol.AccessControl, folderService folder.Service,
 ) *ImportDashboardService {
 	s := &ImportDashboardService{
 		pluginDashboardService: pluginDashboardService,
 		dashboardService:       dashboardService,
 		libraryPanelService:    libraryPanelService,
+		folderService:          folderService,
 	}
 
-	dashboardImportAPI := api.New(s, quotaService, schemaLoaderService, pluginStore, ac)
+	dashboardImportAPI := api.New(s, quotaService, pluginStore, ac)
 	dashboardImportAPI.RegisterAPIEndpoints(routeRegister)
 
 	return s
@@ -40,6 +41,7 @@ type ImportDashboardService struct {
 	pluginDashboardService plugindashboards.Service
 	dashboardService       dashboards.DashboardService
 	libraryPanelService    librarypanels.Service
+	folderService          folder.Service
 }
 
 func (s *ImportDashboardService) ImportDashboard(ctx context.Context, req *dashboardimport.ImportDashboardRequest) (*dashboardimport.ImportDashboardResponse, error) {
@@ -81,10 +83,28 @@ func (s *ImportDashboardService) ImportDashboard(ctx context.Context, req *dashb
 	generatedDash.Del("__inputs")
 	generatedDash.Del("__requires")
 
+	// here we need to get FolderId from FolderUID if it present in the request, if both exist, FolderUID would overwrite FolderID
+	if req.FolderUid != "" {
+		folder, err := s.folderService.Get(ctx, &folder.GetFolderQuery{
+			OrgID: req.User.OrgID,
+			UID:   &req.FolderUid,
+		})
+		if err != nil {
+			return nil, err
+		}
+		req.FolderId = folder.ID
+	} else {
+		folder, err := s.folderService.Get(ctx, &folder.GetFolderQuery{ID: &req.FolderId, OrgID: req.User.OrgID})
+		if err != nil {
+			return nil, err
+		}
+		req.FolderUid = folder.UID
+	}
+
 	saveCmd := models.SaveDashboardCommand{
 		Dashboard: generatedDash,
-		OrgId:     req.User.OrgId,
-		UserId:    req.User.UserId,
+		OrgId:     req.User.OrgID,
+		UserId:    req.User.UserID,
 		Overwrite: req.Overwrite,
 		PluginId:  req.PluginId,
 		FolderId:  req.FolderId,
@@ -119,6 +139,7 @@ func (s *ImportDashboardService) ImportDashboard(ctx context.Context, req *dashb
 		Path:             req.Path,
 		Revision:         savedDashboard.Data.Get("revision").MustInt64(1),
 		FolderId:         savedDashboard.FolderId,
+		FolderUID:        req.FolderUid,
 		ImportedUri:      "db/" + savedDashboard.Slug,
 		ImportedUrl:      savedDashboard.GetUrl(),
 		ImportedRevision: savedDashboard.Data.Get("revision").MustInt64(1),

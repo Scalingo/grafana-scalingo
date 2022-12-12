@@ -5,17 +5,20 @@ import { Router } from 'react-router-dom';
 import { useEffectOnce } from 'react-use';
 import { AutoSizerProps } from 'react-virtualized-auto-sizer';
 import { mockToolkitActionCreator } from 'test/core/redux/mocks';
+import { getGrafanaContextMock } from 'test/mocks/getGrafanaContextMock';
 
 import { createTheme } from '@grafana/data';
 import { selectors } from '@grafana/e2e-selectors';
-import { locationService, setDataSourceSrv } from '@grafana/runtime';
+import { config, locationService, setDataSourceSrv } from '@grafana/runtime';
 import { notifyApp } from 'app/core/actions';
+import { GrafanaContext } from 'app/core/context/GrafanaContext';
 import { getRouteComponentProps } from 'app/core/navigation/__mocks__/routeProps';
-import { DashboardInitPhase, DashboardRoutes } from 'app/types';
+import { HOME_NAV_ID } from 'app/core/reducers/navModel';
+import { DashboardInitPhase, DashboardMeta, DashboardRoutes } from 'app/types';
 
 import { configureStore } from '../../../store/configureStore';
 import { Props as LazyLoaderProps } from '../dashgrid/LazyLoader';
-import { setDashboardSrv } from '../services/DashboardSrv';
+import { DashboardSrv, setDashboardSrv } from '../services/DashboardSrv';
 import { DashboardModel } from '../state';
 
 import { Props, UnthemedDashboardPage } from './DashboardPage';
@@ -74,7 +77,7 @@ interface ScenarioContext {
   setup: (fn: () => void) => void;
 }
 
-function getTestDashboard(overrides?: any, metaOverrides?: any): DashboardModel {
+function getTestDashboard(overrides?: any, metaOverrides?: Partial<DashboardMeta>): DashboardModel {
   const data = Object.assign(
     {
       title: 'My dashboard',
@@ -103,12 +106,21 @@ function dashboardPageScenario(description: string, scenarioFn: (ctx: ScenarioCo
         setupFn = fn;
       },
       mount: (propOverrides?: Partial<Props>) => {
+        config.bootData.navTree = [
+          { text: 'Dashboards', id: 'dashboards' },
+          { text: 'Home', id: HOME_NAV_ID },
+        ];
+
         const store = configureStore();
         const props: Props = {
           ...getRouteComponentProps({
             match: { params: { slug: 'my-dash', uid: '11' } } as any,
             route: { routeName: DashboardRoutes.Normal } as any,
           }),
+          navIndex: {
+            dashboards: { text: 'Dashboards', id: 'dashboards', parentItem: { text: 'Home', id: HOME_NAV_ID } },
+            [HOME_NAV_ID]: { text: 'Home', id: HOME_NAV_ID },
+          },
           initPhase: DashboardInitPhase.NotStarted,
           initError: null,
           initDashboard: jest.fn(),
@@ -125,12 +137,16 @@ function dashboardPageScenario(description: string, scenarioFn: (ctx: ScenarioCo
         ctx.props = props;
         ctx.dashboard = props.dashboard;
 
+        const context = getGrafanaContextMock();
+
         const { container, rerender, unmount } = render(
-          <Provider store={store}>
-            <Router history={locationService.getHistory()}>
-              <UnthemedDashboardPage {...props} />
-            </Router>
-          </Provider>
+          <GrafanaContext.Provider value={context}>
+            <Provider store={store}>
+              <Router history={locationService.getHistory()}>
+                <UnthemedDashboardPage {...props} />
+              </Router>
+            </Provider>
+          </GrafanaContext.Provider>
         );
 
         ctx.container = container;
@@ -139,11 +155,13 @@ function dashboardPageScenario(description: string, scenarioFn: (ctx: ScenarioCo
           Object.assign(props, newProps);
 
           rerender(
-            <Provider store={store}>
-              <Router history={locationService.getHistory()}>
-                <UnthemedDashboardPage {...props} />
-              </Router>
-            </Provider>
+            <GrafanaContext.Provider value={context}>
+              <Provider store={store}>
+                <Router history={locationService.getHistory()}>
+                  <UnthemedDashboardPage {...props} />
+                </Router>
+              </Provider>
+            </GrafanaContext.Provider>
           );
         };
 
@@ -174,6 +192,7 @@ describe('DashboardPage', () => {
         routeName: 'normal-dashboard',
         urlSlug: 'my-dash',
         urlUid: '11',
+        keybindingSrv: expect.anything(),
       });
     });
   });
@@ -189,7 +208,7 @@ describe('DashboardPage', () => {
     });
 
     it('Should update title', () => {
-      expect(document.title).toBe('My dashboard - Grafana');
+      expect(document.title).toBe('My dashboard - Dashboards - Grafana');
     });
   });
 
@@ -203,7 +222,7 @@ describe('DashboardPage', () => {
       });
       setDashboardSrv({
         getCurrent: () => getTestDashboard(),
-      } as any);
+      } as DashboardSrv);
       ctx.mount({
         dashboard: getTestDashboard(),
         queryParams: { viewPanel: '1' },
@@ -289,12 +308,27 @@ describe('DashboardPage', () => {
 
   dashboardPageScenario('When in full kiosk mode', (ctx) => {
     ctx.setup(() => {
-      locationService.partial({ kiosk: true });
+      ctx.mount({
+        queryParams: { kiosk: true },
+        dashboard: getTestDashboard(),
+      });
+      ctx.rerender({ dashboard: ctx.dashboard });
+    });
+
+    it('should not render page toolbar and submenu', () => {
+      expect(screen.queryAllByTestId(selectors.pages.Dashboard.DashNav.navV2)).toHaveLength(0);
+      expect(screen.queryAllByLabelText(selectors.pages.Dashboard.SubMenu.submenu)).toHaveLength(0);
+    });
+  });
+
+  dashboardPageScenario('When dashboard is public', (ctx) => {
+    ctx.setup(() => {
+      locationService.partial({ kiosk: false });
       ctx.mount({
         queryParams: {},
         dashboard: getTestDashboard(),
       });
-      ctx.rerender({ dashboard: ctx.dashboard });
+      ctx.rerender({ dashboard: ctx.dashboard, isPublic: true });
     });
 
     it('should not render page toolbar and submenu', () => {

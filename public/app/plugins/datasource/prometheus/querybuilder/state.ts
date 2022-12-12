@@ -28,7 +28,6 @@ function getDefaultEditorMode(expr: string) {
   switch (value) {
     case QueryEditorMode.Builder:
     case QueryEditorMode.Code:
-    case QueryEditorMode.Explain:
       return value;
     default:
       return QueryEditorMode.Builder;
@@ -57,6 +56,12 @@ export function getQueryWithDefaults(query: PromQuery, app: CoreApp | undefined)
     if (app === CoreApp.Explore) {
       result.instant = true;
     }
+  }
+
+  // Unified Alerting does not support "both" for query type – fall back to "range".
+  const isBothInstantAndRange = query.instant && query.range;
+  if (app === CoreApp.UnifiedAlerting && isBothInstantAndRange) {
+    result = { ...result, instant: false, range: true };
   }
 
   return result;

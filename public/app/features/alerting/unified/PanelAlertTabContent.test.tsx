@@ -6,7 +6,7 @@ import { byTestId } from 'testing-library-selector';
 
 import { DataSourceApi } from '@grafana/data';
 import { locationService, setDataSourceSrv } from '@grafana/runtime';
-import { ExpressionDatasourceRef } from '@grafana/runtime/src/utils/DataSourceWithBackend';
+import * as ruleActionButtons from 'app/features/alerting/unified/components/rules/RuleActionsButtons';
 import { DashboardModel, PanelModel } from 'app/features/dashboard/state';
 import { getDatasourceSrv } from 'app/features/plugins/datasource_srv';
 import { toggleOption } from 'app/features/variables/pickers/OptionsPicker/reducer';
@@ -27,14 +27,17 @@ import {
   mockPromRuleNamespace,
   mockRulerGrafanaRule,
 } from './mocks';
-import { getAllDataSources } from './utils/config';
+import * as config from './utils/config';
 import { Annotation } from './utils/constants';
 import { DataSourceType, GRAFANA_RULES_SOURCE_NAME } from './utils/datasource';
 import * as ruleFormUtils from './utils/rule-form';
 
 jest.mock('./api/prometheus');
 jest.mock('./api/ruler');
-jest.mock('./utils/config');
+jest.mock('../../../core/hooks/useMediaQueryChange');
+
+jest.spyOn(config, 'getAllDataSources');
+jest.spyOn(ruleActionButtons, 'matchesWidth').mockReturnValue(false);
 
 const dataSources = {
   prometheus: mockDataSource<PromOptions>({
@@ -52,7 +55,7 @@ dataSources.prometheus.meta.alerting = true;
 dataSources.default.meta.alerting = true;
 
 const mocks = {
-  getAllDataSources: jest.mocked(getAllDataSources),
+  getAllDataSources: jest.mocked(config.getAllDataSources),
   api: {
     fetchRules: jest.mocked(fetchRules),
     fetchRulerRules: jest.mocked(fetchRulerRules),
@@ -255,7 +258,7 @@ describe('PanelAlertTabContent', () => {
   });
 
   it('Will take into account datasource minInterval', async () => {
-    (getDatasourceSrv() as any as MockDataSourceSrv).datasources[dataSources.prometheus.uid].interval = '7m';
+    (getDatasourceSrv() as unknown as MockDataSourceSrv).datasources[dataSources.prometheus.uid].interval = '7m';
 
     await renderAlertTabContent(
       dashboard,
@@ -301,57 +304,7 @@ describe('PanelAlertTabContent', () => {
     expect(match).toHaveLength(2);
 
     const defaults = JSON.parse(decodeURIComponent(match![1]));
-    expect(defaults).toEqual({
-      type: 'grafana',
-      folder: { id: 1, title: 'super folder' },
-      queries: [
-        {
-          refId: 'A',
-          queryType: '',
-          relativeTimeRange: { from: 21600, to: 0 },
-          datasourceUid: 'mock-ds-2',
-          model: {
-            expr: 'sum(some_metric [15s])) by (app)',
-            refId: 'A',
-            datasource: {
-              type: 'prometheus',
-              uid: 'mock-ds-2',
-            },
-            interval: '',
-            intervalMs: 15000,
-          },
-        },
-        {
-          refId: 'B',
-          datasourceUid: '-100',
-          queryType: '',
-          model: {
-            refId: 'B',
-            hide: false,
-            type: 'classic_conditions',
-            datasource: {
-              type: ExpressionDatasourceRef.type,
-              uid: '-100',
-            },
-            conditions: [
-              {
-                type: 'query',
-                evaluator: { params: [3], type: 'gt' },
-                operator: { type: 'and' },
-                query: { params: ['A'] },
-                reducer: { params: [], type: 'last' },
-              },
-            ],
-          },
-        },
-      ],
-      name: 'mypanel',
-      condition: 'B',
-      annotations: [
-        { key: '__dashboardUid__', value: '12' },
-        { key: '__panelId__', value: '34' },
-      ],
-    });
+    expect(defaults).toMatchSnapshot();
 
     expect(mocks.api.fetchRulerRules).toHaveBeenCalledWith(
       { dataSourceName: GRAFANA_RULES_SOURCE_NAME, apiVersion: 'legacy' },

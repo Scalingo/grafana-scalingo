@@ -2,13 +2,14 @@ import { within } from '@testing-library/dom';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
 import React from 'react';
+import { Provider } from 'react-redux';
 
 import { OrgRole } from '@grafana/data';
 import { selectors } from '@grafana/e2e-selectors';
 
 import TestProvider from '../../../test/helpers/TestProvider';
-import { getNavModel } from '../../core/selectors/navModel';
 import { backendSrv } from '../../core/services/backend_srv';
+import { configureStore } from '../../store/configureStore';
 import { TeamPermissionLevel } from '../../types';
 
 import { Props, UserProfileEditPage } from './UserProfileEditPage';
@@ -66,23 +67,6 @@ const defaultProps: Props = {
       seenAt: new Date().toUTCString(),
     },
   ],
-  navModel: getNavModel(
-    {
-      'profile-settings': {
-        icon: 'sliders-v-alt',
-        id: 'profile-settings',
-        parentItem: {
-          id: 'profile',
-          text: 'Test User',
-          img: '/avatar/46d229b033af06a191ff2267bca9ae56',
-          url: '/profile',
-        },
-        text: 'Preferences',
-        url: '/profile',
-      },
-    },
-    'profile-settings'
-  ),
   initUserProfilePage: jest.fn().mockResolvedValue(undefined),
   revokeUserSession: jest.fn().mockResolvedValue(undefined),
   changeUserOrg: jest.fn().mockResolvedValue(undefined),
@@ -90,8 +74,6 @@ const defaultProps: Props = {
 };
 
 function getSelectors() {
-  const dashboardSelect = () => screen.getByTestId('User preferences home dashboard drop down');
-  const timepickerSelect = () => screen.getByTestId(selectors.components.TimeZonePicker.containerV2);
   const teamsTable = () => screen.getByRole('table', { name: /user teams table/i });
   const orgsTable = () => screen.getByTestId(selectors.components.UserProfile.orgsTable);
   const sessionsTable = () => screen.getByTestId(selectors.components.UserProfile.sessionsTable);
@@ -100,10 +82,6 @@ function getSelectors() {
     email: () => screen.getByRole('textbox', { name: /email/i }),
     username: () => screen.getByRole('textbox', { name: /username/i }),
     saveProfile: () => screen.getByTestId(selectors.components.UserProfile.profileSaveButton),
-    dashboardSelect,
-    dashboardValue: () => within(dashboardSelect()).getByText(/default/i),
-    timepickerSelect,
-    timepickerValue: () => within(timepickerSelect()).getByText(/coordinated universal time/i),
     savePreferences: () => screen.getByTestId(selectors.components.UserProfile.preferencesSaveButton),
     teamsTable,
     teamsRow: () => within(teamsTable()).getByRole('row', { name: /team one team.one@test\.com 2000/i }),
@@ -120,18 +98,21 @@ function getSelectors() {
 }
 
 async function getTestContext(overrides: Partial<Props> = {}) {
+  const store = configureStore();
   jest.clearAllMocks();
   const putSpy = jest.spyOn(backendSrv, 'put');
   const getSpy = jest
     .spyOn(backendSrv, 'get')
-    .mockResolvedValue({ timezone: 'UTC', homeDashboardId: 0, theme: 'dark' });
+    .mockResolvedValue({ timezone: 'UTC', homeDashboardUID: 'home-dashboard', theme: 'dark' });
   const searchSpy = jest.spyOn(backendSrv, 'search').mockResolvedValue([]);
 
   const props = { ...defaultProps, ...overrides };
   const { rerender } = render(
-    <TestProvider>
-      <UserProfileEditPage {...props} />
-    </TestProvider>
+    <Provider store={store}>
+      <TestProvider>
+        <UserProfileEditPage {...props} />
+      </TestProvider>
+    </Provider>
   );
 
   await waitFor(() => expect(props.initUserProfilePage).toHaveBeenCalledTimes(1));
@@ -166,16 +147,8 @@ describe('UserProfileEditPage', () => {
     it('should show shared preferences', async () => {
       await getTestContext();
 
-      const { dashboardSelect, dashboardValue, timepickerSelect, timepickerValue, savePreferences } = getSelectors();
-      expect(screen.getByRole('group', { name: /preferences/i })).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: /default/i })).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: /dark/i })).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: /light/i })).toBeInTheDocument();
-      expect(dashboardSelect()).toBeInTheDocument();
-      expect(dashboardValue()).toBeInTheDocument();
-      expect(timepickerSelect()).toBeInTheDocument();
-      expect(timepickerValue()).toBeInTheDocument();
-      expect(savePreferences()).toBeInTheDocument();
+      // SharedPreferences itself is tested, so here just make sure it's being rendered
+      expect(screen.getByLabelText('Home Dashboard')).toBeInTheDocument();
     });
 
     describe('and teams are loading', () => {

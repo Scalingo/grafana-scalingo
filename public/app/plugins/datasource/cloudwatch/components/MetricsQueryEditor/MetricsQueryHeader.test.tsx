@@ -10,7 +10,7 @@ import MetricsQueryHeader from './MetricsQueryHeader';
 const ds = setupMockedDataSource({
   variables: [],
 });
-ds.datasource.getRegions = jest.fn().mockResolvedValue([]);
+ds.datasource.api.getRegions = jest.fn().mockResolvedValue([]);
 const query: CloudWatchMetricsQuery = {
   id: '',
   region: 'us-east-2',
@@ -40,6 +40,7 @@ describe('MetricsQueryHeader', () => {
           query={query}
           onChange={onChange}
           onRunQuery={onRunQuery}
+          isMonitoringAccount={false}
         />
       );
 
@@ -67,6 +68,7 @@ describe('MetricsQueryHeader', () => {
           query={query}
           onChange={onChange}
           onRunQuery={onRunQuery}
+          isMonitoringAccount={false}
         />
       );
 
@@ -94,6 +96,7 @@ describe('MetricsQueryHeader', () => {
           query={query}
           onChange={onChange}
           onRunQuery={onRunQuery}
+          isMonitoringAccount={false}
         />
       );
 
@@ -122,6 +125,7 @@ describe('MetricsQueryHeader', () => {
         query={query}
         onChange={onChange}
         onRunQuery={onRunQuery}
+        isMonitoringAccount={false}
       />
     );
 

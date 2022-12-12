@@ -41,7 +41,9 @@ export function getRulesDataSource(rulesSourceName: string) {
 
 export function getAlertManagerDataSources() {
   return getAllDataSources()
-    .filter((ds) => ds.type === DataSourceType.Alertmanager)
+    .filter(
+      (ds): ds is DataSourceInstanceSettings<AlertManagerDataSourceJsonData> => ds.type === DataSourceType.Alertmanager
+    )
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -124,6 +126,10 @@ export function getRulesSourceName(rulesSource: RulesSource): string {
   return isCloudRulesSource(rulesSource) ? rulesSource.name : rulesSource;
 }
 
+export function getRulesSourceUid(rulesSource: RulesSource): string {
+  return isCloudRulesSource(rulesSource) ? rulesSource.uid : GRAFANA_RULES_SOURCE_NAME;
+}
+
 export function isCloudRulesSource(rulesSource: RulesSource | string): rulesSource is DataSourceInstanceSettings {
   return rulesSource !== GRAFANA_RULES_SOURCE_NAME;
 }
@@ -176,7 +182,7 @@ export function getDatasourceAPIUid(dataSourceName: string) {
 }
 
 export function getFirstCompatibleDataSource(): DataSourceInstanceSettings<DataSourceJsonData> | undefined {
-  return getRulesDataSources()[0];
+  return getDataSourceSrv().getList({ alerting: true })[0];
 }
 
 export function getDefaultOrFirstCompatibleDataSource(): DataSourceInstanceSettings<DataSourceJsonData> | undefined {

@@ -13,7 +13,15 @@ import (
 	"github.com/grafana/grafana/pkg/util"
 )
 
+const (
+	// ContactLabel is a private label created during migration and used in notification policies.
+	// It stores a string array of all contact point names an alert rule should send to.
+	// It was created as a means to simplify post-migration notification policies.
+	ContactLabel = "__contacts__"
+)
+
 type alertRule struct {
+	ID              int64 `xorm:"pk autoincr 'id'"`
 	OrgID           int64 `xorm:"org_id"`
 	Title           string
 	Condition       string
@@ -23,12 +31,13 @@ type alertRule struct {
 	UID             string `xorm:"uid"`
 	NamespaceUID    string `xorm:"namespace_uid"`
 	RuleGroup       string
+	RuleGroupIndex  int `xorm:"rule_group_idx"`
 	NoDataState     string
 	ExecErrState    string
 	For             duration
 	Updated         time.Time
 	Annotations     map[string]string
-	Labels          map[string]string // (Labels are not Created in the migration)
+	Labels          map[string]string
 }
 
 type alertRuleVersion struct {
@@ -36,6 +45,7 @@ type alertRuleVersion struct {
 	RuleUID          string `xorm:"rule_uid"`
 	RuleNamespaceUID string `xorm:"rule_namespace_uid"`
 	RuleGroup        string
+	RuleGroupIndex   int `xorm:"rule_group_idx"`
 	ParentVersion    int64
 	RestoredFrom     int64
 	Version          int64
@@ -60,6 +70,7 @@ func (a *alertRule) makeVersion() *alertRuleVersion {
 		RuleUID:          a.UID,
 		RuleNamespaceUID: a.NamespaceUID,
 		RuleGroup:        a.RuleGroup,
+		RuleGroupIndex:   a.RuleGroupIndex,
 		ParentVersion:    0,
 		RestoredFrom:     0,
 		Version:          1,
@@ -95,7 +106,7 @@ func addMigrationInfo(da *dashAlert) (map[string]string, map[string]string) {
 
 func (m *migration) makeAlertRule(cond condition, da dashAlert, folderUID string) (*alertRule, error) {
 	lbls, annotations := addMigrationInfo(&da)
-	lbls["alertname"] = da.Name
+	name := normalizeRuleName(da.Name)
 	annotations["message"] = da.Message
 	var err error
 
@@ -106,18 +117,19 @@ func (m *migration) makeAlertRule(cond condition, da dashAlert, folderUID string
 
 	ar := &alertRule{
 		OrgID:           da.OrgId,
-		Title:           da.Name, // TODO: Make sure all names are unique, make new name on constraint insert error.
+		Title:           name, // TODO: Make sure all names are unique, make new name on constraint insert error.
 		UID:             util.GenerateShortUID(),
 		Condition:       cond.Condition,
 		Data:            data,
 		IntervalSeconds: ruleAdjustInterval(da.Frequency),
 		Version:         1,
 		NamespaceUID:    folderUID, // Folder already created, comes from env var.
-		RuleGroup:       da.Name,
+		RuleGroup:       name,
 		For:             duration(da.For),
 		Updated:         time.Now().UTC(),
 		Annotations:     annotations,
 		Labels:          lbls,
+		RuleGroupIndex:  1,
 	}
 
 	ar.NoDataState, err = transNoData(da.ParsedSettings.NoDataState)
@@ -131,7 +143,7 @@ func (m *migration) makeAlertRule(cond condition, da dashAlert, folderUID string
 	}
 
 	// Label for routing and silences.
-	n, v := getLabelForRouteMatching(ar.UID)
+	n, v := getLabelForSilenceMatching(ar.UID)
 	ar.Labels[n] = v
 
 	if err := m.addSilence(da, ar); err != nil {
@@ -272,4 +284,33 @@ func transExecErr(s string) (string, error) {
 		return string(ngmodels.OkErrState), nil
 	}
 	return "", fmt.Errorf("unrecognized Execution Error setting %v", s)
+}
+
+func normalizeRuleName(daName string) string {
+	// If we have to truncate, we're losing data and so there is higher risk of uniqueness conflicts.
+	// Append a UID to the suffix to forcibly break any collisions.
+	if len(daName) > DefaultFieldMaxLength {
+		uniq := util.GenerateShortUID()
+		trunc := DefaultFieldMaxLength - 1 - len(uniq)
+		daName = daName[:trunc] + "_" + uniq
+	}
+
+	return daName
+}
+
+func extractChannelIDs(d dashAlert) (channelUids []uidOrID) {
+	// Extracting channel UID/ID.
+	for _, ui := range d.ParsedSettings.Notifications {
+		if ui.UID != "" {
+			channelUids = append(channelUids, ui.UID)
+			continue
+		}
+		// In certain circumstances, id is used instead of uid.
+		// We add this if there was no uid.
+		if ui.ID > 0 {
+			channelUids = append(channelUids, ui.ID)
+		}
+	}
+
+	return channelUids
 }

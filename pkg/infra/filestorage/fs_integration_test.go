@@ -1,20 +1,17 @@
-//go:build integration
-// +build integration
-
 package filestorage
 
 import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
 
-	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"gocloud.dev/blob"
+
+	"github.com/grafana/grafana/pkg/infra/db"
+	"github.com/grafana/grafana/pkg/infra/log"
 )
 
 const (
@@ -48,7 +45,7 @@ const (
 
 func runTests(createCases func() []fsTestCase, t *testing.T) {
 	var testLogger log.Logger
-	var sqlStore *sqlstore.SQLStore
+	var sqlStore db.DB
 	var filestorage FileStorage
 	var ctx context.Context
 	var tempDir string
@@ -78,19 +75,19 @@ func runTests(createCases func() []fsTestCase, t *testing.T) {
 
 	setupSqlFS := func() {
 		commonSetup()
-		sqlStore = sqlstore.InitTestDB(t)
+		sqlStore = db.InitTestDB(t)
 		filestorage = NewDbStorage(testLogger, sqlStore, nil, "/")
 	}
 
 	setupSqlFSNestedPath := func() {
 		commonSetup()
-		sqlStore = sqlstore.InitTestDB(t)
+		sqlStore = db.InitTestDB(t)
 		filestorage = NewDbStorage(testLogger, sqlStore, nil, "/5/dashboards/")
 	}
 
 	setupLocalFs := func() {
 		commonSetup()
-		tmpDir, err := ioutil.TempDir("", "")
+		tmpDir, err := os.MkdirTemp("", "")
 		tempDir = tmpDir
 		if err != nil {
 			t.Fatal(err)
@@ -105,7 +102,7 @@ func runTests(createCases func() []fsTestCase, t *testing.T) {
 
 	setupLocalFsNestedPath := func() {
 		commonSetup()
-		tmpDir, err := ioutil.TempDir("", "")
+		tmpDir, err := os.MkdirTemp("", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,6 +170,9 @@ func runTests(createCases func() []fsTestCase, t *testing.T) {
 }
 
 func TestIntegrationFsStorage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
 	//skipTest := true
 	emptyContents := make([]byte, 0)
 	pngImage, _ := base64.StdEncoding.DecodeString(pngImageBase64)
@@ -860,6 +860,19 @@ func TestIntegrationFsStorage(t *testing.T) {
 							fContents(pngImage),
 						),
 					},
+					queryGet{
+						input: queryGetInput{
+							path:    "/file.png",
+							options: &GetFileOptions{WithContents: false},
+						},
+						checks: checks(
+							fName("FILE.png"),
+							fMimeType("image/png"),
+							fProperties(map[string]string{"a": "av", "b": "bv"}),
+							fSize(pngImageSize),
+							fContents(emptyContents),
+						),
+					},
 				},
 			},
 			{
@@ -1172,6 +1185,123 @@ func TestIntegrationFsStorage(t *testing.T) {
 							checks(fPath("/folder/dashboards")),
 							checks(fPath("/folder/dashboards/myNewFolder")),
 						},
+					},
+					queryGet{
+						input: queryGetInput{
+							path: "/folder/dashboards/myNewFolder/file.jpg",
+						},
+						checks: checks(
+							fName("file.jpg"),
+						),
+					},
+				},
+			},
+			{
+				name: "should be able to delete folders with files if using force",
+				steps: []interface{}{
+					cmdCreateFolder{
+						path: "/folder/dashboards/myNewFolder",
+					},
+					cmdUpsert{
+						cmd: UpsertFileCommand{
+							Path:     "/folder/dashboards/myNewFolder/file.jpg",
+							Contents: emptyContents,
+						},
+					},
+					cmdDeleteFolder{
+						path: "/folder/dashboards/myNewFolder",
+						options: &DeleteFolderOptions{
+							Force: true,
+						},
+					},
+					queryListFolders{
+						input: queryListFoldersInput{path: "/", options: &ListOptions{Recursive: true}},
+						checks: [][]interface{}{
+							checks(fPath("/folder")),
+							checks(fPath("/folder/dashboards")),
+						},
+					},
+					queryGet{
+						input: queryGetInput{
+							path: "/folder/dashboards/myNewFolder/file.jpg",
+						},
+					},
+				},
+			},
+			{
+				name: "should be able to delete root folder with force",
+				steps: []interface{}{
+					cmdCreateFolder{
+						path: "/folder/dashboards/myNewFolder",
+					},
+					cmdUpsert{
+						cmd: UpsertFileCommand{
+							Path:     "/folder/dashboards/myNewFolder/file.jpg",
+							Contents: emptyContents,
+						},
+					},
+					cmdDeleteFolder{
+						path: "/",
+						options: &DeleteFolderOptions{
+							Force: true,
+						},
+					},
+					queryListFolders{
+						input:  queryListFoldersInput{path: "/", options: &ListOptions{Recursive: true}},
+						checks: [][]interface{}{},
+					},
+					queryGet{
+						input: queryGetInput{
+							path: "/folder/dashboards/myNewFolder/file.jpg",
+						},
+					},
+				},
+			},
+			{
+				name: "should not be able to delete a folder unless have access to all nested files",
+				steps: []interface{}{
+					cmdCreateFolder{
+						path: "/folder/dashboards/myNewFolder",
+					},
+					cmdUpsert{
+						cmd: UpsertFileCommand{
+							Path:     "/folder/dashboards/myNewFolder/file.jpg",
+							Contents: emptyContents,
+						},
+					},
+					cmdUpsert{
+						cmd: UpsertFileCommand{
+							Path:     "/folder/dashboards/abc/file.jpg",
+							Contents: emptyContents,
+						},
+					},
+					cmdDeleteFolder{
+						path: "/",
+						options: &DeleteFolderOptions{
+							Force:        true,
+							AccessFilter: NewPathFilter([]string{"/"}, nil, nil, []string{"/folder/dashboards/abc/file.jpg"}),
+						},
+						error: &cmdErrorOutput{
+							message: "force folder delete: unauthorized access for path %s",
+							args:    []interface{}{"/"},
+						},
+					},
+					queryListFolders{
+						input: queryListFoldersInput{path: "/", options: &ListOptions{Recursive: true}},
+						checks: [][]interface{}{
+							checks(fPath("/folder")),
+							checks(fPath("/folder/dashboards")),
+							checks(fPath("/folder/dashboards/abc")),
+							checks(fPath("/folder/dashboards/myNewFolder")),
+						},
+					},
+					queryGet{
+						input: queryGetInput{
+							path: "/folder/dashboards/myNewFolder/file.jpg",
+						},
+						checks: checks(
+							fName("file.jpg"),
+						),
 					},
 					queryGet{
 						input: queryGetInput{

@@ -1,21 +1,27 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { Provider } from 'react-redux';
+import { BrowserRouter } from 'react-router-dom';
 import { selectOptionInTest } from 'test/helpers/selectOptionInTest';
+import { getGrafanaContextMock } from 'test/mocks/getGrafanaContextMock';
 import { byRole } from 'testing-library-selector';
 
 import { selectors } from '@grafana/e2e-selectors';
-import { setBackendSrv } from '@grafana/runtime';
+import { BackendSrv, setBackendSrv } from '@grafana/runtime';
+import { GrafanaContext } from 'app/core/context/GrafanaContext';
 
+import { configureStore } from '../../../../store/configureStore';
 import { DashboardModel } from '../../state';
 
 import { GeneralSettingsUnconnected as GeneralSettings, Props } from './GeneralSettings';
 
 setBackendSrv({
   get: jest.fn().mockResolvedValue([]),
-} as any);
+} as unknown as BackendSrv);
 
 const setupTestContext = (options: Partial<Props>) => {
+  const store = configureStore();
   const defaults: Props = {
     dashboard: new DashboardModel(
       {
@@ -34,10 +40,25 @@ const setupTestContext = (options: Partial<Props>) => {
     ),
     updateTimeZone: jest.fn(),
     updateWeekStart: jest.fn(),
+    sectionNav: {
+      main: { text: 'Dashboard' },
+      node: {
+        text: 'Settings',
+      },
+    },
   };
 
   const props = { ...defaults, ...options };
-  const { rerender } = render(<GeneralSettings {...props} />);
+
+  const { rerender } = render(
+    <GrafanaContext.Provider value={getGrafanaContextMock()}>
+      <Provider store={store}>
+        <BrowserRouter>
+          <GeneralSettings {...props} />
+        </BrowserRouter>
+      </Provider>
+    </GrafanaContext.Provider>
+  );
 
   return { rerender, props };
 };

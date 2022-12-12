@@ -16,6 +16,7 @@ import {
   KeyValue,
   standardTransformers,
 } from '@grafana/data';
+import { config } from 'app/core/config';
 
 export const standardAnnotationSupport: AnnotationSupport = {
   /**
@@ -112,9 +113,22 @@ export const annotationEventNames: AnnotationFieldInfo[] = [
   },
 ];
 
+export const publicDashboardEventNames: AnnotationFieldInfo[] = [
+  {
+    key: 'color',
+  },
+  {
+    key: 'isRegion',
+  },
+  {
+    key: 'source',
+  },
+];
+
 // Given legacy infrastructure, alert events are passed though the same annotation
 // pipeline, but include fields that should not be exposed generally
 const alertEventAndAnnotationFields: AnnotationFieldInfo[] = [
+  ...(config.isPublicDashboardView ? publicDashboardEventNames : []),
   ...annotationEventNames,
   { key: 'userId' },
   { key: 'login' },
@@ -125,6 +139,7 @@ const alertEventAndAnnotationFields: AnnotationFieldInfo[] = [
   { key: 'panelId' },
   { key: 'alertId' },
   { key: 'dashboardId' },
+  { key: 'dashboardUID' },
 ];
 
 export function getAnnotationsFromData(
@@ -184,7 +199,8 @@ export function getAnnotationsFromData(
       }
 
       if (!hasTime || !hasText) {
-        return []; // throw an error?
+        console.error('Cannot process annotation fields. No time or text present.');
+        return [];
       }
 
       // Add each value to the string
@@ -231,14 +247,22 @@ export function getAnnotationsFromData(
 // annotation support API needs some work to support less "standard" editors like prometheus and here it is not
 // polluting public API.
 
+const legacyRunner = [
+  'prometheus',
+  'loki',
+  'elasticsearch',
+  'grafana-opensearch-datasource', // external
+  'grafana-splunk-datasource', // external
+];
+
 /**
  * Opt out of using the default mapping functionality on frontend.
  */
 export function shouldUseMappingUI(datasource: DataSourceApi): boolean {
-  return (
-    datasource.type !== 'prometheus' &&
-    datasource.type !== 'grafana-opensearch-datasource' &&
-    datasource.type !== 'grafana-splunk-datasource'
+  const { type } = datasource;
+  return !(
+    type === 'datasource' || //  ODD behavior for "-- Grafana --" datasource
+    legacyRunner.includes(type)
   );
 }
 
@@ -246,9 +270,6 @@ export function shouldUseMappingUI(datasource: DataSourceApi): boolean {
  * Use legacy runner. Used only as an escape hatch for easier transition to React based annotation editor.
  */
 export function shouldUseLegacyRunner(datasource: DataSourceApi): boolean {
-  return (
-    datasource.type === 'prometheus' ||
-    datasource.type === 'grafana-opensearch-datasource' ||
-    datasource.type === 'grafana-splunk-datasource'
-  );
+  const { type } = datasource;
+  return legacyRunner.includes(type);
 }

@@ -672,17 +672,6 @@ func sortedLabels(labelsVector map[string][]string) []string {
 	return allLabels
 }
 
-func sortedLabels(labelsVector map[string][]string) []string {
-	allLabels := make([]string, len(labelsVector))
-	i := 0
-	for key := range labelsVector {
-		allLabels[i] = key
-		i++
-	}
-	sort.Strings(allLabels)
-	return allLabels
-}
-
 func deviation(values []float64) float64 {
 	var sum, mean, sd float64
 	valuesLen := float64(len(values))

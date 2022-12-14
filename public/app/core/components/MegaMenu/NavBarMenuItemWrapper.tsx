@@ -7,7 +7,7 @@ import { toIconName, useStyles2 } from '@grafana/ui';
 import { getNavTitle } from '../NavBar/navBarItem-translations';
 import { isMatchOrChildMatch } from '../NavBar/utils';
 
-import { NavBarMenuItem } from './NavBarMenuItem';
+import { NavBarMenuItem } from '../NavBar/NavBarMenuItem';
 import { NavBarMenuSection } from './NavBarMenuSection';
 
 export function NavBarMenuItemWrapper({

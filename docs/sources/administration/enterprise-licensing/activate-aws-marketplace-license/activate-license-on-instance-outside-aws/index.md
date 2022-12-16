@@ -1,11 +1,7 @@
 ---
 aliases:
-  - /docs/grafana/latest/enterprise/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/
-  - /docs/grafana/latest/enterprise/license/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws.md
-========
-  - /docs/grafana/latest/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/index.md
+  - ../../../enterprise/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/
+  - ../../../enterprise/license/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/
 description: Activate a Grafana Enterprise license from AWS on an instance deployed
   outside of AWS
 keywords:
@@ -35,15 +31,9 @@ To activate a Grafana Enterprise license from AWS on a Grafana Enterprise instan
 
 To install Grafana, refer to the documentation specific to your implementation.
 
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws.md
-- [Install Grafana]({{< relref "../../../../enterprise/setup-grafana/installation/" >}}).
-- [Run Grafana Docker image]({{< relref "../../../../enterprise/setup-grafana/installation/docker/" >}}).
-- [Deploy Grafana on Kubernetes]({{< relref "../../../../enterprise/setup-grafana/installation/kubernetes/#deploy-grafana-enterprise-on-kubernetes" >}}).
-========
 - [Install Grafana]({{< relref "../../../../setup-grafana/installation/" >}}).
 - [Run Grafana Docker image]({{< relref "../../../../setup-grafana/installation/docker/" >}}).
 - [Deploy Grafana on Kubernetes]({{< relref "../../../../setup-grafana/installation/kubernetes/#deploy-grafana-enterprise-on-kubernetes" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/index.md
 
 ## Task 2: Create an AWS IAM user with access to your Grafana Enterprise license
 
@@ -116,11 +106,7 @@ To retrieve your license, Grafana Enterprise requires access to your AWS account
 
 In this task you configure Grafana Enterprise to validate the license with AWS instead of Grafana Labs.
 
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws.md
-Choose one of the following options to update the [license_validation_type]({{< relref "../../../../enterprise/setup-grafana/configure-grafana/enterprise-configuration/#license_validation_type" >}}) configuration to `aws`:
-========
 Choose one of the following options to update the [license_validation_type]({{< relref "../../../../setup-grafana/configure-grafana/enterprise-configuration/#license_validation_type" >}}) configuration to `aws`:
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/index.md
 
 - **Option 1:** In the `[enterprise]` section of the grafana.ini configuration file, add `license_validation_type=aws`.
 
@@ -141,8 +127,4 @@ Choose one of the following options to update the [license_validation_type]({{< 
 
 To activate Grafana Enterprise features, start (or restart) Grafana.
 
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws.md
-For information about restarting Grafana, refer to [Restart Grafana]({{< relref "../../../../enterprise/setup-grafana/restart-grafana/" >}}).
-========
 For information about restarting Grafana, refer to [Restart Grafana]({{< relref "../../../../setup-grafana/restart-grafana/" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-instance-outside-aws/index.md

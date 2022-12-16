@@ -16,6 +16,7 @@
 export interface FeatureToggles {
   [name: string]: boolean | undefined; // support any string value
 
+  returnUnameHeader?: boolean;
   alertingBigTransactions?: boolean;
   promQueryBuilder?: boolean;
   trimDefaults?: boolean;
@@ -78,9 +79,11 @@ export interface FeatureToggles {
   queryLibrary?: boolean;
   showDashboardValidationWarnings?: boolean;
   mysqlAnsiQuotes?: boolean;
+  userRemoteCache?: boolean;
   datasourceLogger?: boolean;
   accessControlOnCall?: boolean;
   nestedFolders?: boolean;
   accessTokenExpirationCheck?: boolean;
   elasticsearchBackendMigration?: boolean;
+  sessionRemoteCache?: boolean;
 }

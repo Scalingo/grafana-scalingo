@@ -1,11 +1,7 @@
 ---
 aliases:
-  - /docs/grafana/latest/enterprise/activate-aws-marketplace-license/activate-license-on-ecs/
-  - /docs/grafana/latest/enterprise/license/activate-aws-marketplace-license/activate-license-on-ecs/
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-ecs.md
-========
-  - /docs/grafana/latest/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-ecs/
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-ecs/index.md
+  - ../../../enterprise/activate-aws-marketplace-license/activate-license-on-ecs/
+  - ../../../enterprise/license/activate-aws-marketplace-license/activate-license-on-ecs/
 description: Activate a Grafana Enterprise license from AWS Marketplace on ECS
 keywords:
   - grafana
@@ -48,11 +44,7 @@ Grafana requires that you configure a database to hold dashboards, users, and ot
 ### Before you begin
 
 - Ensure that you have a supported Grafana database available.
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-ecs.md
-  - For a list of supported databases, refer to [Supported databases]({{< relref "../../../../enterprise/setup-grafana/installation/#supported-databases" >}}).
-========
   - For a list of supported databases, refer to [Supported databases]({{< relref "../../../../setup-grafana/installation/#supported-databases" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-ecs/index.md
   - For information about creating a database, refer to [Creating an Amazon RDS DB instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_CreateDBInstance.html).
 - Review the information required to connect to the RDS DB instance. For more information, refer to [Connecting to an Amazon RDS DB instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_CommonTasks.Connect.html).
 
@@ -60,11 +52,7 @@ To configure Grafana for high availability:
 
 1. In AWS ECS, use environment variables to update the `database` parameters.
 
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-ecs.md
-   For a list of database parameters, refer to [Configuration]({{< relref "../../../../enterprise/setup-grafana/configure-grafana/#database" >}}).
-========
    For a list of database parameters, refer to [Configuration]({{< relref "../../../../setup-grafana/configure-grafana/#database" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/activate-license-on-ecs/index.md
 
 1. Create a revision of the task definition for the ECS Task that runs Grafana Enterprise.
 

@@ -186,7 +186,11 @@ func Initialize(cfg *setting.Cfg) (Runner, error) {
 	}
 	teamService := teamimpl.ProvideService(fakeDB, cfg)
 	cacheService := localcache.ProvideService()
-	userService, err := userimpl.ProvideService(fakeDB, orgService, cfg, teamService, cacheService, quotaService)
+	remoteCache, err := remotecache.ProvideService(cfg, fakeDB)
+	if err != nil {
+		return Runner{}, err
+	}
+	userService, err := userimpl.ProvideService(fakeDB, orgService, cfg, teamService, cacheService, quotaService, remoteCache, featureManager)
 	if err != nil {
 		return Runner{}, err
 	}

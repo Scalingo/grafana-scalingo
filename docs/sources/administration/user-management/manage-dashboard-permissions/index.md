@@ -1,11 +1,7 @@
 ---
 aliases:
-  - /docs/grafana/latest/administration/manage-users-and-permissions/manage-dashboard-permissions/
-  - /docs/grafana/latest/permissions/dashboard_folder_permissions/
-<<<<<<<< HEAD:docs/sources/administration/user-management/manage-dashboard-permissions/_index.md
-========
-  - /docs/grafana/latest/administration/user-management/manage-dashboard-permissions/
->>>>>>>> v9.3.1:docs/sources/administration/user-management/manage-dashboard-permissions/index.md
+  - ../../permissions/dashboard_folder_permissions/
+  - ../manage-users-and-permissions/manage-dashboard-permissions/
 title: Manage dashboard permissions
 weight: 500
 ---

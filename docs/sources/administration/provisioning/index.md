@@ -1,12 +1,7 @@
 ---
 aliases:
-  - /docs/grafana/latest/administration/provisioning/
-  - /docs/grafana/latest/installation/provisioning/
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-description: ''
-========
+  - ../installation/provisioning/
 description: Describes provisioning settings for Grafana using configuration files.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
 keywords:
   - grafana
   - provisioning
@@ -20,11 +15,7 @@ In previous versions of Grafana, you could only use the API for provisioning dat
 
 ## Config File
 
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-Check out the [configuration]({{< relref "../setup-grafana/configure-grafana/" >}}) page for more information on what you can configure in `grafana.ini`
-========
 See [Configuration]({{< relref "../../setup-grafana/configure-grafana/" >}}) for more information on what you can configure in `grafana.ini`.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
 
 ### Config File Locations
 
@@ -122,11 +113,7 @@ datasources:
     # <string> Sets the data source's URL, including the
     # port.
     url: http://localhost:8080
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-    # <string> database user, if used
-========
     # <string> Sets the database user, if necessary.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
     user:
     # <string> Sets the database name, if necessary.
     database:
@@ -134,11 +121,7 @@ datasources:
     basicAuth:
     # <string> Sets the basic authorization username.
     basicAuthUser:
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-    # <bool> enable/disable with credentials headers
-========
     # <bool> Enables credential headers.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
     withCredentials:
     # <bool> Toggles whether the data source is pre-selected
     # for new panels. You can set only one default
@@ -236,11 +219,7 @@ For examples of specific data sources' JSON data, refer to that [data source's d
 
 #### Secure JSON Data
 
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-Secure json data is a map of settings that will be encrypted with [secret key]({{< relref "../setup-grafana/configure-grafana/#secret-key" >}}) from the Grafana config. The purpose of this is only to hide content from the users of the application. This should be used for storing TLS Cert and password that Grafana will append to the request on the server side. All of these settings are optional.
-========
 Secure JSON data is a map of settings that will be encrypted with [secret key]({{< relref "../../setup-grafana/configure-grafana#secret_key" >}}) from the Grafana config. The purpose of this is only to hide content from the users of the application. This should be used for storing TLS Cert and password that Grafana will append to the request on the server side. All of these settings are optional.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
 
 > **Note:** The _HTTP\*_ tag denotes data sources that communicate using the HTTP protocol, including all core data source plugins except MySQL, PostgreSQL, and MSSQL.
 
@@ -279,14 +258,10 @@ datasources:
 
 > **Note:** Available in Grafana v7.1 and higher.
 
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-You can manage plugins in Grafana by adding one or more YAML config files in the [`provisioning/plugins`]({{< relref "../setup-grafana/configure-grafana/#provisioning" >}}) directory. Each config file can contain a list of `apps` that will be updated during start up. Grafana updates each app to match the configuration file.
-========
 You can manage plugin applications in Grafana by adding one or more YAML config files in the [`provisioning/plugins`]({{< relref "../../setup-grafana/configure-grafana#provisioning" >}}) directory. Each config file can contain a list of `apps` that will be updated during start up. Grafana updates each app to match the configuration file.
 
 > **Note:** This feature enables you to provision plugin configurations, not the plugins themselves.
 > The plugins must already be installed on the Grafana instance.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
 
 ### Example plugin configuration file
 
@@ -314,11 +289,7 @@ apps:
 
 ## Dashboards
 
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-You can manage dashboards in Grafana by adding one or more YAML config files in the [`provisioning/dashboards`]({{< relref "../setup-grafana/configure-grafana/" >}}) directory. Each config file can contain a list of `dashboards providers` that load dashboards into Grafana from the local filesystem.
-========
 You can manage dashboards in Grafana by adding one or more YAML config files in the [`provisioning/dashboards`]({{< relref "../../setup-grafana/configure-grafana#dashboards" >}}) directory. Each config file can contain a list of `dashboards providers` that load dashboards into Grafana from the local filesystem.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
 
 The dashboard provider config file looks somewhat like this:
 
@@ -373,11 +344,7 @@ Note: The JSON definition in the input field when using `Copy JSON to Clipboard`
 
 ### Reusable Dashboard URLs
 
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-If the dashboard in the JSON file contains an [UID]({{< relref "../dashboards/json-model/" >}}), Grafana forces insert/update on that UID. This allows you to migrate dashboards between Grafana instances and provisioning Grafana from configuration without breaking the URLs given because the new dashboard URL uses the UID as identifier.
-========
 If the dashboard in the JSON file contains an [UID]({{< relref "../../dashboards/build-dashboards/view-dashboard-json-model" >}}), Grafana forces insert/update on that UID. This allows you to migrate dashboards between Grafana instances and provisioning Grafana from configuration without breaking the URLs given because the new dashboard URL uses the UID as identifier.
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md
 When Grafana starts, it updates/inserts all dashboards available in the configured folders. If you modify the file, then the dashboard is also updated.
 By default, Grafana deletes dashboards in the database if the file is removed. You can disable this behavior using the `disableDeletion` setting.
 
@@ -677,8 +644,4 @@ The following sections detail the supported settings and secure settings for eac
 
 Grafana Enterprise supports provisioning for the following resources:
 
-<<<<<<<< HEAD:docs/sources/administration/provisioning/_index.md
-- [Role-based access control provisioning]({{< relref "../enterprise/access-control/rbac-provisioning/" >}})
-========
 - [Role-based access control provisioning]({{< relref "../roles-and-permissions/access-control/rbac-provisioning/" >}})
->>>>>>>> v9.3.1:docs/sources/administration/provisioning/index.md

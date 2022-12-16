@@ -7,6 +7,10 @@
 package featuremgmt
 
 const (
+	// FlagReturnUnameHeader
+	// Return user login as header for authenticated requests
+	FlagReturnUnameHeader = "returnUnameHeader"
+
 	// FlagAlertingBigTransactions
 	// Use big transactions for alerting database writes
 	FlagAlertingBigTransactions = "alertingBigTransactions"
@@ -255,6 +259,10 @@ const (
 	// Use double quote to escape keyword in Mysql query
 	FlagMysqlAnsiQuotes = "mysqlAnsiQuotes"
 
+	// FlagUserRemoteCache
+	// Enable using remote cache for users
+	FlagUserRemoteCache = "userRemoteCache"
+
 	// FlagDatasourceLogger
 	// Logs all datasource requests
 	FlagDatasourceLogger = "datasourceLogger"
@@ -274,4 +282,8 @@ const (
 	// FlagElasticsearchBackendMigration
 	// Use Elasticsearch as backend data source
 	FlagElasticsearchBackendMigration = "elasticsearchBackendMigration"
+
+	// FlagSessionRemoteCache
+	// Enable using remote cache for user sessions
+	FlagSessionRemoteCache = "sessionRemoteCache"
 )

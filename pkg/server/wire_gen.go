@@ -247,7 +247,7 @@ func Initialize(cla setting.CommandLineArgs, opts Options, apiOpts api.ServerOpt
 		return nil, err
 	}
 	teamService := teamimpl.ProvideService(sqlStore, cfg)
-	userService, err := userimpl.ProvideService(sqlStore, orgService, cfg, teamService, cacheService, quotaService)
+	userService, err := userimpl.ProvideService(sqlStore, orgService, cfg, teamService, cacheService, quotaService, remoteCache, featureManager)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func Initialize(cla setting.CommandLineArgs, opts Options, apiOpts api.ServerOpt
 	pluginInstaller := manager2.ProvideInstaller(configCfg, inMemory, loaderLoader, repoManager)
 	cacheServiceImpl := service3.ProvideCacheService(cacheService, sqlStore)
 	serverLockService := serverlock.ProvideService(sqlStore, tracer)
-	userAuthTokenService := auth.ProvideUserAuthTokenService(sqlStore, serverLockService, cfg)
+	userAuthTokenService := auth.ProvideUserAuthTokenService(sqlStore, serverLockService, remoteCache, featureManager, cfg)
 	shortURLService := shorturls.ProvideService(sqlStore)
 	queryHistoryService := queryhistory.ProvideService(cfg, sqlStore, routeRegisterImpl)
 	dashverService := dashverimpl.ProvideService(sqlStore)
@@ -531,7 +531,7 @@ func InitializeForTest(cla setting.CommandLineArgs, opts Options, apiOpts api.Se
 		return nil, err
 	}
 	teamService := teamimpl.ProvideService(sqlStore, cfg)
-	userService, err := userimpl.ProvideService(sqlStore, orgService, cfg, teamService, cacheService, quotaService)
+	userService, err := userimpl.ProvideService(sqlStore, orgService, cfg, teamService, cacheService, quotaService, remoteCache, featureManager)
 	if err != nil {
 		return nil, err
 	}
@@ -619,7 +619,7 @@ func InitializeForTest(cla setting.CommandLineArgs, opts Options, apiOpts api.Se
 	pluginInstaller := manager2.ProvideInstaller(configCfg, inMemory, loaderLoader, repoManager)
 	cacheServiceImpl := service3.ProvideCacheService(cacheService, sqlStore)
 	serverLockService := serverlock.ProvideService(sqlStore, tracer)
-	userAuthTokenService := auth.ProvideUserAuthTokenService(sqlStore, serverLockService, cfg)
+	userAuthTokenService := auth.ProvideUserAuthTokenService(sqlStore, serverLockService, remoteCache, featureManager, cfg)
 	shortURLService := shorturls.ProvideService(sqlStore)
 	queryHistoryService := queryhistory.ProvideService(cfg, sqlStore, routeRegisterImpl)
 	dashverService := dashverimpl.ProvideService(sqlStore)

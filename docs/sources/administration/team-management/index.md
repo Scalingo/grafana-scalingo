@@ -1,13 +1,9 @@
 ---
 aliases:
-  - /docs/grafana/latest/administration/manage-users-and-permissions/manage-teams/
-  - /docs/grafana/latest/manage-users/add-or-remove-user-from-team/
-  - /docs/grafana/latest/manage-users/create-or-remove-team/
-  - /docs/grafana/latest/manage-users/manage-teams/
-<<<<<<<< HEAD:docs/sources/administration/team-management/_index.md
-========
-  - /docs/grafana/latest/administration/team-management/
->>>>>>>> v9.3.1:docs/sources/administration/team-management/index.md
+  - ../manage-users/add-or-remove-user-from-team/
+  - ../manage-users/create-or-remove-team/
+  - ../manage-users/manage-teams/
+  - manage-users-and-permissions/manage-teams/
 title: Team management
 weight: 400
 ---
@@ -19,8 +15,6 @@ A team is a group of users within an organization that have common dashboard and
 A user can be a Member or an Administrator for a given team. Members of a team inherit permissions from the team, but they cannot edit the team itself. Team Administrators can add members to a team and update its settings, such as the team name, team member's team roles, UI preferences, and home dashboard.
 
 For more information about teams, refer to [Teams and permissions]({{< relref "../roles-and-permissions/#teams-and-permissions" >}}).
-<<<<<<<< HEAD:docs/sources/administration/team-management/_index.md
-========
 
 For information about how to optimize your teams, refer to [How to best organize your teams and resources in Grafana](https://grafana.com/blog/2022/03/14/how-to-best-organize-your-teams-and-resources-in-grafana/).
 
@@ -37,7 +31,6 @@ This topic describes how to:
 
 - Ensure that you have either organization administrator permissions or team administrator permissions
 - Make a plan for which users belong to which teams and the permissions team members receive
->>>>>>>> v9.3.1:docs/sources/administration/team-management/index.md
 
 ## Create a team
 

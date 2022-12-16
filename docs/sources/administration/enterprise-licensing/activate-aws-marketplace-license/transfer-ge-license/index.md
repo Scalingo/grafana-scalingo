@@ -1,11 +1,7 @@
 ---
 aliases:
-  - /docs/grafana/latest/enterprise/activate-aws-marketplace-license/transfer-ge-license/
-  - /docs/grafana/latest/enterprise/license/activate-aws-marketplace-license/transfer-ge-license/
-<<<<<<<< HEAD:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/transfer-ge-license.md
-========
-  - /docs/grafana/latest/administration/enterprise-licensing/activate-aws-marketplace-license/transfer-ge-license/
->>>>>>>> v9.3.1:docs/sources/administration/enterprise-licensing/activate-aws-marketplace-license/transfer-ge-license/index.md
+  - ../../../enterprise/activate-aws-marketplace-license/transfer-ge-license/
+  - ../../../enterprise/license/activate-aws-marketplace-license/transfer-ge-license/
 description: Transfer your AWS Marketplace Grafana Enterprise license
 keywords:
   - grafana

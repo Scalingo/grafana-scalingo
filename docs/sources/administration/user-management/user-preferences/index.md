@@ -1,11 +1,7 @@
 ---
 aliases:
-  - /docs/grafana/latest/administration/change-your-password/
-  - /docs/grafana/latest/administration/manage-user-preferences/
-<<<<<<<< HEAD:docs/sources/administration/user-management/user-preferences/_index.md
-========
-  - /docs/grafana/latest/administration/user-management/user-preferences/
->>>>>>>> v9.3.1:docs/sources/administration/user-management/user-preferences/index.md
+  - ../change-your-password/
+  - ../manage-user-preferences/
 description: Learn how to update your user preferences and switch organizations
 keywords:
   - password

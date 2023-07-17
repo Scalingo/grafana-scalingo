@@ -25,19 +25,34 @@ interface ExemplarMarkerProps {
   exemplarColor?: string;
 }
 
-export const ExemplarMarker: React.FC<ExemplarMarkerProps> = ({
+export const ExemplarMarker = ({
   timeZone,
   dataFrame,
   dataFrameFieldIndex,
   config,
   getFieldLinks,
   exemplarColor,
-}) => {
+}: ExemplarMarkerProps) => {
   const styles = useStyles2(getExemplarMarkerStyles);
   const [isOpen, setIsOpen] = useState(false);
   const [markerElement, setMarkerElement] = React.useState<HTMLDivElement | null>(null);
   const [popperElement, setPopperElement] = React.useState<HTMLDivElement | null>(null);
-  const { styles: popperStyles, attributes } = usePopper(markerElement, popperElement);
+  const { styles: popperStyles, attributes } = usePopper(markerElement, popperElement, {
+    modifiers: [
+      {
+        name: 'preventOverflow',
+        options: {
+          altAxis: true,
+        },
+      },
+      {
+        name: 'flip',
+        options: {
+          fallbackPlacements: ['top', 'left-start'],
+        },
+      },
+    ],
+  });
   const popoverRenderTimeout = useRef<NodeJS.Timer>();
 
   const getSymbol = () => {
@@ -248,6 +263,8 @@ const getExemplarMarkerStyles = (theme: GrafanaTheme2) => {
     tooltip: css`
       background: none;
       padding: 0;
+      overflow-y: auto;
+      max-height: 95vh;
     `,
     header: css`
       background: ${headerBg};

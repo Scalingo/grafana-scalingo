@@ -6,6 +6,7 @@ aliases:
   - ../panels/add-panels-dynamically/about-repeating-panels-rows/
   - ../panels/add-panels-dynamically/configure-repeating-panels/
   - ../panels/add-panels-dynamically/configure-repeating-rows/
+  - ../panels/working-with-panels/
   - ../panels/working-with-panels/add-panel/
   - ../panels/working-with-panels/navigate-inspector-panel/
   - ../panels/working-with-panels/navigate-panel-editor/
@@ -23,23 +24,22 @@ weight: 1
 
 # Panel editor overview
 
-{{< figure src="/static/img/docs/panel-editor/panel-editor-8-0.png" class="docs-image--no-shadow" max-width="1500px" >}}
+![Panel editor](/media/docs/grafana/panels-visualizations/screenshot-panel-editor-view.png)
 
 This section describes the areas of the Grafana panel editor.
 
 1. Panel header: The header section lists the dashboard in which the panel appears and the following controls:
 
-   - **Dashboard settings (gear) icon:** Click to access the dashboard settings.
    - **Discard:** Discards changes you have made to the panel since you last saved the dashboard.
    - **Save:** Saves changes you made to the panel.
    - **Apply:** Applies changes you made and closes the panel editor, returning you to the dashboard. You will have to save the dashboard to persist the applied changes.
 
 1. Visualization preview: The visualization preview section contains the following options:
 
-   - **Table view:** Convert any visualization to a table so that you can see the data. Table views are useful for troubleshooting.
+   - **Table view:** Convert any visualization to a table so you can see the data. Table views are helpful for troubleshooting. This view only contains the raw data. It does not include transformations you might have applied to the data or the formatting options available in the [Table]({{< relref "../visualizations/table/" >}}) visualization.
    - **Fill:** The visualization preview fills the available space. If you change the width of the side pane or height of the bottom pane the visualization changes to fill the available space.
    - **Actual:** The visualization preview will have the exact size as the size on the dashboard. If not enough space is available, the visualization will scale down preserving the aspect ratio.
-   - **Time range controls:** For more information, refer to [Time range controls]({{< relref "../../dashboards/manage-dashboards/#configure-dashboard-time-range-controls" >}}).
+   - **Time range controls:** **Default** is either the browser local timezone or the timezone selected at a higher level.
 
 1. Data section: The data section contains tabs where you enter queries, transform your data, and create alert rules (if applicable).
 
@@ -52,6 +52,8 @@ This section describes the areas of the Grafana panel editor.
 ## Open the panel inspect drawer
 
 The inspect drawer helps you understand and troubleshoot your panels. You can view the raw data for any panel, export that data to a comma-separated values (CSV) file, view query requests, and export panel and data JSON.
+
+To access the panel inspect drawer from the edit view, hover over any part of the panel to display the actions menu on the top right corner. Click the menu and select **Inspect**.
 
 > **Note:** Not all panel types include all tabs. For example, dashboard list panels do not have raw data to inspect, so they do not display the Stats, Data, or Query tabs.
 

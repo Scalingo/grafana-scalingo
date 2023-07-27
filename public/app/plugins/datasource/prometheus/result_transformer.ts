@@ -231,7 +231,10 @@ export function transformDFToTable(dfs: DataFrame[]): DataFrame[] {
       refId,
       fields,
       // Prometheus specific UI for instant queries
-      meta: { ...dfs[0].meta, preferredVisualisationType: 'rawPrometheus' as PreferredVisualisationType },
+      meta: {
+        ...dataFramesByRefId[refId][0].meta,
+        preferredVisualisationType: 'rawPrometheus' as PreferredVisualisationType,
+      },
       length: timeField.values.length,
     };
   });
@@ -601,7 +604,7 @@ export function getOriginalMetricName(labelData: { [key: string]: string }) {
 }
 
 function mergeHeatmapFrames(frames: DataFrame[]): DataFrame[] {
-  if (frames.length === 0) {
+  if (frames.length === 0 || (frames.length === 1 && frames[0].length === 0)) {
     return [];
   }
 

@@ -10,12 +10,6 @@ var (
 	// Register each toggle here
 	standardFeatureFlags = []FeatureFlag{
 		{
-			Name:        "alertingBigTransactions",
-			Description: "Use big transactions for alerting database writes",
-			State:       FeatureStateAlpha,
-			Owner:       grafanaAlertingSquad,
-		},
-		{
 			Name:        "trimDefaults",
 			Description: "Use cue schema to remove values that will be applied automatically",
 			State:       FeatureStateBeta,
@@ -315,12 +309,6 @@ var (
 			Description: "Use Elasticsearch as backend data source",
 			State:       FeatureStateAlpha,
 			Owner:       grafanaObservabilityLogsSquad,
-		},
-		{
-			Name:        "datasourceOnboarding",
-			Description: "Enable data source onboarding page",
-			State:       FeatureStateAlpha,
-			Owner:       grafanaDashboardsSquad,
 		},
 		{
 			Name:         "emptyDashboardPage",

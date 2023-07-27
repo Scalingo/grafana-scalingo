@@ -7,10 +7,6 @@
 package featuremgmt
 
 const (
-	// FlagAlertingBigTransactions
-	// Use big transactions for alerting database writes
-	FlagAlertingBigTransactions = "alertingBigTransactions"
-
 	// FlagTrimDefaults
 	// Use cue schema to remove values that will be applied automatically
 	FlagTrimDefaults = "trimDefaults"
@@ -194,10 +190,6 @@ const (
 	// FlagElasticsearchBackendMigration
 	// Use Elasticsearch as backend data source
 	FlagElasticsearchBackendMigration = "elasticsearchBackendMigration"
-
-	// FlagDatasourceOnboarding
-	// Enable data source onboarding page
-	FlagDatasourceOnboarding = "datasourceOnboarding"
 
 	// FlagEmptyDashboardPage
 	// Enable the redesigned user interface of a dashboard page that includes no panels

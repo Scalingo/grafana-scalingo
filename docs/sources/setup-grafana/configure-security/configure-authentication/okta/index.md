@@ -3,7 +3,8 @@ aliases:
   - ../../../auth/okta/
 description: Grafana Okta OAuth Guide
 title: Configure Okta OAuth2 authentication
-weight: 1200
+menuTitle: Okta OAuth2
+weight: 1400
 ---
 
 # Configure Okta OAuth2 authentication
@@ -51,7 +52,17 @@ api_url = https://<tenant-id>.okta.com/oauth2/v1/userinfo
 allowed_domains =
 allowed_groups =
 role_attribute_path =
+use_pkce = true
 ```
+
+### PKCE
+
+IETF's [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636)
+introduces "proof key for code exchange" (PKCE) which provides
+additional protection against some forms of authorization code
+interception attacks. PKCE will be required in [OAuth 2.1](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-03).
+
+> You can disable PKCE in Grafana by setting `use_pkce` to `false` in the`[auth.okta]` section.
 
 ### Configure refresh token
 
@@ -107,7 +118,7 @@ It denies user access if no role or an invalid role is returned.
 > then the user is assigned the role specified by
 > [the `auto_assign_org_role` option]({{< relref "../../../configure-grafana#auto_assign_org_role" >}}).
 
-Read about how to [add custom claims](https://developer.okta.com/docs/guides/customize-tokens-returned-from-okta/add-custom-claim/) to the user info in Okta. Also, check Generic OAuth page for [JMESPath examples]({{< relref "generic-oauth/#jmespath-examples" >}}).
+Read about how to [add custom claims](https://developer.okta.com/docs/guides/customize-tokens-returned-from-okta/add-custom-claim/) to the user info in Okta. Also, check Generic OAuth page for [Role mapping examples]({{< relref "../generic-oauth#role-mapping-examples" >}}) with JMESPath.
 
 #### Map server administrator privileges
 

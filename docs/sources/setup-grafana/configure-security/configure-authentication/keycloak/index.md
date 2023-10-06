@@ -9,7 +9,8 @@ keywords:
   - documentation
   - oauth
 title: Configure Keycloak OAuth2 authentication
-weight: 200
+menuTitle: Keycloak OAuth2
+weight: 1300
 ---
 
 # Configure Keycloak OAuth2 authentication
@@ -109,7 +110,14 @@ This will add the `groups` claim to the id_token. You can then use the `groups` 
 
 ```ini
 [auth.generic_oauth]
-group_attribute_path = groups
+groups_attribute_path = groups
+```
+
+If you use nested groups containing special characters such as quotes or colons, the JMESPath parser can perform a harmless reverse function so Grafana can properly evaluate nested groups. The following example shows a parent group named `Global` with nested group `department` that contains a list of groups:
+
+```ini
+[auth.generic_oauth]
+groups_attribute_path = reverse("Global:department")
 ```
 
 ## Enable Single Logout
@@ -118,7 +126,7 @@ To enable Single Logout, you need to add the following option to the configurati
 
 ```ini
 [auth]
-signout_redirect_url = https://<PROVIDER_DOMAIN>/auth/realms/<REALM_NAME>/protocol/openid-connect/logout?redirect_uri=https%3A%2F%2<GRAFANA_DOMAIN>%2Flogin
+signout_redirect_url = https://<PROVIDER_DOMAIN>/auth/realms/<REALM_NAME>/protocol/openid-connect/logout?redirect_uri=https%3A%2F%2F<GRAFANA_DOMAIN>%2Flogin
 ```
 
 As an example, `<PROVIDER_DOMAIN>` can be `keycloak-demo.grafana.org`,

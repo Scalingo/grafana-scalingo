@@ -11,7 +11,7 @@ keywords:
   - panel
   - documentation
 title: Candlestick
-weight: 600
+weight: 100
 ---
 
 # Candlestick
@@ -47,6 +47,8 @@ The **Up color** and **Down color** options select which colors are used when th
 ## Open, High, Low, Close
 
 The candlestick panel will attempt to map fields to the appropriate dimension. The **Open**, **High**, **Low**, and **Close** options allow you to map your data to these dimensions if the panel is unable to do so.
+
+> **Note**: These values are hidden from the legend.
 
 - **Open** corresponds to the starting value of the given period.
 - **High** corresponds to the highest value of the given period.

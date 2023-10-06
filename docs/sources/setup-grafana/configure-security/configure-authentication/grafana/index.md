@@ -3,7 +3,8 @@ aliases:
   - ../../../auth/grafana/
 description: Grafana OAuthentication Guide
 title: Configure Grafana authentication
-weight: 1000
+menuTitle: Basic auth
+weight: 200
 ---
 
 ## Configure Grafana authentication
@@ -16,7 +17,7 @@ provider (listed above). There is also options for allowing self sign up.
 
 > The following applies when using Grafana's built in user authentication, LDAP (without Auth proxy) or OAuth integration.
 
-Grafana are using short-lived tokens as a mechanism for verifying authenticated users.
+Grafana uses short-lived tokens as a mechanism for verifying authenticated users.
 These short-lived tokens are rotated each `token_rotation_interval_minutes` for an active authenticated user.
 
 An active authenticated user that gets it token rotated will extend the `login_maximum_inactive_lifetime_duration` time from "now" that Grafana will remember the user.
@@ -96,13 +97,13 @@ disable_login_form = true
 
 ### Automatic OAuth login
 
-Set to true to attempt login with OAuth automatically, skipping the login screen.
-This setting is ignored if multiple OAuth providers are configured.
+Set to true to attempt login with specific OAuth provider automatically, skipping the login screen.
+This setting is ignored if multiple auth providers are configured to use auto login.
 Defaults to `false`.
 
 ```bash
-[auth]
-oauth_auto_login = true
+[auth.generic_oauth]
+auto_login = true
 ```
 
 ### Hide sign-out menu

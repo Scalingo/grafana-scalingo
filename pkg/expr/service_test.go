@@ -20,7 +20,7 @@ import (
 func TestService(t *testing.T) {
 	dsDF := data.NewFrame("test",
 		data.NewField("time", nil, []time.Time{time.Unix(1, 0)}),
-		data.NewField("value", nil, []*float64{fp(2)}))
+		data.NewField("value", data.Labels{"test": "label"}, []*float64{fp(2)}))
 
 	me := &mockEndpoint{
 		Frames: []*data.Frame{dsDF},
@@ -38,8 +38,8 @@ func TestService(t *testing.T) {
 		{
 			RefID: "A",
 			DataSource: &datasources.DataSource{
-				OrgId: 1,
-				Uid:   "test",
+				OrgID: 1,
+				UID:   "test",
 				Type:  "test",
 			},
 			JSON: json.RawMessage(`{ "datasource": { "uid": "1" }, "intervalMs": 1000, "maxDataPoints": 1000 }`),
@@ -65,7 +65,7 @@ func TestService(t *testing.T) {
 
 	bDF := data.NewFrame("",
 		data.NewField("Time", nil, []time.Time{time.Unix(1, 0)}),
-		data.NewField("B", nil, []*float64{fp(4)}))
+		data.NewField("B", data.Labels{"test": "label"}, []*float64{fp(4)}))
 	bDF.RefID = "B"
 
 	expect := &backend.QueryDataResponse{

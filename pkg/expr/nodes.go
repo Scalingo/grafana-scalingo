@@ -8,15 +8,17 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"gonum.org/v1/gonum/graph/simple"
 
 	"github.com/grafana/grafana/pkg/expr/classic"
 	"github.com/grafana/grafana/pkg/expr/mathexp"
 	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/plugins/adapters"
 	"github.com/grafana/grafana/pkg/services/datasources"
-
-	"gonum.org/v1/gonum/graph/simple"
+	"github.com/grafana/grafana/pkg/services/pluginsintegration/adapters"
 )
+
+// label that is used when all mathexp.Series have 0 labels to make them identifiable by labels. The value of this label is extracted from value field names
+const nameLabelName = "__name__"
 
 var (
 	logger = log.New("expr")
@@ -42,12 +44,11 @@ type baseNode struct {
 }
 
 type rawNode struct {
-	RefID         string `json:"refId"`
-	Query         map[string]interface{}
-	QueryType     string
-	TimeRange     TimeRange
-	DataSource    *datasources.DataSource
-	QueryEnricher QueryDataRequestEnricher
+	RefID      string `json:"refId"`
+	Query      map[string]interface{}
+	QueryType  string
+	TimeRange  TimeRange
+	DataSource *datasources.DataSource
 }
 
 func (rn *rawNode) GetCommandType() (c CommandType, err error) {
@@ -140,9 +141,8 @@ const (
 // DSNode is a DPNode that holds a datasource request.
 type DSNode struct {
 	baseNode
-	query         json.RawMessage
-	datasource    *datasources.DataSource
-	queryEnricher QueryDataRequestEnricher
+	query      json.RawMessage
+	datasource *datasources.DataSource
 
 	orgID      int64
 	queryType  string
@@ -171,15 +171,14 @@ func (s *Service) buildDSNode(dp *simple.DirectedGraph, rn *rawNode, req *Reques
 			id:    dp.NewNode().ID(),
 			refID: rn.RefID,
 		},
-		orgID:         req.OrgId,
-		query:         json.RawMessage(encodedQuery),
-		queryType:     rn.QueryType,
-		intervalMS:    defaultIntervalMS,
-		maxDP:         defaultMaxDP,
-		timeRange:     rn.TimeRange,
-		request:       *req,
-		datasource:    rn.DataSource,
-		queryEnricher: rn.QueryEnricher,
+		orgID:      req.OrgId,
+		query:      json.RawMessage(encodedQuery),
+		queryType:  rn.QueryType,
+		intervalMS: defaultIntervalMS,
+		maxDP:      defaultMaxDP,
+		timeRange:  rn.TimeRange,
+		request:    *req,
+		datasource: rn.DataSource,
 	}
 
 	var floatIntervalMS float64
@@ -204,8 +203,8 @@ func (s *Service) buildDSNode(dp *simple.DirectedGraph, rn *rawNode, req *Reques
 // Execute runs the node and adds the results to vars. If the node requires
 // other nodes they must have already been executed and their results must
 // already by in vars.
-func (dn *DSNode) Execute(ctx context.Context, now time.Time, _ mathexp.Vars, s *Service) (mathexp.Results, error) {
-	logger := logger.FromContext(ctx).New("datasourceType", dn.datasource.Type)
+func (dn *DSNode) Execute(ctx context.Context, now time.Time, _ mathexp.Vars, s *Service) (r mathexp.Results, e error) {
+	logger := logger.FromContext(ctx).New("datasourceType", dn.datasource.Type, "queryRefId", dn.refID, "datasourceUid", dn.datasource.UID, "datasourceVersion", dn.datasource.Version)
 	dsInstanceSettings, err := adapters.ModelToInstanceSettings(dn.datasource, s.decryptSecureJsonDataFn(ctx))
 	if err != nil {
 		return mathexp.Results{}, fmt.Errorf("%v: %w", "failed to convert datasource instance settings", err)
@@ -232,9 +231,13 @@ func (dn *DSNode) Execute(ctx context.Context, now time.Time, _ mathexp.Vars, s 
 		Headers: dn.request.Headers,
 	}
 
-	if dn.queryEnricher != nil {
-		ctx = dn.queryEnricher(ctx, req)
-	}
+	responseType := "unknown"
+	defer func() {
+		if e != nil {
+			responseType = "error"
+		}
+		logger.Debug("Data source queried", "responseType", responseType)
+	}()
 
 	resp, err := s.dataService.QueryData(ctx, req)
 	if err != nil {
@@ -242,69 +245,99 @@ func (dn *DSNode) Execute(ctx context.Context, now time.Time, _ mathexp.Vars, s 
 	}
 
 	vals := make([]mathexp.Value, 0)
-	for refID, qr := range resp.Responses {
-		if qr.Error != nil {
-			return mathexp.Results{}, QueryError{RefID: refID, Err: qr.Error}
+	response, ok := resp.Responses[dn.refID]
+	if !ok {
+		if len(resp.Responses) > 0 {
+			keys := make([]string, 0, len(resp.Responses))
+			for refID := range resp.Responses {
+				keys = append(keys, refID)
+			}
+			logger.Warn("Can't find response by refID. Return nodata", "responseRefIds", keys)
+		}
+		return mathexp.Results{Values: mathexp.Values{mathexp.NoData{}.New()}}, nil
+	}
+
+	if response.Error != nil {
+		return mathexp.Results{}, QueryError{RefID: dn.refID, Err: response.Error}
+	}
+
+	dataSource := dn.datasource.Type
+	if isAllFrameVectors(dataSource, response.Frames) { // Prometheus Specific Handling
+		vals, err = framesToNumbers(response.Frames)
+		if err != nil {
+			return mathexp.Results{}, fmt.Errorf("failed to read frames as numbers: %w", err)
+		}
+		responseType = "vector"
+		return mathexp.Results{Values: vals}, nil
+	}
+
+	if len(response.Frames) == 1 {
+		frame := response.Frames[0]
+		// Handle Untyped NoData
+		if len(frame.Fields) == 0 {
+			return mathexp.Results{Values: mathexp.Values{mathexp.NoData{Frame: frame}}}, nil
 		}
 
-		dataSource := dn.datasource.Type
-		if isAllFrameVectors(dataSource, qr.Frames) { // Prometheus Specific Handling
-			vals, err = framesToNumbers(qr.Frames)
-			if err != nil {
-				return mathexp.Results{}, fmt.Errorf("failed to read frames as numbers: %w", err)
-			}
-			return mathexp.Results{Values: vals}, nil
-		}
-
-		if len(qr.Frames) == 1 {
-			frame := qr.Frames[0]
-			// Handle Untyped NoData
-			if len(frame.Fields) == 0 {
-				return mathexp.Results{Values: mathexp.Values{mathexp.NoData{Frame: frame}}}, nil
-			}
-
-			// Handle Numeric Table
-			if frame.TimeSeriesSchema().Type == data.TimeSeriesTypeNot && isNumberTable(frame) {
-				logger.Debug("expression datasource query (numberSet)", "query", refID)
-				numberSet, err := extractNumberSet(frame)
-				if err != nil {
-					return mathexp.Results{}, err
-				}
-				for _, n := range numberSet {
-					vals = append(vals, n)
-				}
-
-				return mathexp.Results{
-					Values: vals,
-				}, nil
-			}
-		}
-
-		for _, frame := range qr.Frames {
-			logger.Debug("expression datasource query (seriesSet)", "query", refID)
-			// Check for TimeSeriesTypeNot in InfluxDB queries. A data frame of this type will cause
-			// the WideToMany() function to error out, which results in unhealthy alerts.
-			// This check should be removed once inconsistencies in data source responses are solved.
-			if frame.TimeSeriesSchema().Type == data.TimeSeriesTypeNot && dataSource == datasources.DS_INFLUXDB {
-				logger.Warn("ignoring InfluxDB data frame due to missing numeric fields", "frame", frame)
-				continue
-			}
-			series, err := WideToMany(frame)
+		// Handle Numeric Table
+		if frame.TimeSeriesSchema().Type == data.TimeSeriesTypeNot && isNumberTable(frame) {
+			numberSet, err := extractNumberSet(frame)
 			if err != nil {
 				return mathexp.Results{}, err
 			}
-			for _, s := range series {
-				vals = append(vals, s)
+			for _, n := range numberSet {
+				vals = append(vals, n)
 			}
+			responseType = "number set"
+			return mathexp.Results{
+				Values: vals,
+			}, nil
 		}
 	}
+
+	filtered := make([]*data.Frame, 0, len(response.Frames))
+	totalLen := 0
+	for _, frame := range response.Frames {
+		schema := frame.TimeSeriesSchema()
+		// Check for TimeSeriesTypeNot in InfluxDB queries. A data frame of this type will cause
+		// the WideToMany() function to error out, which results in unhealthy alerts.
+		// This check should be removed once inconsistencies in data source responses are solved.
+		if schema.Type == data.TimeSeriesTypeNot && dataSource == datasources.DS_INFLUXDB {
+			logger.Warn("Ignoring InfluxDB data frame due to missing numeric fields")
+			continue
+		}
+		if schema.Type != data.TimeSeriesTypeWide {
+			return mathexp.Results{}, fmt.Errorf("input data must be a wide series but got type %s (input refid)", schema.Type)
+		}
+		filtered = append(filtered, frame)
+		totalLen += len(schema.ValueIndices)
+	}
+
+	if len(filtered) == 0 {
+		responseType = "no data"
+		return mathexp.Results{Values: mathexp.Values{mathexp.NoData{Frame: response.Frames[0]}}}, nil
+	}
+
+	maybeFixerFn := checkIfSeriesNeedToBeFixed(filtered, dataSource)
+
+	vals = make([]mathexp.Value, 0, totalLen)
+	for _, frame := range filtered {
+		series, err := WideToMany(frame, maybeFixerFn)
+		if err != nil {
+			return mathexp.Results{}, err
+		}
+		for _, s := range series {
+			vals = append(vals, s)
+		}
+	}
+
+	responseType = "series set"
 	return mathexp.Results{
-		Values: vals,
+		Values: vals, // TODO vals can be empty. Should we replace with no-data?
 	}, nil
 }
 
 func isAllFrameVectors(datasourceType string, frames data.Frames) bool {
-	if datasourceType != "prometheus" {
+	if datasourceType != datasources.DS_PROMETHEUS {
 		return false
 	}
 	allVector := false
@@ -412,7 +445,7 @@ func extractNumberSet(frame *data.Frame) ([]mathexp.Number, error) {
 // is created for each value type column of wide frame.
 //
 // This might not be a good idea long term, but works now as an adapter/shim.
-func WideToMany(frame *data.Frame) ([]mathexp.Series, error) {
+func WideToMany(frame *data.Frame, fixSeries func(series mathexp.Series, valueField *data.Field)) ([]mathexp.Series, error) {
 	tsSchema := frame.TimeSeriesSchema()
 	if tsSchema.Type != data.TimeSeriesTypeWide {
 		return nil, fmt.Errorf("input data must be a wide series but got type %s (input refid)", tsSchema.Type)
@@ -423,10 +456,13 @@ func WideToMany(frame *data.Frame) ([]mathexp.Series, error) {
 		if err != nil {
 			return nil, err
 		}
+		if fixSeries != nil {
+			fixSeries(s, frame.Fields[tsSchema.ValueIndices[0]])
+		}
 		return []mathexp.Series{s}, nil
 	}
 
-	series := []mathexp.Series{}
+	series := make([]mathexp.Series, 0, len(tsSchema.ValueIndices))
 	for _, valIdx := range tsSchema.ValueIndices {
 		l := frame.Rows()
 		f := data.NewFrameOfFieldTypes(frame.Name, l, frame.Fields[tsSchema.TimeIndex].Type(), frame.Fields[valIdx].Type())
@@ -446,8 +482,79 @@ func WideToMany(frame *data.Frame) ([]mathexp.Series, error) {
 		if err != nil {
 			return nil, err
 		}
+		if fixSeries != nil {
+			fixSeries(s, frame.Fields[valIdx])
+		}
 		series = append(series, s)
 	}
 
 	return series, nil
+}
+
+// checkIfSeriesNeedToBeFixed scans all value fields of all provided frames and determines whether the resulting mathexp.Series
+// needs to be updated so each series could be identifiable by labels.
+// NOTE: applicable only to only datasources.DS_GRAPHITE and datasources.DS_TESTDATA data sources
+// returns a function that patches the mathexp.Series with information from data.Field from which it was created if the all series need to be fixed. Otherwise, returns nil
+func checkIfSeriesNeedToBeFixed(frames []*data.Frame, datasourceType string) func(series mathexp.Series, valueField *data.Field) {
+	if !(datasourceType == datasources.DS_GRAPHITE || datasourceType == datasources.DS_TESTDATA) {
+		return nil
+	}
+
+	// get all value fields
+	var valueFields []*data.Field
+	for _, frame := range frames {
+		tsSchema := frame.TimeSeriesSchema()
+		for _, index := range tsSchema.ValueIndices {
+			field := frame.Fields[index]
+			// if at least one value field contains labels, the result does not need to be fixed.
+			if len(field.Labels) > 0 {
+				return nil
+			}
+			if valueFields == nil {
+				valueFields = make([]*data.Field, 0, len(frames)*len(tsSchema.ValueIndices))
+			}
+			valueFields = append(valueFields, field)
+		}
+	}
+
+	// selectors are in precedence order.
+	nameSelectors := []func(f *data.Field) string{
+		func(f *data.Field) string {
+			if f == nil || f.Config == nil {
+				return ""
+			}
+			return f.Config.DisplayNameFromDS
+		},
+		func(f *data.Field) string {
+			if f == nil || f.Config == nil {
+				return ""
+			}
+			return f.Config.DisplayName
+		},
+		func(f *data.Field) string {
+			return f.Name
+		},
+	}
+
+	// now look for the first selector that would make all value fields be unique
+	for _, selector := range nameSelectors {
+		names := make(map[string]struct{}, len(valueFields))
+		good := true
+		for _, field := range valueFields {
+			name := selector(field)
+			if _, ok := names[name]; ok || name == "" {
+				good = false
+				break
+			}
+			names[name] = struct{}{}
+		}
+		if good {
+			return func(series mathexp.Series, valueField *data.Field) {
+				series.SetLabels(data.Labels{
+					nameLabelName: selector(valueField),
+				})
+			}
+		}
+	}
+	return nil
 }

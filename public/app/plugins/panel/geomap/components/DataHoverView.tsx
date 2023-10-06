@@ -11,7 +11,9 @@ import {
   LinkModel,
 } from '@grafana/data';
 import { SortOrder, TooltipDisplayMode } from '@grafana/schema';
-import { HorizontalGroup, LinkButton, useStyles2 } from '@grafana/ui';
+import { LinkButton, useStyles2, VerticalGroup } from '@grafana/ui';
+
+import { renderValue } from '../utils/uiUtils';
 
 export interface Props {
   data?: DataFrame; // source data
@@ -19,106 +21,114 @@ export interface Props {
   columnIndex?: number | null; // the hover column
   sortOrder?: SortOrder;
   mode?: TooltipDisplayMode | null;
-  displayExemplarHeader?: boolean;
+  header?: string;
 }
 
-export const DataHoverView = ({
-  data,
-  rowIndex,
-  columnIndex,
-  sortOrder,
-  mode,
-  displayExemplarHeader = true,
-}: Props) => {
+interface DisplayValue {
+  name: string;
+  value: unknown;
+  valueString: string;
+  highlight: boolean;
+}
+
+export const DataHoverView = ({ data, rowIndex, columnIndex, sortOrder, mode, header = undefined }: Props) => {
   const styles = useStyles2(getStyles);
 
   if (!data || rowIndex == null) {
     return null;
   }
-
-  // Put the traceID field in front.
-  const visibleFields = data.fields.filter((f) => !Boolean(f.config.custom?.hideFrom?.tooltip));
-  const traceIDField = visibleFields.find((field) => field.name === 'traceID') || data.fields[0];
-  const orderedVisibleFields = [traceIDField, ...visibleFields.filter((field) => traceIDField !== field)];
+  const fields = data.fields.map((f, idx) => {
+    return { ...f, hovered: idx === columnIndex };
+  });
+  const visibleFields = fields.filter((f) => !Boolean(f.config.custom?.hideFrom?.tooltip));
+  const traceIDField = visibleFields.find((field) => field.name === 'traceID') || fields[0];
+  const orderedVisibleFields = [];
+  // Only include traceID if it's visible and put it in front.
+  if (visibleFields.filter((field) => traceIDField === field).length > 0) {
+    orderedVisibleFields.push(traceIDField);
+  }
+  orderedVisibleFields.push(...visibleFields.filter((field) => traceIDField !== field));
 
   if (orderedVisibleFields.length === 0) {
     return null;
   }
 
-  const displayValues: Array<[string, unknown, string]> = [];
-  const links: Record<string, Array<LinkModel<Field>>> = {};
+  const displayValues: DisplayValue[] = [];
+  const links: Array<LinkModel<Field>> = [];
+  const linkLookup = new Set<string>();
 
-  for (const f of orderedVisibleFields) {
-    const v = f.values.get(rowIndex);
-    const disp = f.display ? f.display(v) : { text: `${v}`, numeric: +v };
-    if (f.getLinks) {
-      f.getLinks({ calculatedValue: disp, valueRowIndex: rowIndex }).forEach((link) => {
-        const key = getFieldDisplayName(f, data);
-        if (!links[key]) {
-          links[key] = [];
+  for (const field of orderedVisibleFields) {
+    if (mode === TooltipDisplayMode.Single && columnIndex != null && !field.hovered) {
+      continue;
+    }
+    const value = field.values.get(rowIndex);
+    const fieldDisplay = field.display ? field.display(value) : { text: `${value}`, numeric: +value };
+    if (field.getLinks) {
+      field.getLinks({ calculatedValue: fieldDisplay, valueRowIndex: rowIndex }).forEach((link) => {
+        const key = `${link.title}/${link.href}`;
+        if (!linkLookup.has(key)) {
+          links.push(link);
+          linkLookup.add(key);
         }
-        links[key].push(link);
       });
     }
 
-    displayValues.push([getFieldDisplayName(f, data), v, formattedValueToString(disp)]);
+    displayValues.push({
+      name: getFieldDisplayName(field, data),
+      value,
+      valueString: formattedValueToString(fieldDisplay),
+      highlight: field.hovered,
+    });
   }
 
   if (sortOrder && sortOrder !== SortOrder.None) {
-    displayValues.sort((a, b) => arrayUtils.sortValues(sortOrder)(a[1], b[1]));
+    displayValues.sort((a, b) => arrayUtils.sortValues(sortOrder)(a.value, b.value));
   }
+
+  const renderLinks = () =>
+    links.length > 0 && (
+      <tr>
+        <td colSpan={2}>
+          <VerticalGroup>
+            {links.map((link, i) => (
+              <LinkButton
+                key={i}
+                icon={'external-link-alt'}
+                target={link.target}
+                href={link.href}
+                onClick={link.onClick}
+                fill="text"
+                style={{ width: '100%' }}
+              >
+                {link.title}
+              </LinkButton>
+            ))}
+          </VerticalGroup>
+        </td>
+      </tr>
+    );
 
   return (
     <div className={styles.wrapper}>
-      {displayExemplarHeader && (
+      {header && (
         <div className={styles.header}>
-          <span className={styles.title}>Exemplar</span>
+          <span className={styles.title}>{header}</span>
         </div>
       )}
       <table className={styles.infoWrap}>
         <tbody>
-          {(mode === TooltipDisplayMode.Multi || mode == null) &&
-            displayValues.map((v, i) => (
-              <tr key={`${i}/${rowIndex}`} className={i === columnIndex ? styles.highlight : ''}>
-                <th>{v[0]}:</th>
-                <td>{renderWithLinks(v[0], v[2], links)}</td>
-              </tr>
-            ))}
-          {mode === TooltipDisplayMode.Single && columnIndex && (
-            <tr key={`${columnIndex}/${rowIndex}`}>
-              <th>{displayValues[columnIndex][0]}:</th>
-              <td>{renderWithLinks(displayValues[columnIndex][0], displayValues[columnIndex][2], links)}</td>
+          {displayValues.map((displayValue, i) => (
+            <tr key={`${i}/${rowIndex}`} className={displayValue.highlight ? styles.highlight : ''}>
+              <th>{displayValue.name}:</th>
+              <td>{renderValue(displayValue.valueString)}</td>
             </tr>
-          )}
+          ))}
+          {renderLinks()}
         </tbody>
       </table>
     </div>
   );
 };
-
-const renderWithLinks = (key: string, val: string, links: Record<string, Array<LinkModel<Field>>>) =>
-  links[key] ? (
-    <HorizontalGroup>
-      <>
-        {val}
-        {links[key].map((link, i) => (
-          <LinkButton
-            key={i}
-            icon={'external-link-alt'}
-            target={link.target}
-            href={link.href}
-            onClick={link.onClick}
-            fill="text"
-            style={{ width: '100%' }}
-          >
-            {link.title}
-          </LinkButton>
-        ))}
-      </>
-    </HorizontalGroup>
-  ) : (
-    <>{val}</>
-  );
 
 const getStyles = (theme: GrafanaTheme2) => {
   const bg = theme.isDark ? theme.v1.palette.dark2 : theme.v1.palette.white;
@@ -159,7 +169,11 @@ const getStyles = (theme: GrafanaTheme2) => {
       }
     `,
     highlight: css`
-      background: ${theme.colors.action.hover};
+      /* !important is required to overwrite default table styles */
+      background: ${theme.colors.action.hover} !important;
+    `,
+    link: css`
+      color: #6e9fff;
     `,
   };
 };

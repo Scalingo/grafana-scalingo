@@ -22,7 +22,7 @@ While an image is being rendered, the PNG image is temporarily written to the fi
 
 A background job runs every 10 minutes and removes temporary images. You can configure how long an image should be stored before being removed by configuring the [temp_data_lifetime]({{< relref "../configure-grafana/#temp_data_lifetime" >}}) setting.
 
-You can also render a PNG by clicking the dropdown arrow next to a panel title, then clicking **Share > Direct link rendered image**.
+You can also render a PNG by hovering over the panel to display the actions menu in the top right corner, and then clicking **Share > Direct link rendered image** in the Link tab.
 
 ## Alerting and render limits
 
@@ -32,7 +32,7 @@ Alert notifications can include images, but rendering many images at the same ti
 
 > **Note:** Starting from Grafana v7.0.0, all PhantomJS support has been removed. Please use the Grafana Image Renderer plugin or remote rendering service.
 
-To install the plugin, refer to the [Grafana Image Renderer Installation instructions](https://grafana.com/grafana/plugins/grafana-image-renderer#installation).
+To install the plugin, refer to the [Grafana Image Renderer Installation instructions](/grafana/plugins/grafana-image-renderer/?tab=installation#installation).
 
 ## Configuration
 
@@ -53,6 +53,34 @@ docker run -d --name=renderer --network=host -v /some/path/config.json:/usr/src/
 ```
 
 You can see a docker-compose example using a custom configuration file [here](https://github.com/grafana/grafana-image-renderer/tree/master/devenv/docker/custom-config).
+
+### Security
+
+> **Note:** This feature is available in Image Renderer v3.6.1 and later.
+
+You can restrict access to the rendering endpoint by specifying a secret token. The token should be configured in the Grafana configuration file and the renderer configuration file. This token is important when you run the plugin in remote rendering mode.
+
+Renderer versions v3.6.1 or later require a Grafana version with this feature. These include:
+
+- Grafana v9.1.2 or later
+- Grafana v9.0.8 or later patch releases
+- Grafana v8.5.11 or later patch releases
+- Grafana v8.4.11 or later patch releases
+- Grafana v8.3.11 or later patch releases
+
+```bash
+AUTH_TOKEN=-
+```
+
+```json
+{
+  "security": {
+    "authToken": "-"
+  }
+}
+```
+
+See [Grafana configuration]({{< relref "../configure-grafana#renderer_token" >}}) for how to configure the token in Grafana.
 
 ### Rendering mode
 
@@ -292,7 +320,7 @@ CHROME_BIN="/usr/bin/chromium-browser"
 
 #### Start browser with additional arguments
 
-Additional arguments to pass to the headless browser instance. Defaults are `--no-sandbox,--disable-gpu`. The list of Chromium flags can be found [here](https://peter.sh/experiments/chromium-command-line-switches/) and the list of flags used as defaults by Puppeteer can be found [there](https://github.com/puppeteer/puppeteer/blob/main/src/node/Launcher.ts#L172). Multiple arguments is separated with comma-character.
+Additional arguments to pass to the headless browser instance. Defaults are `--no-sandbox,--disable-gpu`. The list of Chromium flags can be found [here](https://peter.sh/experiments/chromium-command-line-switches/) and the list of flags used as defaults by Puppeteer can be found [there](https://cri.dev/posts/2020-04-04-Full-list-of-Chromium-Puppeteer-flags/). Multiple arguments is separated with comma-character.
 
 ```bash
 RENDERING_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-accelerated-2d-canvas,--disable-gpu,--window-size=1280x758
@@ -428,6 +456,22 @@ Limit the maximum device scale factor that can be requested. Default is `4`.
 {
   "rendering": {
     "maxDeviceScaleFactor": 4
+  }
+}
+```
+
+#### Page zoom level
+
+The following command sets a page zoom level. The default value is `1`. A value of `1.5` equals 150% zoom.
+
+```bash
+RENDERING_VIEWPORT_PAGE_ZOOM_LEVEL=1
+```
+
+```json
+{
+  "rendering": {
+    "pageZoomLevel": 1
   }
 }
 ```

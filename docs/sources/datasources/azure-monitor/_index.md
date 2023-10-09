@@ -40,9 +40,12 @@ The Azure Monitor data source supports visualizing data from three Azure service
 
 **To access the data source configuration page:**
 
-1. Hover the cursor over the **Configuration** (gear) icon.
-1. Select **Data Sources**.
-1. Select the Azure Monitor data source.
+1. Click **Connections** in the left-side menu.
+1. Under Your connections, click **Data sources**.
+1. Enter `Azure Monitor` in the search bar.
+1. Click **Azure Monitor**.
+
+   The **Settings** tab of the data source is displayed.
 
 ### Configure Azure Active Directory (AD) authentication
 
@@ -55,6 +58,9 @@ For more information, refer to [Azure documentation for role assignments](https:
 If you host Grafana in Azure, such as in App Service or Azure Virtual Machines, you can configure the Azure Monitor data source to use Managed Identity for secure authentication without entering credentials into Grafana.
 For details, refer to [Configuring using Managed Identity]({{< relref "#configuring-using-managed-identity" >}}).
 
+You can configure the Azure Monitor data source to use Workload Identity for secure authentication without entering credentials into Grafana if you host Grafana in a Kubernetes environment, such as AKS, and require access to Azure resources.
+For details, refer to [Configuring using Workload Identity](#configuring-using-workload-identity).
+
 | Name                        | Description                                                                                                                                                                                                                                                                                           |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Authentication**          | Enables Managed Identity. Selecting Managed Identity hides many of the other fields. For details, see [Configuring using Managed Identity](#configuring-using-managed-identity).                                                                                                                      |
@@ -63,7 +69,6 @@ For details, refer to [Configuring using Managed Identity]({{< relref "#configur
 | **Application (client) ID** | Sets the application/client ID for the Azure AD app registration to use for authentication.                                                                                                                                                                                                           |
 | **Client secret**           | Sets the application client secret for the Azure AD app registration to use for authentication. For details, see the [Azure application secret docs](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret). |
 | **Default subscription**    | _(Optional)_ Sets a default subscription for template variables to use.                                                                                                                                                                                                                               |
-| **Default workspace**       | _(Optional)_ Sets a default workspace for Log Analytics-based template variable queries to use.                                                                                                                                                                                                       |
 
 ### Provision the data source
 
@@ -107,19 +112,33 @@ datasources:
     version: 1
 ```
 
+**Workload Identity:**
+
+```yaml
+apiVersion: 1 # config file version
+
+datasources:
+  - name: Azure Monitor
+    type: grafana-azure-monitor-datasource
+    access: proxy
+    jsonData:
+      azureAuthType: workloadidentity
+      subscriptionId: <subscription-id> # Optional, default subscription
+    version: 1
+```
+
 #### Supported cloud names
 
-| Azure Cloud                                          | `cloudName` Value          |
-| ---------------------------------------------------- | -------------------------- |
-| **Microsoft Azure public cloud**                     | `azuremonitor` (_Default_) |
-| **Microsoft Chinese national cloud**                 | `chinaazuremonitor`        |
-| **US Government cloud**                              | `govazuremonitor`          |
-| **Microsoft German national cloud ("Black Forest")** | `germanyazuremonitor`      |
+| Azure Cloud                          | `cloudName` Value          |
+| ------------------------------------ | -------------------------- |
+| **Microsoft Azure public cloud**     | `azuremonitor` (_Default_) |
+| **Microsoft Chinese national cloud** | `chinaazuremonitor`        |
+| **US Government cloud**              | `govazuremonitor`          |
 
 ### Configure Managed Identity
 
-If you host Grafana in Azure, such as an App Service or with Azure Virtual Machines, and have managed identity enabled on your VM, you can use managed identity to configure Azure Monitor in Grafana.
-This lets you securely authenticate data sources without manually configuring credentials via Azure AD App Registrations for each.
+You can use managed identity to configure Azure Monitor in Grafana if you host Grafana in Azure (such as an App Service or with Azure Virtual Machines) and have managed identity enabled on your VM.
+This lets you securely authenticate data sources without manually configuring credentials via Azure AD App Registrations.
 For details on Azure managed identities, refer to the [Azure documentation](https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/overview).
 
 **To enable managed identity for Grafana:**
@@ -135,7 +154,46 @@ For details on Azure managed identities, refer to the [Azure documentation](http
 
    This hides the directory ID, application ID, and client secret fields, and the data source uses managed identity to authenticate to Azure Monitor Metrics and Logs, and Azure Resource Graph.
 
-   {{< figure src="/static/img/docs/azure-monitor/managed-identity.png" max-width="800px" class="docs-image--no-shadow" caption="Azure Monitor Metrics screenshot showing Dimensions" >}}
+   {{< figure src="/media/docs/grafana/data-sources/screenshot-managed-identity-2.png" max-width="800px" class="docs-image--no-shadow" caption="Azure Monitor screenshot showing Managed Identity authentication" >}}
+
+3. You can set the `managed_identity_client_id` field in the `[azure]` section of the [Grafana server configuration][configure-grafana-azure] to allow a user-assigned managed identity to be used instead of the default system-assigned identity.
+
+```ini
+[azure]
+managed_identity_enabled = true
+managed_identity_client_id = USER_ASSIGNED_IDENTITY_CLIENT_ID
+```
+
+### Configure Workload Identity
+
+You can use workload identity to configure Azure Monitor in Grafana if you host Grafana in a Kubernetes environment, such as AKS, in conjunction with managed identities.
+This lets you securely authenticate data sources without manually configuring credentials via Azure AD App Registrations.
+For details on workload identity, refer to the [Azure workload identity documentation](https://azure.github.io/azure-workload-identity/docs/).
+
+**To enable workload identity for Grafana:**
+
+1. Set the `workload_identity_enabled` flag in the `[azure]` section of the [Grafana server configuration][configure-grafana-azure].
+
+   ```ini
+   [azure]
+   workload_identity_enabled = true
+   ```
+
+2. In the Azure Monitor data source configuration, set **Authentication** to **Workload Identity**.
+
+   This hides the directory ID, application ID, and client secret fields, and the data source uses workload identity to authenticate to Azure Monitor Metrics and Logs, and Azure Resource Graph.
+
+   {{< figure src="/media/docs/grafana/data-sources/screenshot-workload-identity.png" max-width="800px" class="docs-image--no-shadow" caption="Azure Monitor screenshot showing Workload Identity authentication" >}}
+
+3. There are additional configuration variables that can control the authentication method.`workload_identity_tenant_id` represents the Azure AD tenant that contains the managed identity, `workload_identity_client_id` represents the client ID of the managed identity if it differs from the default client ID, `workload_identity_token_file` represents the path to the token file. Refer to the [documentation](https://azure.github.io/azure-workload-identity/docs/) for more information on what values these variables should use, if any.
+
+   ```ini
+   [azure]
+   workload_identity_enabled = true
+   workload_identity_tenant_id = IDENTITY_TENANT_ID
+   workload_identity_client_id = IDENTITY_CLIENT_ID
+   workload_identity_token_file = TOKEN_FILE_PATH
+   ```
 
 ## Query the data source
 
@@ -157,4 +215,4 @@ Until Grafana v8.0, you could query the same Azure Application Insights data usi
 
 These queries were deprecated in Grafana v7.5. In Grafana v8.0, Application Insights and Insights Analytics were made read-only in favor of querying this data through Metrics and Logs. These query methods were completely removed in Grafana v9.0.
 
-If you're upgrading from a Grafana version prior to v9.0 and relied on Application Insights and Analytics queries, refer to the [Grafana v9.0 documentation](/v9.0/datasources/azuremonitor/deprecated-application-insights/) for help migrating these queries to Metrics and Logs queries.
+If you're upgrading from a Grafana version prior to v9.0 and relied on Application Insights and Analytics queries, refer to the [Grafana v9.0 documentation](/docs/grafana/v9.0/datasources/azuremonitor/deprecated-application-insights/) for help migrating these queries to Metrics and Logs queries.

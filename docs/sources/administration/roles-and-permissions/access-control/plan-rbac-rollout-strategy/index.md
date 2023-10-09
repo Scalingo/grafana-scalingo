@@ -11,7 +11,7 @@ weight: 20
 
 # Plan your RBAC rollout strategy
 
-> **Note:** Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise/" >}}) and [Grafana Cloud Advanced]({{< ref "/docs/grafana-cloud" >}}).
+> **Note:** Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise/" >}}) and [Grafana Cloud Advanced](/docs/grafana-cloud).
 
 An RBAC rollout strategy helps you determine _how_ you want to implement RBAC prior to assigning RBAC roles to users and teams.
 
@@ -29,13 +29,8 @@ As a first step in determining your permissions rollout strategy, we recommend t
 
 To learn more about basic roles and fixed roles, refer to the following documentation:
 
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-- [Basic role definitions]({{< relref "../../../../enterprise/access-control/plan-rbac-rollout-strategy/rbac-fixed-basic-role-definitions/#basic-role-assignments" >}})
-- [Fixed role definitions]({{< relref "../../../../enterprise/access-control/plan-rbac-rollout-strategy/rbac-fixed-basic-role-definitions/#fixed-role-definitions" >}})
-========
 - [Basic role definitions]({{< relref "./rbac-fixed-basic-role-definitions/#basic-role-assignments" >}})
 - [Fixed role definitions]({{< relref "./rbac-fixed-basic-role-definitions/#fixed-role-definitions" >}})
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md
 
 ## User and team considerations
 
@@ -55,11 +50,7 @@ For example:
 
 1. Map SAML, LDAP, or Oauth roles to Grafana basic roles (viewer, editor, or admin).
 
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-2. Use the Grafana Enterprise team sync feature to synchronize teams from your SAML, LDAP, or Oauth provider to Grafana. For more information about team sync, refer to [Team sync]({{< relref "../../setup-grafana/configure-security/configure-team-sync/" >}}).
-========
 2. Use the Grafana Enterprise team sync feature to synchronize teams from your SAML, LDAP, or Oauth provider to Grafana. For more information about team sync, refer to [Team sync]({{< relref "../../../../setup-grafana/configure-security/configure-team-sync/" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md
 
 3. Within Grafana, assign RBAC permissions to users and teams.
 
@@ -69,11 +60,7 @@ Consider the following guidelines when you determine if you should modify basic 
 
 - **Modify basic roles** when Grafana's definitions of what viewers, editors, and admins can do does not match your definition of these roles. You can add or remove permissions from any basic role.
 
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-  > **Note:** Changes that you make to basic roles impact the role definition for all [organizations]({{< relref "../../../../enterprise/administration/manage-organizations/" >}}) in the Grafana instance. For example, when you add the `fixed:users:writer` role's permissions to the viewer basic role, all viewers in any org in the Grafana instance can create users within that org.
-========
   > **Note:** Changes that you make to basic roles impact the role definition for all [organizations]({{< relref "../../../organization-management/" >}}) in the Grafana instance. For example, when you add the `fixed:users:writer` role's permissions to the viewer basic role, all viewers in any org in the Grafana instance can create users within that org.
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md
 
 - **Create custom roles** when fixed role definitions don't meet you permissions requirements. For example, the `fixed:dashboards:writer` role allows users to delete dashboards. If you want some users or teams to be able to create and update but not delete dashboards, you can create a custom role with a name like `custom:dashboards:creator` that lacks the `dashboards:delete` permission.
 
@@ -95,22 +82,14 @@ We've compiled the following permissions rollout scenarios based on current Graf
 ### Provide internal viewer employees with the ability to use Explore, but prevent external viewer contractors from using Explore
 
 1. In Grafana, create a team with the name `Internal employees`.
-1. Assign the `fixed:datasources:querier` role to the `Internal employees` team.
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-1. Add internal employees to the `Internal employees` team, or map them from a SAML, LDAP, or Oauth team using [Team Sync]({{< relref "../../../../enterprise/setup-grafana/configure-security/configure-team-sync/" >}}).
-========
+1. Assign the `fixed:datasources:explorer` role to the `Internal employees` team.
 1. Add internal employees to the `Internal employees` team, or map them from a SAML, LDAP, or Oauth team using [Team Sync]({{< relref "../../../../setup-grafana/configure-security/configure-team-sync/" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md
 1. Assign the viewer role to both internal employees and contractors.
 
 ### Limit viewer, editor, or admin permissions
 
 1. Review the list of permissions associated with the basic role.
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-1. [Change the permissions of the basic role]({{< relref "../../../../enterprise/access-control/plan-rbac-rollout-strategy/manage-rbac-roles/#update-basic-role-permissions" >}}).
-========
 1. [Change the permissions of the basic role]({{< relref "./manage-rbac-roles/#update-basic-role-permissions" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md
 
 ### Allow only members of one team to manage Alerts
 
@@ -188,11 +167,7 @@ roles:
         global: true
 ```
 
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-- Or add the following permissions to the `basic:editor` role, using provisioning or the [RBAC HTTP API]({{< relref "../../../../enterprise/developers/http_api/access_control/#update-a-role" >}}):
-========
 - Or add the following permissions to the `basic:editor` role, using provisioning or the [RBAC HTTP API]({{< relref "../../../../developers/http_api/access_control/#update-a-role" >}}):
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md
 
 | action         | scope                       |
 | -------------- | --------------------------- |
@@ -222,15 +197,9 @@ roles:
         global: true
 ```
 
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-> **Note:** The `fixed:reports:writer` role assigns more permissions than just creating reports. For more information about fixed role permission assignments, refer to [Fixed role definitions]({{< relref "../../../../enterprise/access-control/plan-rbac-rollout-strategy/rbac-fixed-basic-role-definitions/#fixed-role-definitions" >}}).
-
-- Add the following permissions to the `basic:viewer` role, using provisioning or the [RBAC HTTP API]({{< relref "../../../../enterprise/developers/http_api/access_control/#update-a-role" >}}):
-========
 > **Note:** The `fixed:reports:writer` role assigns more permissions than just creating reports. For more information about fixed role permission assignments, refer to [Fixed role definitions]({{< relref "./rbac-fixed-basic-role-definitions/#fixed-role-definitions" >}}).
 
 - Add the following permissions to the `basic:viewer` role, using provisioning or the [RBAC HTTP API]({{< relref "../../../../developers/http_api/access_control/#update-a-role" >}}):
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md
 
 | Action           | Scope                           |
 | ---------------- | ------------------------------- |
@@ -271,9 +240,6 @@ roles:
         state: 'absent'
 ```
 
-<<<<<<<< HEAD:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy.md
-- Or use [RBAC HTTP API]({{< relref "../../../../enterprise/developers/http_api/access_control/#update-a-role" >}}).
-========
 - Or use [RBAC HTTP API]({{< relref "../../../../developers/http_api/access_control/#update-a-role" >}}).
 
 ### Prevent Viewers from accessing an App Plugin
@@ -325,4 +291,3 @@ roles:
 ```
 
 - Or use [RBAC HTTP API]({{< relref "../../../../developers/http_api/access_control/#update-a-role" >}}).
->>>>>>>> v9.3.1:docs/sources/administration/roles-and-permissions/access-control/plan-rbac-rollout-strategy/index.md

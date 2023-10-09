@@ -18,7 +18,7 @@ If you manage your secrets with [Hashicorp Vault](https://www.hashicorp.com/prod
 ========
 If you manage your secrets with [Hashicorp Vault](https://www.hashicorp.com/products/vault), you can use them for [Configuration]({{< relref "../../../configure-grafana/" >}}) and [Provisioning]({{< relref "../../../../administration/provisioning/" >}}).
 
-> **Note:** Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise/" >}}) and [Grafana Cloud Advanced]({{< ref "/docs/grafana-cloud" >}}).
+> **Note:** Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise/" >}}) and [Grafana Cloud Advanced](/docs/grafana-cloud).
 
 > **Note:** If you have Grafana [set up for high availability]({{< relref "../../../set-up-for-high-availability/" >}}), then we advise not to use dynamic secrets for provisioning files.
 >>>>>>>> v9.3.1:docs/sources/setup-grafana/configure-security/configure-database-encryption/integrate-with-hashicorp-vault/index.md

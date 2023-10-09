@@ -11,11 +11,7 @@ weight: 300
 
 Custom branding allows you to replace the Grafana brand and logo with your own corporate brand and logo.
 
-<<<<<<<< HEAD:docs/sources/setup-grafana/configure-grafana/configure-custom-branding.md
-> **Note:** Available in [Grafana Enterprise]({{< relref "../../enterprise/" >}}) and [Grafana Cloud Advanced]({{< ref "/docs/grafana-cloud" >}}).
-========
-> **Note:** Available in [Grafana Enterprise]({{< relref "../../../introduction/grafana-enterprise/" >}}) and [Grafana Cloud Advanced]({{< ref "/docs/grafana-cloud" >}}).
->>>>>>>> v9.3.1:docs/sources/setup-grafana/configure-grafana/configure-custom-branding/index.md
+> **Note:** Available in [Grafana Enterprise]({{< relref "../../../introduction/grafana-enterprise/" >}}) and [Grafana Cloud Advanced](/docs/grafana-cloud).
 
 Grafana Enterprise has custom branding options in the `grafana.ini` file. As with all configuration options, you can also set them with environment variables.
 
@@ -36,11 +32,7 @@ You can change the following elements:
 
 {{< figure src="/static/img/docs/v66/whitelabeling_1.png" max-width="800px" caption="Custom branding example" >}}
 
-<<<<<<<< HEAD:docs/sources/setup-grafana/configure-grafana/configure-custom-branding.md
-The configuration file in Grafana Enterprise contains the following options. Each option is defined in the file. For more information about configuring Grafana, refer to [Configuration]({{< relref "../configure-grafana/" >}}).
-========
 The configuration file in Grafana Enterprise contains the following options. Each option is defined in the file. For more information about configuring Grafana, refer to [Configuration]({{< relref "../../configure-grafana/" >}}).
->>>>>>>> v9.3.1:docs/sources/setup-grafana/configure-grafana/configure-custom-branding/index.md
 
 ```ini
 # Enterprise only

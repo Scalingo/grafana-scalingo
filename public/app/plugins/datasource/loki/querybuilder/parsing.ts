@@ -51,9 +51,14 @@ import {
   makeError,
   replaceVariables,
 } from '../../prometheus/querybuilder/shared/parsingUtils';
-import { QueryBuilderLabelFilter, QueryBuilderOperation } from '../../prometheus/querybuilder/shared/types';
+import {
+  QueryBuilderLabelFilter,
+  QueryBuilderOperation,
+  QueryBuilderOperationParamValue,
+} from '../../prometheus/querybuilder/shared/types';
 
 import { binaryScalarDefs } from './binaryScalarOperations';
+import { checkParamsAreValid, getDefinitionById } from './operations';
 import { LokiOperationId, LokiVisualQuery, LokiVisualQueryBinary } from './types';
 
 interface Context {
@@ -236,7 +241,7 @@ function getLineFilter(expr: string, node: SyntaxNode): { operation?: QueryBuild
       },
     };
   }
-  const mapFilter: any = {
+  const mapFilter: Record<string, LokiOperationId> = {
     '|=': LokiOperationId.LineContains,
     '!=': LokiOperationId.LineContainsNot,
     '|~': LokiOperationId.LineMatchesRegex,
@@ -256,7 +261,12 @@ function getLabelParser(expr: string, node: SyntaxNode): QueryBuilderOperation {
   const parser = getString(expr, parserNode);
 
   const string = handleQuotes(getString(expr, node.getChild(String)));
-  const params = !!string ? [string] : [];
+  let params: QueryBuilderOperationParamValue[] = !!string ? [string] : [];
+  const opDef = getDefinitionById(parser);
+  if (opDef && !checkParamsAreValid(opDef, params)) {
+    params = opDef?.defaultParams || [];
+  }
+
   return {
     id: parser,
     params,
@@ -403,10 +413,11 @@ function handleRangeAggregation(expr: string, node: SyntaxNode, context: Context
   const number = node.getChild(NumberLezer);
   const logExpr = node.getChild(LogRangeExpr);
   const params = number !== null && number !== undefined ? [getString(expr, number)] : [];
+  const range = logExpr?.getChild(Range);
+  const rangeValue = range ? getString(expr, range) : null;
 
-  let match = getString(expr, node).match(/\[(.+)\]/);
-  if (match?.[1]) {
-    params.unshift(match[1]);
+  if (rangeValue) {
+    params.unshift(rangeValue.substring(1, rangeValue.length - 1));
   }
 
   const op = {
@@ -458,13 +469,13 @@ function handleVectorAggregation(expr: string, node: SyntaxNode, context: Contex
   return op;
 }
 
-const operatorToOpName = binaryScalarDefs.reduce((acc, def) => {
+const operatorToOpName = binaryScalarDefs.reduce<Record<string, { id: string; comparison?: boolean }>>((acc, def) => {
   acc[def.sign] = {
     id: def.id,
     comparison: def.comparison,
   };
   return acc;
-}, {} as Record<string, { id: string; comparison?: boolean }>);
+}, {});
 
 /**
  * Right now binary expressions can be represented in 2 way in visual query. As additional operation in case it is

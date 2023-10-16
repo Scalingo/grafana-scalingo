@@ -6,6 +6,15 @@ export enum FieldColorModeId {
   PaletteClassic = 'palette-classic',
   PaletteSaturated = 'palette-saturated',
   ContinuousGrYlRd = 'continuous-GrYlRd',
+  ContinuousRdYlGr = 'continuous-RdYlGr',
+  ContinuousBlYlRd = 'continuous-BlYlRd',
+  ContinuousYlRd = 'continuous-YlRd',
+  ContinuousBlPu = 'continuous-BlPu',
+  ContinuousYlBl = 'continuous-YlBl',
+  ContinuousBlues = 'continuous-blues',
+  ContinuousReds = 'continuous-reds',
+  ContinuousGreens = 'continuous-greens',
+  ContinuousPurples = 'continuous-purples',
   Fixed = 'fixed',
 }
 
@@ -26,4 +35,4 @@ export interface FieldColor {
  */
 export type FieldColorSeriesByMode = 'min' | 'max' | 'last';
 
-export const FALLBACK_COLOR = 'gray';
+export const FALLBACK_COLOR = '#808080';

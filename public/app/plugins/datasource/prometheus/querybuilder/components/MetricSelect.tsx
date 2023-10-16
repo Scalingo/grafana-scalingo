@@ -3,7 +3,7 @@ import debounce from 'debounce-promise';
 import React, { useCallback, useState } from 'react';
 import Highlighter from 'react-highlight-words';
 
-import { SelectableValue, toOption, GrafanaTheme2 } from '@grafana/data';
+import { GrafanaTheme2, SelectableValue, toOption } from '@grafana/data';
 import { EditorField, EditorFieldGroup } from '@grafana/experimental';
 import { AsyncSelect, FormatOptionLabelMeta, useStyles2 } from '@grafana/ui';
 
@@ -16,6 +16,7 @@ import { PromVisualQuery } from '../types';
 const splitSeparator = ' ';
 
 export interface Props {
+  metricLookupDisabled: boolean;
   query: PromVisualQuery;
   onChange: (query: PromVisualQuery) => void;
   onGetMetrics: () => Promise<SelectableValue[]>;
@@ -25,7 +26,14 @@ export interface Props {
 
 export const PROMETHEUS_QUERY_BUILDER_MAX_RESULTS = 1000;
 
-export function MetricSelect({ datasource, query, onChange, onGetMetrics, labelsFilters }: Props) {
+export function MetricSelect({
+  datasource,
+  query,
+  onChange,
+  onGetMetrics,
+  labelsFilters,
+  metricLookupDisabled,
+}: Props) {
   const styles = useStyles2(getStyles);
   const [state, setState] = useState<{
     metrics?: Array<SelectableValue<any>>;
@@ -65,24 +73,6 @@ export function MetricSelect({ datasource, query, onChange, onGetMetrics, labels
     [styles.highlight]
   );
 
-  const formatLabelFilters = (labelsFilters: QueryBuilderLabelFilter[]): string[] => {
-    return labelsFilters.map((label) => {
-      return `,${label.label}="${label.value}"`;
-    });
-  };
-
-  /**
-   * Transform queryString and any currently set label filters into label_values() string
-   */
-  const queryAndFilterToLabelValuesString = (
-    queryString: string,
-    labelsFilters: QueryBuilderLabelFilter[] | undefined
-  ): string => {
-    return `label_values({__name__=~".*${queryString}"${
-      labelsFilters ? formatLabelFilters(labelsFilters).join() : ''
-    }},__name__)`;
-  };
-
   /**
    * Reformat the query string and label filters to return all valid results for current query editor state
    */
@@ -92,7 +82,7 @@ export function MetricSelect({ datasource, query, onChange, onGetMetrics, labels
   ): string => {
     const queryString = regexifyLabelValuesQueryString(query);
 
-    return queryAndFilterToLabelValuesString(queryString, labelsFilters);
+    return formatPrometheusLabelFiltersToString(queryString, labelsFilters);
   };
 
   /**
@@ -114,7 +104,13 @@ export function MetricSelect({ datasource, query, onChange, onGetMetrics, labels
     });
   };
 
-  const debouncedSearch = debounce((query: string) => getMetricLabels(query), 300);
+  // When metric and label lookup is disabled we won't request labels
+  const metricLookupDisabledSearch = () => Promise.resolve([]);
+
+  const debouncedSearch = debounce(
+    (query: string) => getMetricLabels(query),
+    datasource.getDebounceTimeInMilliseconds()
+  );
 
   return (
     <EditorFieldGroup>
@@ -123,11 +119,14 @@ export function MetricSelect({ datasource, query, onChange, onGetMetrics, labels
           inputId="prometheus-metric-select"
           className={styles.select}
           value={query.metric ? toOption(query.metric) : undefined}
-          placeholder="Select metric"
+          placeholder={'Select metric'}
           allowCustomValue
           formatOptionLabel={formatOptionLabel}
           filterOption={customFilterOption}
           onOpenMenu={async () => {
+            if (metricLookupDisabled) {
+              return;
+            }
             setState({ isLoading: true });
             const metrics = await onGetMetrics();
             if (metrics.length > PROMETHEUS_QUERY_BUILDER_MAX_RESULTS) {
@@ -135,7 +134,7 @@ export function MetricSelect({ datasource, query, onChange, onGetMetrics, labels
             }
             setState({ metrics, isLoading: undefined });
           }}
-          loadOptions={debouncedSearch}
+          loadOptions={metricLookupDisabled ? metricLookupDisabledSearch : debouncedSearch}
           isLoading={state.isLoading}
           defaultOptions={state.metrics}
           onChange={({ value }) => {
@@ -161,3 +160,18 @@ const getStyles = (theme: GrafanaTheme2) => ({
     background-color: ${theme.colors.warning.main};
   `,
 });
+
+export const formatPrometheusLabelFiltersToString = (
+  queryString: string,
+  labelsFilters: QueryBuilderLabelFilter[] | undefined
+): string => {
+  const filterArray = labelsFilters ? formatPrometheusLabelFilters(labelsFilters) : [];
+
+  return `label_values({__name__=~".*${queryString}"${filterArray ? filterArray.join('') : ''}},__name__)`;
+};
+
+export const formatPrometheusLabelFilters = (labelsFilters: QueryBuilderLabelFilter[]): string[] => {
+  return labelsFilters.map((label) => {
+    return `,${label.label}="${label.value}"`;
+  });
+};

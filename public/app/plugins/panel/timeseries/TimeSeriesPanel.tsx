@@ -7,18 +7,18 @@ import { KeyboardPlugin, TimeSeries, TooltipPlugin, usePanelContext, ZoomPlugin 
 import { config } from 'app/core/config';
 import { getFieldLinksForExplore } from 'app/features/explore/utils/links';
 
+import { PanelOptions } from './panelcfg.gen';
 import { AnnotationEditorPlugin } from './plugins/AnnotationEditorPlugin';
 import { AnnotationsPlugin } from './plugins/AnnotationsPlugin';
 import { ContextMenuPlugin } from './plugins/ContextMenuPlugin';
 import { ExemplarsPlugin, getVisibleLabels } from './plugins/ExemplarsPlugin';
 import { OutsideRangePlugin } from './plugins/OutsideRangePlugin';
 import { ThresholdControlsPlugin } from './plugins/ThresholdControlsPlugin';
-import { TimeSeriesOptions } from './types';
 import { getTimezones, prepareGraphableFields, regenerateLinksSupplier } from './utils';
 
-interface TimeSeriesPanelProps extends PanelProps<TimeSeriesOptions> {}
+interface TimeSeriesPanelProps extends PanelProps<PanelOptions> {}
 
-export const TimeSeriesPanel: React.FC<TimeSeriesPanelProps> = ({
+export const TimeSeriesPanel = ({
   data,
   timeRange,
   timeZone,
@@ -29,8 +29,9 @@ export const TimeSeriesPanel: React.FC<TimeSeriesPanelProps> = ({
   onChangeTimeRange,
   replaceVariables,
   id,
-}) => {
-  const { sync, canAddAnnotations, onThresholdsChange, canEditThresholds, onSplitOpen } = usePanelContext();
+}: TimeSeriesPanelProps) => {
+  const { sync, canAddAnnotations, onThresholdsChange, canEditThresholds, showThresholds, onSplitOpen } =
+    usePanelContext();
 
   const getFieldLinks = (field: Field, rowIndex: number) => {
     return getFieldLinksForExplore({ field, rowIndex, splitOpenFn: onSplitOpen, range: timeRange });
@@ -141,11 +142,11 @@ export const TimeSeriesPanel: React.FC<TimeSeriesPanelProps> = ({
               />
             )}
 
-            {canEditThresholds && onThresholdsChange && (
+            {((canEditThresholds && onThresholdsChange) || showThresholds) && (
               <ThresholdControlsPlugin
                 config={config}
                 fieldConfig={fieldConfig}
-                onThresholdsChange={onThresholdsChange}
+                onThresholdsChange={canEditThresholds ? onThresholdsChange : undefined}
               />
             )}
 

@@ -1,6 +1,4 @@
 ---
-_build:
-  list: false
 aliases:
   - ../guides/whats-new-in-v9-3/
 description: Feature and improvement highlights for Grafana v9.3
@@ -11,7 +9,7 @@ keywords:
   - '9.3'
   - release notes
 title: What's new in Grafana v9.3
-weight: -33
+weight: -34
 ---
 
 # What’s new in Grafana v9.3

@@ -25,7 +25,7 @@ keywords:
   - guide
   - graph
 title: Time series
-weight: 90
+weight: 10
 ---
 
 # Time series
@@ -40,13 +40,13 @@ The time series visualization type is the default and primary way to visualize t
 
 Tooltip options control the information overlay that appears when you hover over data points in the graph.
 
-{{< docs/shared "visualizations/tooltip-mode.md" >}}
+{{< docs/shared lookup="visualizations/tooltip-mode.md" source="grafana" version="<GRAFANA VERSION>" >}}
 
 ## Legend options
 
 Legend options control the series names and statistics that appear under or to the right of the graph.
 
-{{< docs/shared "visualizations/legend-mode.md" >}}
+{{< docs/shared lookup="visualizations/legend-mode.md" source="grafana" version="<GRAFANA VERSION>" >}}
 
 ## Graph styles
 
@@ -226,7 +226,7 @@ Use this option to transform the series values without affecting the values show
 
 ## Color options
 
-By default, the graph uses the standard [Color scheme]({{< relref "../../configure-standard-options/#color-scheme" >}} option to assign series colors. You can also use the legend to open the color picker by clicking the legend series color icon. Setting
+By default, the graph uses the standard [Color scheme]({{< relref "../../configure-standard-options/#color-scheme" >}}) option to assign series colors. You can also use the legend to open the color picker by clicking the legend series color icon. Setting
 color this way automatically creates an override rule that set's a specific color for a specific series.
 
 ### Classic palette

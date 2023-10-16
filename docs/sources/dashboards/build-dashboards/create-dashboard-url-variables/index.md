@@ -41,7 +41,7 @@ Grafana interprets `var-example=value1&var-example=value2` as the dashboard vari
 
 ### Example
 
-See [https://play.grafana.org/d/000000074/alerting?var-app=backend&var-server=backend_01&var-server=backend_03&var-interval=1]h - this passes the variable `server` with multiple values, and the variables `app` and `interval` with a single value each.
+This example in [Grafana Play](https://play.grafana.org/d/000000074/alerting?var-app=backend&var-server=backend_01&var-server=backend_03&var-interval=1h) passes the variable `server` with multiple values, and the variables `app` and `interval` with a single value each.
 
 ## Adding variables to dashboard links
 
@@ -65,7 +65,7 @@ The query parameter `var-adhoc=key|=|value` applies the ad hoc filter configured
 
 ### Example
 
-See [https://play.grafana.org/d/000000002/influxdb-templated?orgId=1&var-datacenter=America&var-host=All&var-summarize=1m&var-adhoc=datacenter%7C%3D%7CAmerica] - this passes the ad hoc filter variable `adhoc` with the filter value `datacenter = America`.
+[This example in Grafana Play](https://play.grafana.org/d/000000002/influxdb-templated?orgId=1&var-datacenter=America&var-host=All&var-summarize=1m&var-adhoc=datacenter%7C%3D%7CAmerica) passes the ad hoc filter variable `adhoc` with the filter value `datacenter = America`.
 
 ## Controlling time range using the URL
 

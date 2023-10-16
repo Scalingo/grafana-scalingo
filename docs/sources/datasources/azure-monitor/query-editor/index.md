@@ -44,7 +44,7 @@ In contrast, Azure Monitor Logs can store a variety of data types, each with the
 
 1. In a Grafana panel, select the **Azure Monitor** data source.
 1. Select the **Metrics** service.
-1. Select a resource from which to metrics by using the subscription, resource group, resource type, and resource fields.
+1. Select a resource from which to query metrics by using the subscription, resource group, resource type, and resource fields. Multiple resources can also be selected as long as they belong to the same subscription, region and resource type. Note that only a limited amount of resource types support this feature.
 1. To select a different namespace than the default—for instance, to select resources like storage accounts that are organized under multiple namespaces—use the **Namespace** option.
 
    > **Note:** Not all metrics returned by the Azure Monitor Metrics API have values.
@@ -110,7 +110,7 @@ You can also perform complex analysis of Logs data by using KQL.
 
 1. In a Grafana panel, select the **Azure Monitor** data source.
 1. Select the **Logs** service.
-1. Select a resource to query.
+1. Select a resource to query. Multiple resources can be selected as long as they are of the same type.
 
    Alternatively, you can dynamically query all resources under a single resource group or subscription.
 
@@ -128,6 +128,11 @@ The Azure documentation includes resources to help you learn KQL:
 - [Getting started with Kusto](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/concepts/)
 - [Tutorial: Use Kusto queries in Azure Monitor](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/tutorial?pivots=azuremonitor)
 - [SQL to Kusto cheat sheet](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/sqlcheatsheet)
+
+> **Implicit dashboard time range usage:** As of Grafana v9.4.12 and v10.0, all Azure Monitor Logs queries
+> will use the specified dashboard or Explore time range by default.
+> Any query making use of a time range explicitly specified in the query body will have their query
+> executed against the intersection of the two time ranges. For more details on this change, refer to the [Azure Monitor Logs API documentation](https://learn.microsoft.com/en-us/rest/api/loganalytics/dataaccess/query/get?tabs=HTTP#uri-parameters).
 
 This example query returns a virtual machine's CPU performance, averaged over 5ms time grains:
 

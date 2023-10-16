@@ -15,7 +15,6 @@ const (
 	azureMonitorPublic       = "azuremonitor"
 	azureMonitorChina        = "chinaazuremonitor"
 	azureMonitorUSGovernment = "govazuremonitor"
-	azureMonitorGermany      = "germanyazuremonitor"
 	azureMonitorCustomized   = "customizedazuremonitor"
 )
 
@@ -32,10 +31,14 @@ func getAuthType(cfg *setting.Cfg, jsonData *simplejson.Json) string {
 			return azcredentials.AzureAuthClientSecret
 		}
 
-		// For newly created datasource with no configuration, managed identity is the default authentication type
-		// if they are enabled in Grafana config
+		// For newly created datasource with no configuration the order is as follows:
+		// Managed identity is the default if enabled
+		// Workload identity is the next option if enabled
+		// Client secret is the final fallback
 		if cfg.Azure.ManagedIdentityEnabled {
 			return azcredentials.AzureAuthManagedIdentity
+		} else if cfg.Azure.WorkloadIdentityEnabled {
+			return azcredentials.AzureAuthWorkloadIdentity
 		} else {
 			return azcredentials.AzureAuthClientSecret
 		}
@@ -44,7 +47,10 @@ func getAuthType(cfg *setting.Cfg, jsonData *simplejson.Json) string {
 
 func getDefaultAzureCloud(cfg *setting.Cfg) (string, error) {
 	// Allow only known cloud names
-	cloudName := cfg.Azure.Cloud
+	cloudName := ""
+	if cfg != nil && cfg.Azure != nil {
+		cloudName = cfg.Azure.Cloud
+	}
 	switch cloudName {
 	case azsettings.AzurePublic:
 		return azsettings.AzurePublic, nil
@@ -52,8 +58,6 @@ func getDefaultAzureCloud(cfg *setting.Cfg) (string, error) {
 		return azsettings.AzureChina, nil
 	case azsettings.AzureUSGovernment:
 		return azsettings.AzureUSGovernment, nil
-	case azsettings.AzureGermany:
-		return azsettings.AzureGermany, nil
 	case azsettings.AzureCustomized:
 		return azsettings.AzureCustomized, nil
 	case "":
@@ -73,8 +77,6 @@ func normalizeAzureCloud(cloudName string) (string, error) {
 		return azsettings.AzureChina, nil
 	case azureMonitorUSGovernment:
 		return azsettings.AzureUSGovernment, nil
-	case azureMonitorGermany:
-		return azsettings.AzureGermany, nil
 	case azureMonitorCustomized:
 		return azsettings.AzureCustomized, nil
 	default:
@@ -86,8 +88,8 @@ func normalizeAzureCloud(cloudName string) (string, error) {
 func getAzureCloud(cfg *setting.Cfg, jsonData *simplejson.Json) (string, error) {
 	authType := getAuthType(cfg, jsonData)
 	switch authType {
-	case azcredentials.AzureAuthManagedIdentity:
-		// In case of managed identity, the cloud is always same as where Grafana is hosted
+	case azcredentials.AzureAuthManagedIdentity, azcredentials.AzureAuthWorkloadIdentity:
+		// In case of managed identity and workload identity, the cloud is always same as where Grafana is hosted
 		return getDefaultAzureCloud(cfg)
 	case azcredentials.AzureAuthClientSecret:
 		if cloud := jsonData.Get("cloudName").MustString(); cloud != "" {
@@ -108,7 +110,9 @@ func getAzureCredentials(cfg *setting.Cfg, jsonData *simplejson.Json, secureJson
 	case azcredentials.AzureAuthManagedIdentity:
 		credentials := &azcredentials.AzureManagedIdentityCredentials{}
 		return credentials, nil
-
+	case azcredentials.AzureAuthWorkloadIdentity:
+		credentials := &azcredentials.AzureWorkloadIdentityCredentials{}
+		return credentials, nil
 	case azcredentials.AzureAuthClientSecret:
 		cloud, err := getAzureCloud(cfg, jsonData)
 		if err != nil {

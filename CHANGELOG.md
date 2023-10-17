@@ -1,3 +1,28 @@
+<!-- 9.5.10 START -->
+
+# 9.5.10 (2023-09-18)
+
+### Features and enhancements
+
+- **Chore:** Upgrade Alpine base image to 3.18.3. [#74995](https://github.com/grafana/grafana/issues/74995), [@zerok](https://github.com/zerok)
+- **Chore:** Upgrade Go to 1.20.8. [#74982](https://github.com/grafana/grafana/issues/74982), [@zerok](https://github.com/zerok)
+
+<!-- 9.5.10 END -->
+<!-- 9.5.9 START -->
+
+# 9.5.9 (2023-09-05)
+
+### Features and enhancements
+
+- **SSE:** DSNode to update result with names to make each value identifiable by labels (only Graphite and TestData). [#73642](https://github.com/grafana/grafana/issues/73642), [@yuri-tceretian](https://github.com/yuri-tceretian)
+- **Prometheus:** Add present_over_time syntax highlighting. [#72367](https://github.com/grafana/grafana/issues/72367), [@arnaudlemaignen](https://github.com/arnaudlemaignen)
+- **Alerting:** Improve performance of matching captures. [#71998](https://github.com/grafana/grafana/issues/71998), [@grobinson-grafana](https://github.com/grobinson-grafana)
+
+### Bug fixes
+
+- **LDAP:** Fix user disabling. [#74096](https://github.com/grafana/grafana/issues/74096), [@gamab](https://github.com/gamab)
+
+<!-- 9.5.9 END -->
 <!-- 9.5.8 START -->
 
 # 9.5.8 (2023-08-16)

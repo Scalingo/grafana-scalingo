@@ -24,7 +24,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build verify-drone
@@ -74,7 +74,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build verify-starlark .
@@ -300,7 +300,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - '# It is required that code generated from Thema/CUE be committed and in sync
@@ -384,7 +384,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - is_fork=$(curl "https://$GITHUB_TOKEN@api.github.com/repos/grafana/grafana/pulls/$DRONE_PULL_REQUEST"
@@ -418,7 +418,7 @@ steps:
   - wire-install
   environment:
     CGO_ENABLED: "1"
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: lint-backend
 trigger:
   event:
@@ -474,7 +474,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - '# It is required that code generated from Thema/CUE be committed and in sync
@@ -522,7 +522,7 @@ steps:
     $${TEST_TAG}
   environment:
     GITHUB_TOKEN:
-      from_secret: github_token_pr
+      from_secret: github_token
     TEST_TAG: v0.0.0-test
   failure: ignore
   image: grafana/build-container:1.7.5
@@ -655,7 +655,7 @@ steps:
       from_secret: azure_tenant
     CYPRESS_CI: "true"
     GITHUB_TOKEN:
-      from_secret: github_token_pr
+      from_secret: github_token
     HOST: grafana-server
   image: us-docker.pkg.dev/grafanalabs-dev/cloud-data-sources/e2e:latest
   name: end-to-end-tests-cloud-plugins-suite-azure
@@ -765,9 +765,9 @@ steps:
   - build-docker-images-ubuntu
   environment:
     DOCKER_PASSWORD:
-      from_secret: docker_password_pr
+      from_secret: docker_password
     DOCKER_USER:
-      from_secret: docker_username_pr
+      from_secret: docker_username
     GITHUB_APP_ID:
       from_secret: delivery-bot-app-id
     GITHUB_APP_INSTALLATION_ID:
@@ -861,7 +861,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - echo $DRONE_RUNNER_NAME
@@ -1028,7 +1028,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build shellcheck
@@ -1247,7 +1247,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - '# It is required that code generated from Thema/CUE be committed and in sync
@@ -1324,7 +1324,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - make gen-go
@@ -1338,7 +1338,7 @@ steps:
   - wire-install
   environment:
     CGO_ENABLED: "1"
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: lint-backend
 - commands:
   - ./bin/build verify-drone
@@ -1392,7 +1392,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - '# It is required that code generated from Thema/CUE be committed and in sync
@@ -1538,7 +1538,7 @@ steps:
       from_secret: azure_tenant
     CYPRESS_CI: "true"
     GITHUB_TOKEN:
-      from_secret: github_token_pr
+      from_secret: github_token
     HOST: grafana-server
   image: us-docker.pkg.dev/grafanalabs-dev/cloud-data-sources/e2e:latest
   name: end-to-end-tests-cloud-plugins-suite-azure
@@ -1835,7 +1835,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - echo $DRONE_RUNNER_NAME
@@ -1946,6 +1946,29 @@ steps:
     -OutFile grabpl.exe
   image: grafana/ci-wix:0.1.1
   name: windows-init
+- commands:
+  - $$gcpKey = $$env:GCP_KEY
+  - '[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($$gcpKey))
+    > gcpkey.json'
+  - dos2unix gcpkey.json
+  - gcloud auth activate-service-account --key-file=gcpkey.json
+  - rm gcpkey.json
+  - cp C:\App\nssm-2.24.zip .
+  - .\grabpl.exe windows-installer --edition oss --build-id $$env:DRONE_BUILD_NUMBER
+  - $$fname = ((Get-Childitem grafana*.msi -name) -split "`n")[0]
+  - gsutil cp "$$fname" gs://grafana-downloads/oss/main/
+  - gsutil cp "$$fname.sha256" gs://grafana-downloads/oss/main/
+  depends_on:
+  - windows-init
+  environment:
+    GCP_KEY:
+      from_secret: gcp_grafanauploads_base64
+    GITHUB_TOKEN:
+      from_secret: github_token
+    PRERELEASE_BUCKET:
+      from_secret: prerelease_bucket
+  image: grafana/ci-wix:0.1.1
+  name: build-windows-installer
 trigger:
   branch: main
   event:
@@ -2109,7 +2132,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build artifacts docker fetch --edition oss
@@ -2205,7 +2228,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build artifacts packages --tag $${DRONE_TAG} --src-bucket $${PRERELEASE_BUCKET}
@@ -2274,7 +2297,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - yarn install --immutable
@@ -2339,7 +2362,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - depends_on:
   - compile-build-cmd
@@ -2427,13 +2450,13 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build whatsnew-checker
   depends_on:
   - compile-build-cmd
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: whats-new-checker
 trigger:
   event:
@@ -2535,7 +2558,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - '# It is required that code generated from Thema/CUE be committed and in sync
@@ -2736,7 +2759,7 @@ steps:
   - .\grabpl.exe windows-installer --target gs://grafana-prerelease/artifacts/downloads/${DRONE_TAG}/oss/release/grafana-${DRONE_TAG:1}.windows-amd64.zip
     --edition oss ${DRONE_TAG}
   - $$fname = ((Get-Childitem grafana*.msi -name) -split "`n")[0]
-  - gsutil cp $$fname gs://grafana-prerelease/artifacts/downloads/${DRONE_TAG}/oss/release/
+  - gsutil cp "$$fname" gs://grafana-prerelease/artifacts/downloads/${DRONE_TAG}/oss/release/
   - gsutil cp "$$fname.sha256" gs://grafana-prerelease/artifacts/downloads/${DRONE_TAG}/oss/release/
   depends_on:
   - windows-init
@@ -2913,7 +2936,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build build-backend --jobs 8 --edition oss --build-id ${DRONE_BUILD_NUMBER}
@@ -3220,7 +3243,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - '# It is required that code generated from Thema/CUE be committed and in sync
@@ -3907,7 +3930,7 @@ steps:
   - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM grafana/grafana-ci-deploy:1.3.3
   - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM alpine:3.18.3
   - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM byrnedo/alpine-curl:0.1.8
-  - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM golang:1.20.8
+  - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM golang:1.20.10
   - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM plugins/slack
   - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM postgres:12.3-alpine
   - trivy --exit-code 0 --severity UNKNOWN,LOW,MEDIUM mysql:5.7.39
@@ -3934,7 +3957,7 @@ steps:
   - trivy --exit-code 1 --severity HIGH,CRITICAL grafana/grafana-ci-deploy:1.3.3
   - trivy --exit-code 1 --severity HIGH,CRITICAL alpine:3.18.3
   - trivy --exit-code 1 --severity HIGH,CRITICAL byrnedo/alpine-curl:0.1.8
-  - trivy --exit-code 1 --severity HIGH,CRITICAL golang:1.20.8
+  - trivy --exit-code 1 --severity HIGH,CRITICAL golang:1.20.10
   - trivy --exit-code 1 --severity HIGH,CRITICAL plugins/slack
   - trivy --exit-code 1 --severity HIGH,CRITICAL postgres:12.3-alpine
   - trivy --exit-code 1 --severity HIGH,CRITICAL mysql:5.7.39
@@ -3986,7 +4009,7 @@ steps:
   depends_on: []
   environment:
     CGO_ENABLED: 0
-  image: golang:1.20.8
+  image: golang:1.20.10
   name: compile-build-cmd
 - commands:
   - ./bin/build publish grafana-com --edition oss
@@ -4141,12 +4164,6 @@ kind: secret
 name: static_asset_editions
 ---
 get:
-  name: cdn_path
-  path: infra/data/ci/grafana-release-eng/enterprise2
-kind: secret
-name: enterprise2-cdn-path
----
-get:
   name: gcp_service_account_prod_base64
   path: infra/data/ci/grafana-release-eng/rgm
 kind: secret
@@ -4163,12 +4180,6 @@ get:
   path: infra/data/ci/grafana-release-eng/rgm
 kind: secret
 name: dagger_token
----
-get:
-  name: pat
-  path: infra/data/ci/github/grafanabot
-kind: secret
-name: github_token
 ---
 get:
   name: app-id
@@ -4213,6 +4224,6 @@ kind: secret
 name: gcr_credentials
 ---
 kind: signature
-hmac: 5d3e7d409ce35fcc488c40a950583484e2df5ad862a3a84f39042d6e7e63f6ca
+hmac: 4d72c6589ce889d528a446d5d09e51aab2a3b8a35cbb1481a32d1af2dd56209b
 
 ...

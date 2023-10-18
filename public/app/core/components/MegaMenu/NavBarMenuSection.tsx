@@ -9,7 +9,7 @@ import { NavBarItemIcon } from '../NavBar/NavBarItemIcon';
 import { NavFeatureHighlight } from '../NavBar/NavFeatureHighlight';
 import { hasChildMatch } from '../NavBar/utils';
 
-import { NavBarMenuItem } from '../NavBar/NavBarMenuItem';
+import { NavBarMenuItem } from './NavBarMenuItem';
 
 export function NavBarMenuSection({
   link,

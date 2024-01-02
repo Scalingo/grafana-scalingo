@@ -37,7 +37,7 @@ var (
 type SecretsService struct {
 	store      secrets.Store
 	enc        encryption.Internal
-	settings   setting.Provider
+	cfg        *setting.Cfg
 	features   featuremgmt.FeatureToggles
 	usageStats usagestats.Service
 
@@ -57,20 +57,20 @@ func ProvideSecretsService(
 	store secrets.Store,
 	kmsProvidersService kmsproviders.Service,
 	enc encryption.Internal,
-	settings setting.Provider,
+	cfg *setting.Cfg,
 	features featuremgmt.FeatureToggles,
 	usageStats usagestats.Service,
 ) (*SecretsService, error) {
-	ttl := settings.KeyValue("security.encryption", "data_keys_cache_ttl").MustDuration(15 * time.Minute)
+	ttl := cfg.SectionWithEnvOverrides("security.encryption").Key("data_keys_cache_ttl").MustDuration(15 * time.Minute)
 
 	currentProviderID := kmsproviders.NormalizeProviderID(secrets.ProviderID(
-		settings.KeyValue("security", "encryption_provider").MustString(kmsproviders.Default),
+		cfg.SectionWithEnvOverrides("security").Key("encryption_provider").MustString(kmsproviders.Default),
 	))
 
 	s := &SecretsService{
 		store:               store,
 		enc:                 enc,
-		settings:            settings,
+		cfg:                 cfg,
 		usageStats:          usageStats,
 		kmsProvidersService: kmsProvidersService,
 		dataKeyCache:        newDataKeyCache(ttl),
@@ -79,7 +79,7 @@ func ProvideSecretsService(
 		log:                 log.New("secrets"),
 	}
 
-	enabled := !features.IsEnabled(featuremgmt.FlagDisableEnvelopeEncryption)
+	enabled := !features.IsEnabledGlobally(featuremgmt.FlagDisableEnvelopeEncryption)
 
 	if enabled {
 		err := s.InitProviders()
@@ -112,12 +112,12 @@ func (s *SecretsService) InitProviders() (err error) {
 }
 
 func (s *SecretsService) registerUsageMetrics() {
-	s.usageStats.RegisterMetricsFunc(func(context.Context) (map[string]interface{}, error) {
-		usageMetrics := make(map[string]interface{})
+	s.usageStats.RegisterMetricsFunc(func(ctx context.Context) (map[string]any, error) {
+		usageMetrics := make(map[string]any)
 
 		// Enabled / disabled
 		usageMetrics["stats.encryption.envelope_encryption_enabled.count"] = 0
-		if !s.features.IsEnabled(featuremgmt.FlagDisableEnvelopeEncryption) {
+		if !s.features.IsEnabled(ctx, featuremgmt.FlagDisableEnvelopeEncryption) {
 			usageMetrics["stats.encryption.envelope_encryption_enabled.count"] = 1
 		}
 
@@ -159,7 +159,7 @@ var b64 = base64.RawStdEncoding
 
 func (s *SecretsService) Encrypt(ctx context.Context, payload []byte, opt secrets.EncryptionOptions) ([]byte, error) {
 	// Use legacy encryption service if featuremgmt.FlagDisableEnvelopeEncryption toggle is on
-	if s.features.IsEnabled(featuremgmt.FlagDisableEnvelopeEncryption) {
+	if s.features.IsEnabled(ctx, featuremgmt.FlagDisableEnvelopeEncryption) {
 		return s.enc.Encrypt(ctx, payload, setting.SecretKey)
 	}
 
@@ -333,7 +333,7 @@ func (s *SecretsService) Decrypt(ctx context.Context, payload []byte) ([]byte, e
 	// If encrypted with envelope encryption, the feature is disabled and
 	// no provider is initialized, then we throw an error.
 	if s.encryptedWithEnvelopeEncryption(payload) &&
-		s.features.IsEnabled(featuremgmt.FlagDisableEnvelopeEncryption) &&
+		s.features.IsEnabled(ctx, featuremgmt.FlagDisableEnvelopeEncryption) &&
 		!s.providersInitialized() {
 		err = fmt.Errorf("failed to decrypt a secret encrypted with envelope encryption: envelope encryption is disabled")
 		return nil, err
@@ -342,7 +342,7 @@ func (s *SecretsService) Decrypt(ctx context.Context, payload []byte) ([]byte, e
 	var dataKey []byte
 
 	if !s.encryptedWithEnvelopeEncryption(payload) {
-		secretKey := s.settings.KeyValue("security", "secret_key").Value()
+		secretKey := s.cfg.SectionWithEnvOverrides("security").Key("secret_key").Value()
 		dataKey = []byte(secretKey)
 	} else {
 		payload = payload[1:]
@@ -469,7 +469,7 @@ func (s *SecretsService) RotateDataKeys(ctx context.Context) error {
 func (s *SecretsService) ReEncryptDataKeys(ctx context.Context) error {
 	s.log.Info("Data keys re-encryption triggered")
 
-	if s.features.IsEnabled(featuremgmt.FlagDisableEnvelopeEncryption) {
+	if s.features.IsEnabled(ctx, featuremgmt.FlagDisableEnvelopeEncryption) {
 		s.log.Info("Envelope encryption is not enabled but trying to init providers anyway...")
 
 		if err := s.InitProviders(); err != nil {
@@ -491,7 +491,7 @@ func (s *SecretsService) ReEncryptDataKeys(ctx context.Context) error {
 
 func (s *SecretsService) Run(ctx context.Context) error {
 	gc := time.NewTicker(
-		s.settings.KeyValue("security.encryption", "data_keys_cache_cleanup_interval").
+		s.cfg.SectionWithEnvOverrides("security.encryption").Key("data_keys_cache_cleanup_interval").
 			MustDuration(time.Minute),
 	)
 

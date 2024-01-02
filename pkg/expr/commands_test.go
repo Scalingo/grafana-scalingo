@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/grafana/grafana/pkg/expr/mathexp"
 	"github.com/grafana/grafana/pkg/expr/mathexp/parse"
+	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/util"
 )
 
@@ -74,7 +76,7 @@ func Test_UnmarshalReduceCommand_Settings(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			q := fmt.Sprintf(`{ "expression" : "$A", "reducer": "sum"%s }`, test.querySettings)
-			var qmap = make(map[string]interface{})
+			var qmap = make(map[string]any)
 			require.NoError(t, json.Unmarshal([]byte(q), &qmap))
 
 			cmd, err := UnmarshalReduceCommand(&rawNode{
@@ -99,42 +101,83 @@ func Test_UnmarshalReduceCommand_Settings(t *testing.T) {
 
 func TestReduceExecute(t *testing.T) {
 	varToReduce := util.GenerateShortUID()
-	cmd, err := NewReduceCommand(util.GenerateShortUID(), randomReduceFunc(), varToReduce, nil)
-	require.NoError(t, err)
 
-	t.Run("should noop if Number", func(t *testing.T) {
+	t.Run("when mapper is nil", func(t *testing.T) {
+		cmd, err := NewReduceCommand(util.GenerateShortUID(), randomReduceFunc(), varToReduce, nil)
+		require.NoError(t, err)
+
+		t.Run("should noop if Number", func(t *testing.T) {
+			var numbers mathexp.Values = []mathexp.Value{
+				mathexp.GenerateNumber(util.Pointer(rand.Float64())),
+				mathexp.GenerateNumber(util.Pointer(rand.Float64())),
+				mathexp.GenerateNumber(util.Pointer(rand.Float64())),
+			}
+
+			vars := map[string]mathexp.Results{
+				varToReduce: {
+					Values: numbers,
+				},
+			}
+
+			execute, err := cmd.Execute(context.Background(), time.Now(), vars, tracing.InitializeTracerForTest())
+			require.NoError(t, err)
+
+			require.Len(t, execute.Values, len(numbers))
+			for i, value := range execute.Values {
+				expected := numbers[i]
+				require.Equal(t, expected.Type(), value.Type())
+				require.Equal(t, expected.GetLabels(), value.GetLabels())
+
+				expectedValue := expected.Value().(*mathexp.Number).GetFloat64Value()
+				actualValue := value.Value().(*mathexp.Number).GetFloat64Value()
+				require.Equal(t, expectedValue, actualValue)
+			}
+
+			t.Run("should add warn notices to the first frame", func(t *testing.T) {
+				frames := execute.Values.AsDataFrames("test")
+				notice := frames[0].Meta.Notices[0]
+				require.Equal(t, data.NoticeSeverityWarning, notice.Severity)
+				for _, frame := range frames[1:] {
+					require.Empty(t, frame.Meta.Notices)
+				}
+			})
+		})
+	})
+
+	t.Run("when mapper is not nil", func(t *testing.T) {
 		var numbers mathexp.Values = []mathexp.Value{
 			mathexp.GenerateNumber(util.Pointer(rand.Float64())),
-			mathexp.GenerateNumber(util.Pointer(rand.Float64())),
+			mathexp.GenerateNumber(nil),
+			mathexp.GenerateNumber(util.Pointer(math.NaN())),
+			mathexp.GenerateNumber(util.Pointer(math.Inf(-1))),
+			mathexp.GenerateNumber(util.Pointer(math.Inf(1))),
 			mathexp.GenerateNumber(util.Pointer(rand.Float64())),
 		}
-
+		varToReduce := util.GenerateShortUID()
 		vars := map[string]mathexp.Results{
 			varToReduce: {
 				Values: numbers,
 			},
 		}
 
-		execute, err := cmd.Execute(context.Background(), time.Now(), vars)
-		require.NoError(t, err)
+		t.Run("drop all non numbers if mapper is DropNonNumber", func(t *testing.T) {
+			cmd, err := NewReduceCommand(util.GenerateShortUID(), randomReduceFunc(), varToReduce, &mathexp.DropNonNumber{})
+			require.NoError(t, err)
+			execute, err := cmd.Execute(context.Background(), time.Now(), vars, tracing.InitializeTracerForTest())
+			require.NoError(t, err)
+			require.Len(t, execute.Values, 2)
+		})
 
-		require.Len(t, execute.Values, len(numbers))
-		for i, value := range execute.Values {
-			expected := numbers[i]
-			require.Equal(t, expected.Type(), value.Type())
-			require.Equal(t, expected.GetLabels(), value.GetLabels())
-
-			expectedValue := expected.Value().(*mathexp.Number).GetFloat64Value()
-			actualValue := value.Value().(*mathexp.Number).GetFloat64Value()
-			require.Equal(t, expectedValue, actualValue)
-		}
-
-		t.Run("should add warn notices to every frame", func(t *testing.T) {
-			frames := execute.Values.AsDataFrames("test")
-			for _, frame := range frames {
-				require.Len(t, frame.Meta.Notices, 1)
-				notice := frame.Meta.Notices[0]
-				require.Equal(t, data.NoticeSeverityWarning, notice.Severity)
+		t.Run("replace all non numbers if mapper is ReplaceNonNumberWithValue", func(t *testing.T) {
+			cmd, err := NewReduceCommand(util.GenerateShortUID(), randomReduceFunc(), varToReduce, &mathexp.ReplaceNonNumberWithValue{Value: 1})
+			require.NoError(t, err)
+			execute, err := cmd.Execute(context.Background(), time.Now(), vars, tracing.InitializeTracerForTest())
+			require.NoError(t, err)
+			require.Len(t, execute.Values, len(numbers))
+			for _, value := range execute.Values[1 : len(numbers)-1] {
+				require.IsType(t, &mathexp.Number{}, value.Value())
+				f := value.Value().(*mathexp.Number)
+				require.Equal(t, float64(1), *f.GetFloat64Value())
 			}
 		})
 	})
@@ -149,8 +192,9 @@ func TestReduceExecute(t *testing.T) {
 				Values: noData,
 			},
 		}
-
-		results, err := cmd.Execute(context.Background(), time.Now(), vars)
+		cmd, err := NewReduceCommand(util.GenerateShortUID(), randomReduceFunc(), varToReduce, nil)
+		require.NoError(t, err)
+		results, err := cmd.Execute(context.Background(), time.Now(), vars, tracing.InitializeTracerForTest())
 		require.NoError(t, err)
 
 		require.Len(t, results.Values, 1)
@@ -209,7 +253,7 @@ func TestResampleCommand_Execute(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			result, err := cmd.Execute(context.Background(), time.Now(), mathexp.Vars{
 				varToReduce: mathexp.Results{Values: mathexp.Values{test.vals}},
-			})
+			}, tracing.InitializeTracerForTest())
 			if test.isError {
 				require.Error(t, err)
 			} else {
@@ -224,7 +268,7 @@ func TestResampleCommand_Execute(t *testing.T) {
 	t.Run("should return empty result if input is nil Value", func(t *testing.T) {
 		result, err := cmd.Execute(context.Background(), time.Now(), mathexp.Vars{
 			varToReduce: mathexp.Results{Values: mathexp.Values{nil}},
-		})
+		}, tracing.InitializeTracerForTest())
 		require.Empty(t, result.Values)
 		require.NoError(t, err)
 	})

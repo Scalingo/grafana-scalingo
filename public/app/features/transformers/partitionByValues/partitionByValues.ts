@@ -1,7 +1,6 @@
 import { map } from 'rxjs';
 
 import {
-  ArrayVector,
   DataFrame,
   DataTransformerID,
   SynchronousDataTransformerInfo,
@@ -74,7 +73,7 @@ export const partitionByValuesTransformer: SynchronousDataTransformerInfo<Partit
     source.pipe(map((data) => partitionByValuesTransformer.transformer(options, ctx)(data))),
 
   transformer: (options: PartitionByValuesTransformerOptions, ctx: DataTransformContext) => {
-    const matcherConfig = getMatcherConfig({ names: options.fields });
+    const matcherConfig = getMatcherConfig(ctx, { names: options.fields });
 
     if (!matcherConfig) {
       return noopTransformer.transformer({}, ctx);
@@ -99,7 +98,12 @@ export function partitionByValues(
   options?: PartitionByValuesTransformerOptions
 ): DataFrame[] {
   const keyFields = frame.fields.filter((f) => matcher(f, frame, [frame]))!;
-  const keyFieldsVals = keyFields.map((f) => f.values.toArray());
+
+  if (!keyFields.length) {
+    return [frame];
+  }
+
+  const keyFieldsVals = keyFields.map((f) => f.values);
   const names = keyFields.map((f) => f.name);
 
   const frameNameOpts = {
@@ -142,7 +146,7 @@ export function partitionByValues(
       meta: frame.meta,
       length: idxs.length,
       fields: filteredFields.map((f) => {
-        const vals = f.values.toArray();
+        const vals = f.values;
         const vals2 = Array(idxs.length);
 
         for (let i = 0; i < idxs.length; i++) {
@@ -157,7 +161,7 @@ export function partitionByValues(
             ...f.labels,
             ...fieldLabels,
           },
-          values: new ArrayVector(vals2),
+          values: vals2,
         };
       }),
     };

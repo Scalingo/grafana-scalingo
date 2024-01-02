@@ -1,4 +1,5 @@
-![Grafana](docs/logo-horizontal.png)
+![Grafana Logo (Light)](docs/logo-horizontal.png#gh-light-mode-only)
+![Grafana Logo (Dark)](docs/logo-horizontal-dark.png#gh-dark-mode-only)
 
 The open-source platform for monitoring and observability
 
@@ -9,7 +10,7 @@ To login, use the environment variables value defined in:
 * `GF_SECURITY_ADMIN_USER`
 * `GF_SECURITY_ADMIN_PASSWORD`
 
-Default Version: v9.5.13
+Default Version: v10.2.3
 
 [![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://dashboard.scalingo.com/create/app?source=https://github.com/Scalingo/grafana-scalingo)
 
@@ -80,6 +81,8 @@ If you're interested in contributing to the Grafana project:
 - Read and subscribe to the [Grafana blog](https://grafana.com/blog/).
 - If you have a specific question, check out our [discussion forums](https://community.grafana.com/).
 - For general discussions, join us on the [official Slack](https://slack.grafana.com) team.
+
+This project is tested with [BrowserStack](https://www.browserstack.com/)
 
 ## License
 

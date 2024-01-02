@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/grafana/grafana/pkg/expr"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/grafana/pkg/expr"
+	"github.com/grafana/grafana/pkg/util"
 
 	"github.com/grafana/grafana/pkg/infra/db"
 	"github.com/grafana/grafana/pkg/infra/log"
@@ -19,26 +22,9 @@ import (
 
 func TestAlertRuleService(t *testing.T) {
 	ruleService := createAlertRuleService(t)
-
-	t.Run("alert rule creation should return the created id", func(t *testing.T) {
-		var orgID int64 = 1
-		rule, err := ruleService.CreateAlertRule(context.Background(), dummyRule("test#1", orgID), models.ProvenanceNone, 0)
-		require.NoError(t, err)
-		require.NotEqual(t, 0, rule.ID, "expected to get the created id and not the zero value")
-	})
-
-	t.Run("alert rule creation should set the right provenance", func(t *testing.T) {
-		var orgID int64 = 1
-		rule, err := ruleService.CreateAlertRule(context.Background(), dummyRule("test#2", orgID), models.ProvenanceAPI, 0)
-		require.NoError(t, err)
-
-		_, provenance, err := ruleService.GetAlertRule(context.Background(), orgID, rule.UID)
-		require.NoError(t, err)
-		require.Equal(t, models.ProvenanceAPI, provenance)
-	})
+	var orgID int64 = 1
 
 	t.Run("group creation should set the right provenance", func(t *testing.T) {
-		var orgID int64 = 1
 		group := createDummyGroup("group-test-1", orgID)
 		err := ruleService.ReplaceRuleGroup(context.Background(), orgID, group, 0, models.ProvenanceAPI)
 		require.NoError(t, err)
@@ -54,7 +40,6 @@ func TestAlertRuleService(t *testing.T) {
 	})
 
 	t.Run("alert rule group should be updated correctly", func(t *testing.T) {
-		var orgID int64 = 1
 		rule := dummyRule("test#3", orgID)
 		rule.RuleGroup = "a"
 		rule, err := ruleService.CreateAlertRule(context.Background(), rule, models.ProvenanceNone, 0)
@@ -84,7 +69,6 @@ func TestAlertRuleService(t *testing.T) {
 	})
 
 	t.Run("group creation should propagate group title correctly", func(t *testing.T) {
-		var orgID int64 = 1
 		group := createDummyGroup("group-test-3", orgID)
 		group.Rules[0].RuleGroup = "something different"
 
@@ -100,7 +84,6 @@ func TestAlertRuleService(t *testing.T) {
 	})
 
 	t.Run("alert rule should get interval from existing rule group", func(t *testing.T) {
-		var orgID int64 = 1
 		rule := dummyRule("test#4", orgID)
 		rule.RuleGroup = "b"
 		rule, err := ruleService.CreateAlertRule(context.Background(), rule, models.ProvenanceNone, 0)
@@ -147,7 +130,6 @@ func TestAlertRuleService(t *testing.T) {
 	})
 
 	t.Run("updating a group by updating a rule should bump that rule's data and version number", func(t *testing.T) {
-		var orgID int64 = 1
 		group := createDummyGroup("group-test-5", orgID)
 		err := ruleService.ReplaceRuleGroup(context.Background(), orgID, group, 0, models.ProvenanceAPI)
 		require.NoError(t, err)
@@ -371,7 +353,6 @@ func TestAlertRuleService(t *testing.T) {
 	})
 
 	t.Run("updating a group by updating a rule should not remove dashboard and panel ids", func(t *testing.T) {
-		var orgID int64 = 1
 		dashboardUid := "huYnkl7H"
 		panelId := int64(5678)
 		group := createDummyGroup("group-test-5", orgID)
@@ -520,7 +501,7 @@ func TestAlertRuleService(t *testing.T) {
 		checker.EXPECT().LimitExceeded()
 		ruleService.quotas = checker
 
-		_, err := ruleService.CreateAlertRule(context.Background(), dummyRule("test#1", 1), models.ProvenanceNone, 0)
+		_, err := ruleService.CreateAlertRule(context.Background(), dummyRule("test#1", orgID), models.ProvenanceNone, 0)
 
 		require.ErrorIs(t, err, models.ErrQuotaReached)
 	})
@@ -535,6 +516,45 @@ func TestAlertRuleService(t *testing.T) {
 		err := ruleService.ReplaceRuleGroup(context.Background(), 1, group, 0, models.ProvenanceAPI)
 
 		require.ErrorIs(t, err, models.ErrQuotaReached)
+	})
+}
+
+func TestCreateAlertRule(t *testing.T) {
+	ruleService := createAlertRuleService(t)
+	var orgID int64 = 1
+
+	t.Run("should return the created id", func(t *testing.T) {
+		rule, err := ruleService.CreateAlertRule(context.Background(), dummyRule("test#1", orgID), models.ProvenanceNone, 0)
+		require.NoError(t, err)
+		require.NotEqual(t, 0, rule.ID, "expected to get the created id and not the zero value")
+	})
+
+	t.Run("should set the right provenance", func(t *testing.T) {
+		rule, err := ruleService.CreateAlertRule(context.Background(), dummyRule("test#2", orgID), models.ProvenanceAPI, 0)
+		require.NoError(t, err)
+
+		_, provenance, err := ruleService.GetAlertRule(context.Background(), orgID, rule.UID)
+		require.NoError(t, err)
+		require.Equal(t, models.ProvenanceAPI, provenance)
+	})
+
+	t.Run("when UID is specified", func(t *testing.T) {
+		t.Run("return error if it is not valid UID", func(t *testing.T) {
+			rule := dummyRule("test#3", orgID)
+			rule.UID = strings.Repeat("1", util.MaxUIDLength+1)
+			rule, err := ruleService.CreateAlertRule(context.Background(), rule, models.ProvenanceNone, 0)
+			require.ErrorIs(t, err, models.ErrAlertRuleFailedValidation)
+		})
+		t.Run("should create a new rule with this UID", func(t *testing.T) {
+			rule := dummyRule("test#3", orgID)
+			uid := util.GenerateShortUID()
+			rule.UID = uid
+			created, err := ruleService.CreateAlertRule(context.Background(), rule, models.ProvenanceNone, 0)
+			require.NoError(t, err)
+			require.Equal(t, uid, created.UID)
+			_, _, err = ruleService.GetAlertRule(context.Background(), orgID, uid)
+			require.NoError(t, err)
+		})
 	})
 }
 
@@ -562,10 +582,10 @@ func createAlertRuleService(t *testing.T) AlertRuleService {
 }
 
 func dummyRule(title string, orgID int64) models.AlertRule {
-	return createTestRule(title, "my-cool-group", orgID)
+	return createTestRule(title, "my-cool-group", orgID, "my-namespace")
 }
 
-func createTestRule(title string, groupTitle string, orgID int64) models.AlertRule {
+func createTestRule(title string, groupTitle string, orgID int64, namespace string) models.AlertRule {
 	return models.AlertRule{
 		OrgID:           orgID,
 		Title:           title,
@@ -583,7 +603,7 @@ func createTestRule(title string, groupTitle string, orgID int64) models.AlertRu
 				},
 			},
 		},
-		NamespaceUID: "my-namespace",
+		NamespaceUID: namespace,
 		RuleGroup:    groupTitle,
 		For:          time.Second * 60,
 		NoDataState:  models.OK,

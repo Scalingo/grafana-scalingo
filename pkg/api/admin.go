@@ -3,12 +3,13 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/grafana/grafana/pkg/api/response"
 	ac "github.com/grafana/grafana/pkg/services/accesscontrol"
+	"github.com/grafana/grafana/pkg/services/auth/identity"
 	contextmodel "github.com/grafana/grafana/pkg/services/contexthandler/model"
 	"github.com/grafana/grafana/pkg/services/stats"
-	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
@@ -33,6 +34,19 @@ func (hs *HTTPServer) AdminGetSettings(c *contextmodel.ReqContext) response.Resp
 	return response.JSON(http.StatusOK, settings)
 }
 
+func (hs *HTTPServer) AdminGetVerboseSettings(c *contextmodel.ReqContext) response.Response {
+	bag := hs.SettingsProvider.CurrentVerbose()
+	if bag == nil {
+		return response.JSON(http.StatusNotImplemented, make(map[string]string))
+	}
+
+	verboseSettings, err := hs.getAuthorizedVerboseSettings(c.Req.Context(), c.SignedInUser, bag)
+	if err != nil {
+		return response.Error(http.StatusForbidden, "Failed to authorize settings", err)
+	}
+	return response.JSON(http.StatusOK, verboseSettings)
+}
+
 // swagger:route GET /admin/stats admin adminGetStats
 //
 // Fetch Grafana Stats.
@@ -50,15 +64,17 @@ func (hs *HTTPServer) AdminGetStats(c *contextmodel.ReqContext) response.Respons
 	if err != nil {
 		return response.Error(500, "Failed to get admin stats from database", err)
 	}
+	thirtyDays := 30 * 24 * time.Hour
+	devicesCount, err := hs.anonService.CountDevices(c.Req.Context(), time.Now().Add(-thirtyDays), time.Now().Add(time.Minute))
+	if err != nil {
+		return response.Error(500, "Failed to get anon stats from database", err)
+	}
+	adminStats.AnonymousStats.ActiveDevices = devicesCount
 
 	return response.JSON(http.StatusOK, adminStats)
 }
 
-func (hs *HTTPServer) getAuthorizedSettings(ctx context.Context, user *user.SignedInUser, bag setting.SettingsBag) (setting.SettingsBag, error) {
-	if hs.AccessControl.IsDisabled() {
-		return bag, nil
-	}
-
+func (hs *HTTPServer) getAuthorizedSettings(ctx context.Context, user identity.Requester, bag setting.SettingsBag) (setting.SettingsBag, error) {
 	eval := func(scope string) (bool, error) {
 		return hs.AccessControl.Evaluate(ctx, user, ac.EvalPermission(ac.ActionSettingsRead, scope))
 	}
@@ -96,6 +112,51 @@ func (hs *HTTPServer) getAuthorizedSettings(ctx context.Context, user *user.Sign
 			}
 		}
 	}
+	return authorizedBag, nil
+}
+
+func (hs *HTTPServer) getAuthorizedVerboseSettings(ctx context.Context, user identity.Requester, bag setting.VerboseSettingsBag) (setting.VerboseSettingsBag, error) {
+	eval := func(scope string) (bool, error) {
+		return hs.AccessControl.Evaluate(ctx, user, ac.EvalPermission(ac.ActionSettingsRead, scope))
+	}
+
+	ok, err := eval(ac.ScopeSettingsAll)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return bag, nil
+	}
+
+	authorizedBag := make(setting.VerboseSettingsBag)
+
+	for section, keys := range bag {
+		ok, err := eval(ac.Scope("settings", section, "*"))
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			authorizedBag[section] = keys
+			continue
+		}
+
+		for key := range keys {
+			ok, err := eval(ac.Scope("settings", section, key))
+			if err != nil {
+				return nil, err
+			}
+
+			if !ok {
+				continue
+			}
+
+			if _, exists := authorizedBag[section]; !exists {
+				authorizedBag[section] = make(map[string]map[setting.VerboseSourceType]string)
+			}
+			authorizedBag[section][key] = bag[section][key]
+		}
+	}
+
 	return authorizedBag, nil
 }
 

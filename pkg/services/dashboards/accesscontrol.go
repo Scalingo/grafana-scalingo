@@ -166,10 +166,12 @@ func NewDashboardUIDScopeResolver(folderDB folder.FolderStore, ds DashboardServi
 
 func resolveDashboardScope(ctx context.Context, folderDB folder.FolderStore, orgID int64, dashboard *Dashboard, folderSvc folder.Service) ([]string, error) {
 	var folderUID string
+	// nolint:staticcheck
 	if dashboard.FolderID < 0 {
 		return []string{ScopeDashboardsProvider.GetResourceScopeUID(dashboard.UID)}, nil
 	}
 
+	// nolint:staticcheck
 	if dashboard.FolderID == 0 {
 		folderUID = ac.GeneralFolderUID
 	} else {
@@ -196,6 +198,9 @@ func resolveDashboardScope(ctx context.Context, folderDB folder.FolderStore, org
 }
 
 func GetInheritedScopes(ctx context.Context, orgID int64, folderUID string, folderSvc folder.Service) ([]string, error) {
+	if folderUID == ac.GeneralFolderUID {
+		return nil, nil
+	}
 	ancestors, err := folderSvc.GetParents(ctx, folder.GetParentsQuery{
 		UID:   folderUID,
 		OrgID: orgID,

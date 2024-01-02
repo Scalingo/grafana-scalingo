@@ -11,6 +11,7 @@ import {
   getRangeSnapInterval,
   parseSelector,
   toPromLikeQuery,
+  truncateResult,
 } from './language_utils';
 import { PrometheusCacheLevel } from './types';
 
@@ -249,7 +250,7 @@ describe('getRangeSnapInterval', () => {
   it('will snap range to closest minute', () => {
     const queryDurationMinutes = 10;
     const intervalSeconds = queryDurationMinutes * 60; // 10 minutes
-    const now = new Date().valueOf();
+    const now = 1680901009826;
     const nowPlusOneMinute = now + 1000 * 60;
     const nowPlusTwoMinute = now + 1000 * 60 * 2;
 
@@ -303,7 +304,7 @@ describe('getRangeSnapInterval', () => {
   it('will snap range to closest 10 minute', () => {
     const queryDurationMinutes = 60;
     const intervalSeconds = queryDurationMinutes * 60; // 10 minutes
-    const now = new Date().valueOf();
+    const now = 1680901009826;
     const nowPlusOneMinute = now + 1000 * 60;
     const nowPlusTwoMinute = now + 1000 * 60 * 2;
 
@@ -380,7 +381,7 @@ describe('getRangeSnapInterval', () => {
   it('will snap range to closest 60 minute', () => {
     const queryDurationMinutes = 120;
     const intervalSeconds = queryDurationMinutes * 60;
-    const now = new Date().valueOf();
+    const now = 1680901009826;
     const nowPlusOneMinute = now + 1000 * 60;
     const nowPlusTwoMinute = now + 1000 * 60 * 2;
 
@@ -472,5 +473,17 @@ describe('toPromLikeQuery', () => {
       expr: '{label1="value1", label2!="value2", label3=~"value3", label4!~"value4"}',
       range: true,
     });
+  });
+});
+
+describe('truncateResult', () => {
+  it('truncates array longer then 1k from the start of array', () => {
+    // creates an array of 1k + 1 elements with values from 0 to 1k
+    const array = Array.from(Array(1001).keys());
+    expect(array[1000]).toBe(1000);
+    truncateResult(array);
+    expect(array.length).toBe(1000);
+    expect(array[0]).toBe(0);
+    expect(array[999]).toBe(999);
   });
 });

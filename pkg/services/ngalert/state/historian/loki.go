@@ -11,10 +11,10 @@ import (
 	"github.com/benbjohnson/clock"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/weaveworks/common/http/client"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
 	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/services/ngalert/eval"
 	"github.com/grafana/grafana/pkg/services/ngalert/metrics"
 	"github.com/grafana/grafana/pkg/services/ngalert/models"
@@ -41,9 +41,9 @@ const (
 const defaultQueryRange = 6 * time.Hour
 
 type remoteLokiClient interface {
-	ping(context.Context) error
-	push(context.Context, []stream) error
-	rangeQuery(ctx context.Context, logQL string, start, end int64) (queryRes, error)
+	Ping(context.Context) error
+	Push(context.Context, []Stream) error
+	RangeQuery(ctx context.Context, logQL string, start, end, limit int64) (QueryRes, error)
 }
 
 // RemoteLokibackend is a state.Historian that records state history to an external Loki instance.
@@ -58,7 +58,7 @@ type RemoteLokiBackend struct {
 func NewRemoteLokiBackend(cfg LokiConfig, req client.Requester, metrics *metrics.Historian) *RemoteLokiBackend {
 	logger := log.New("ngalert.state.historian", "backend", "loki")
 	return &RemoteLokiBackend{
-		client:         newLokiClient(cfg, req, metrics, logger),
+		client:         NewLokiClient(cfg, req, metrics, logger),
 		externalLabels: cfg.ExternalLabels,
 		clock:          clock.New(),
 		metrics:        metrics,
@@ -67,7 +67,7 @@ func NewRemoteLokiBackend(cfg LokiConfig, req client.Requester, metrics *metrics
 }
 
 func (h *RemoteLokiBackend) TestConnection(ctx context.Context) error {
-	return h.client.ping(ctx)
+	return h.client.Ping(ctx)
 }
 
 // Record writes a number of state transitions for a given rule to an external Loki instance.
@@ -89,7 +89,7 @@ func (h *RemoteLokiBackend) Record(ctx context.Context, rule history_model.RuleM
 	writeCtx := context.Background()
 	writeCtx, cancel := context.WithTimeout(writeCtx, StateHistoryWriteTimeout)
 	writeCtx = history_model.WithRuleData(writeCtx, rule)
-	writeCtx = tracing.ContextWithSpan(writeCtx, tracing.SpanFromContext(ctx))
+	writeCtx = trace.ContextWithSpan(writeCtx, trace.SpanFromContext(ctx))
 
 	go func(ctx context.Context) {
 		defer cancel()
@@ -100,7 +100,7 @@ func (h *RemoteLokiBackend) Record(ctx context.Context, rule history_model.RuleM
 		h.metrics.WritesTotal.WithLabelValues(org, "loki").Inc()
 		h.metrics.TransitionsTotal.WithLabelValues(org).Add(float64(len(logStream.Values)))
 
-		if err := h.recordStreams(ctx, []stream{logStream}, logger); err != nil {
+		if err := h.recordStreams(ctx, []Stream{logStream}, logger); err != nil {
 			logger.Error("Failed to save alert state history batch", "error", err)
 			h.metrics.WritesFailed.WithLabelValues(org, "loki").Inc()
 			h.metrics.TransitionsFailed.WithLabelValues(org).Add(float64(len(logStream.Values)))
@@ -126,7 +126,7 @@ func (h *RemoteLokiBackend) Query(ctx context.Context, query models.HistoryQuery
 	}
 
 	// Timestamps are expected in RFC3339Nano.
-	res, err := h.client.rangeQuery(ctx, logQL, query.From.UnixNano(), query.To.UnixNano())
+	res, err := h.client.RangeQuery(ctx, logQL, query.From.UnixNano(), query.To.UnixNano(), int64(query.Limit))
 	if err != nil {
 		return nil, err
 	}
@@ -151,20 +151,11 @@ func buildSelectors(query models.HistoryQuery) ([]Selector, error) {
 	}
 	selectors[1] = selector
 
-	// Set the optional special selector rule_id
-	if query.RuleUID != "" {
-		rsel, err := NewSelector(RuleUIDLabel, "=", query.RuleUID)
-		if err != nil {
-			return nil, err
-		}
-		selectors = append(selectors, rsel)
-	}
-
 	return selectors, nil
 }
 
 // merge will put all the results in one array sorted by timestamp.
-func merge(res queryRes, ruleUID string) (*data.Frame, error) {
+func merge(res QueryRes, ruleUID string) (*data.Frame, error) {
 	// Find the total number of elements in all arrays.
 	totalLen := 0
 	for _, arr := range res.Data.Result {
@@ -190,7 +181,7 @@ func merge(res queryRes, ruleUID string) (*data.Frame, error) {
 	pointers := make([]int, len(res.Data.Result))
 	for {
 		minTime := int64(math.MaxInt64)
-		minEl := sample{}
+		minEl := Sample{}
 		minElStreamIdx := -1
 		// Find the element with the earliest time among all arrays.
 		for i, stream := range res.Data.Result {
@@ -240,29 +231,32 @@ func merge(res queryRes, ruleUID string) (*data.Frame, error) {
 	return frame, nil
 }
 
-func statesToStream(rule history_model.RuleMeta, states []state.StateTransition, externalLabels map[string]string, logger log.Logger) stream {
+func statesToStream(rule history_model.RuleMeta, states []state.StateTransition, externalLabels map[string]string, logger log.Logger) Stream {
 	labels := mergeLabels(make(map[string]string), externalLabels)
 	// System-defined labels take precedence over user-defined external labels.
 	labels[StateHistoryLabelKey] = StateHistoryLabelValue
 	labels[OrgIDLabel] = fmt.Sprint(rule.OrgID)
-	labels[RuleUIDLabel] = fmt.Sprint(rule.UID)
 	labels[GroupLabel] = fmt.Sprint(rule.Group)
 	labels[FolderUIDLabel] = fmt.Sprint(rule.NamespaceUID)
 
-	samples := make([]sample, 0, len(states))
+	samples := make([]Sample, 0, len(states))
 	for _, state := range states {
 		if !shouldRecord(state) {
 			continue
 		}
 
+		sanitizedLabels := removePrivateLabels(state.Labels)
 		entry := lokiEntry{
 			SchemaVersion:  1,
 			Previous:       state.PreviousFormatted(),
 			Current:        state.Formatted(),
 			Values:         valuesAsDataBlob(state.State),
+			Condition:      rule.Condition,
 			DashboardUID:   rule.DashboardUID,
 			PanelID:        rule.PanelID,
-			InstanceLabels: removePrivateLabels(state.Labels),
+			Fingerprint:    labelFingerprint(sanitizedLabels),
+			RuleUID:        rule.UID,
+			InstanceLabels: sanitizedLabels,
 		}
 		if state.State.State == eval.Error {
 			entry.Error = state.Error.Error()
@@ -275,20 +269,20 @@ func statesToStream(rule history_model.RuleMeta, states []state.StateTransition,
 		}
 		line := string(jsn)
 
-		samples = append(samples, sample{
+		samples = append(samples, Sample{
 			T: state.State.LastEvaluationTime,
 			V: line,
 		})
 	}
 
-	return stream{
+	return Stream{
 		Stream: labels,
 		Values: samples,
 	}
 }
 
-func (h *RemoteLokiBackend) recordStreams(ctx context.Context, streams []stream, logger log.Logger) error {
-	if err := h.client.push(ctx, streams); err != nil {
+func (h *RemoteLokiBackend) recordStreams(ctx context.Context, streams []Stream, logger log.Logger) error {
+	if err := h.client.Push(ctx, streams); err != nil {
 		return err
 	}
 
@@ -302,8 +296,11 @@ type lokiEntry struct {
 	Current       string           `json:"current"`
 	Error         string           `json:"error,omitempty"`
 	Values        *simplejson.Json `json:"values"`
+	Condition     string           `json:"condition"`
 	DashboardUID  string           `json:"dashboardUID"`
 	PanelID       int64            `json:"panelID"`
+	Fingerprint   string           `json:"fingerprint"`
+	RuleUID       string           `json:"ruleUID"`
 	// InstanceLabels is exactly the set of labels associated with the alert instance in Alertmanager.
 	// These should not be conflated with labels associated with log streams.
 	InstanceLabels map[string]string `json:"labels"`
@@ -373,6 +370,20 @@ func buildLogQuery(query models.HistoryQuery) (string, error) {
 
 	logQL := selectorString(selectors)
 
+	if queryHasLogFilters(query) {
+		logQL = fmt.Sprintf("%s | json", logQL)
+	}
+
+	if query.RuleUID != "" {
+		logQL = fmt.Sprintf("%s | ruleUID=%q", logQL, query.RuleUID)
+	}
+	if query.DashboardUID != "" {
+		logQL = fmt.Sprintf("%s | dashboardUID=%q", logQL, query.DashboardUID)
+	}
+	if query.PanelID != 0 {
+		logQL = fmt.Sprintf("%s | panelID=%d", logQL, query.PanelID)
+	}
+
 	labelFilters := ""
 	labelKeys := make([]string, 0, len(query.Labels))
 	for k := range query.Labels {
@@ -383,10 +394,14 @@ func buildLogQuery(query models.HistoryQuery) (string, error) {
 	for _, k := range labelKeys {
 		labelFilters += fmt.Sprintf(" | labels_%s=%q", k, query.Labels[k])
 	}
-
-	if labelFilters != "" {
-		logQL = fmt.Sprintf("%s | json%s", logQL, labelFilters)
-	}
+	logQL += labelFilters
 
 	return logQL, nil
+}
+
+func queryHasLogFilters(query models.HistoryQuery) bool {
+	return query.RuleUID != "" ||
+		query.DashboardUID != "" ||
+		query.PanelID != 0 ||
+		len(query.Labels) > 0
 }

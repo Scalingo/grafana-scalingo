@@ -3,7 +3,6 @@ package notifiers
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -70,7 +69,7 @@ func TestNotificationAsConfig(t *testing.T) {
 
 		t.Run("Can read correct properties", func(t *testing.T) {
 			setup()
-			_ = os.Setenv("TEST_VAR", "default")
+			t.Setenv("TEST_VAR", "default")
 			cfgProvider := &configReader{
 				orgService:        orgService,
 				encryptionService: encryptionService,
@@ -78,7 +77,6 @@ func TestNotificationAsConfig(t *testing.T) {
 			}
 
 			cfg, err := cfgProvider.readConfig(context.Background(), correctProperties)
-			_ = os.Unsetenv("TEST_VAR")
 			if err != nil {
 				t.Fatalf("readConfig return an error %v", err)
 			}
@@ -94,7 +92,7 @@ func TestNotificationAsConfig(t *testing.T) {
 			require.Equal(t, nt.OrgID, int64(2))
 			require.Equal(t, nt.UID, "notifier1")
 			require.True(t, nt.IsDefault)
-			require.Equal(t, nt.Settings, map[string]interface{}{
+			require.Equal(t, nt.Settings, map[string]any{
 				"recipient": "XXX", "token": "xoxb", "uploadImage": true, "url": "https://slack.com",
 			})
 			require.Equal(t, nt.SecureSettings, map[string]string{

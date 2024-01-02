@@ -185,6 +185,9 @@ var (
 	// StatsTotalAlertRules is a metric of total number of alert rules stored in Grafana.
 	StatsTotalAlertRules prometheus.Gauge
 
+	// StatsTotalRuleGroups is a metric of total number of alert rule groups stored in Grafana.
+	StatsTotalRuleGroups prometheus.Gauge
+
 	// StatsTotalDashboardVersions is a metric of total number of dashboard versions stored in Grafana.
 	StatsTotalDashboardVersions prometheus.Gauge
 
@@ -201,6 +204,9 @@ var (
 
 	// MStatTotalPublicDashboards is a metric total amount of public dashboards
 	MStatTotalPublicDashboards prometheus.Gauge
+
+	// MStatTotalCorrelations is a metric total amount of correlations
+	MStatTotalCorrelations prometheus.Gauge
 )
 
 func init() {
@@ -505,7 +511,7 @@ func init() {
 
 	StatsTotalActiveViewers = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name:      "stat_totals_active_viewers",
-		Help:      "total amount of viewers",
+		Help:      "total amount of active viewers",
 		Namespace: ExporterName,
 	})
 
@@ -551,6 +557,12 @@ func init() {
 		Namespace: ExporterName,
 	})
 
+	StatsTotalRuleGroups = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:      "stat_totals_rule_groups",
+		Help:      "total amount of alert rule groups in the database",
+		Namespace: ExporterName,
+	})
+
 	MAccessPermissionsSummary = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "access_permissions_duration",
 		Help:    "Histogram for the runtime of permissions check function.",
@@ -592,10 +604,16 @@ func init() {
 		Help:      "total amount of public dashboards",
 		Namespace: ExporterName,
 	})
+
+	MStatTotalCorrelations = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:      "stat_totals_correlations",
+		Help:      "total amount of correlations",
+		Namespace: ExporterName,
+	})
 }
 
 // SetBuildInformation sets the build information for this binary
-func SetBuildInformation(version, revision, branch string, buildTimestamp int64) {
+func SetBuildInformation(reg prometheus.Registerer, version, revision, branch string, buildTimestamp int64) {
 	edition := "oss"
 	if setting.IsEnterprise {
 		edition = "enterprise"
@@ -613,7 +631,7 @@ func SetBuildInformation(version, revision, branch string, buildTimestamp int64)
 		Namespace: ExporterName,
 	}, []string{"version", "revision", "branch", "goversion", "edition"})
 
-	prometheus.MustRegister(grafanaBuildVersion, grafanaBuildTimestamp)
+	reg.MustRegister(grafanaBuildVersion, grafanaBuildTimestamp)
 
 	grafanaBuildVersion.WithLabelValues(version, revision, branch, runtime.Version(), edition).Set(1)
 	grafanaBuildTimestamp.WithLabelValues(version, revision, branch, runtime.Version(), edition).Set(float64(buildTimestamp))
@@ -621,7 +639,7 @@ func SetBuildInformation(version, revision, branch string, buildTimestamp int64)
 
 // SetEnvironmentInformation exposes environment values provided by the operators as an `_info` metric.
 // If there are no environment metrics labels configured, this metric will not be exposed.
-func SetEnvironmentInformation(labels map[string]string) error {
+func SetEnvironmentInformation(reg prometheus.Registerer, labels map[string]string) error {
 	if len(labels) == 0 {
 		return nil
 	}
@@ -633,7 +651,7 @@ func SetEnvironmentInformation(labels map[string]string) error {
 		ConstLabels: labels,
 	})
 
-	prometheus.MustRegister(grafanaEnvironmentInfo)
+	reg.MustRegister(grafanaEnvironmentInfo)
 
 	grafanaEnvironmentInfo.Set(1)
 	return nil
@@ -643,8 +661,8 @@ func SetPluginBuildInformation(pluginID, pluginType, version, signatureStatus st
 	grafanaPluginBuildInfoDesc.WithLabelValues(pluginID, pluginType, version, signatureStatus).Set(1)
 }
 
-func initMetricVars() {
-	prometheus.MustRegister(
+func initMetricVars(reg prometheus.Registerer) {
+	reg.MustRegister(
 		MInstanceStart,
 		MPageStatus,
 		MApiStatus,
@@ -698,6 +716,8 @@ func initMetricVars() {
 		grafanaPluginBuildInfoDesc,
 		StatsTotalDashboardVersions,
 		StatsTotalAnnotations,
+		StatsTotalAlertRules,
+		StatsTotalRuleGroups,
 		MAccessEvaluationCount,
 		StatsTotalLibraryPanels,
 		StatsTotalLibraryVariables,
@@ -705,5 +725,6 @@ func initMetricVars() {
 		MStatTotalPublicDashboards,
 		MPublicDashboardRequestCount,
 		MPublicDashboardDatasourceQuerySuccess,
+		MStatTotalCorrelations,
 	)
 }

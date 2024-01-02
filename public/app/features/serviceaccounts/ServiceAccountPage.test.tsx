@@ -13,8 +13,7 @@ jest.mock('app/core/core', () => ({
   contextSrv: {
     licensedAccessControlEnabled: () => false,
     hasPermission: () => true,
-    hasPermissionInMetadata: () => true,
-    hasAccessInMetadata: () => false,
+    hasPermissionInMetadata: () => false,
   },
 }));
 
@@ -30,7 +29,6 @@ const setup = (propOverrides: Partial<Props>) => {
     serviceAccount: {} as ServiceAccountDTO,
     tokens: [],
     isLoading: false,
-    roleOptions: [],
     match: {
       params: { id: '1' },
       isExact: true,

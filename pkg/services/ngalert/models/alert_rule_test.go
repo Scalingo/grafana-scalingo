@@ -17,6 +17,51 @@ import (
 	"github.com/grafana/grafana/pkg/util"
 )
 
+func TestSortAlertRulesByGroupKeyAndIndex(t *testing.T) {
+	tc := []struct {
+		name     string
+		input    []*AlertRule
+		expected []*AlertRule
+	}{{
+		name: "alert rules are ordered by organization",
+		input: []*AlertRule{
+			{OrgID: 2, NamespaceUID: "test2"},
+			{OrgID: 1, NamespaceUID: "test1"},
+		},
+		expected: []*AlertRule{
+			{OrgID: 1, NamespaceUID: "test1"},
+			{OrgID: 2, NamespaceUID: "test2"},
+		},
+	}, {
+		name: "alert rules in same organization are ordered by namespace",
+		input: []*AlertRule{
+			{OrgID: 1, NamespaceUID: "test2"},
+			{OrgID: 1, NamespaceUID: "test1"},
+		},
+		expected: []*AlertRule{
+			{OrgID: 1, NamespaceUID: "test1"},
+			{OrgID: 1, NamespaceUID: "test2"},
+		},
+	}, {
+		name: "alert rules with same group key are ordered by index",
+		input: []*AlertRule{
+			{OrgID: 1, NamespaceUID: "test", RuleGroupIndex: 2},
+			{OrgID: 1, NamespaceUID: "test", RuleGroupIndex: 1},
+		},
+		expected: []*AlertRule{
+			{OrgID: 1, NamespaceUID: "test", RuleGroupIndex: 1},
+			{OrgID: 1, NamespaceUID: "test", RuleGroupIndex: 2},
+		},
+	}}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			AlertRulesBy(AlertRulesByGroupKeyAndIndex).Sort(tt.input)
+			assert.EqualValues(t, tt.expected, tt.input)
+		})
+	}
+}
+
 func TestNoDataStateFromString(t *testing.T) {
 	allKnownNoDataStates := [...]NoDataState{
 		Alerting,
@@ -565,7 +610,7 @@ func TestDiff(t *testing.T) {
 			},
 			DatasourceUID: util.GenerateShortUID(),
 			Model:         json.RawMessage(`{ "test": "data"}`),
-			modelProps: map[string]interface{}{
+			modelProps: map[string]any{
 				"test": 1,
 			},
 		}
@@ -574,7 +619,7 @@ func TestDiff(t *testing.T) {
 
 		t.Run("should ignore modelProps", func(t *testing.T) {
 			query2 := query1
-			query2.modelProps = map[string]interface{}{
+			query2.modelProps = map[string]any{
 				"some": "other value",
 			}
 			rule2.Data = []AlertQuery{query2}

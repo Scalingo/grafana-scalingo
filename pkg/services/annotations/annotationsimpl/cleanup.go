@@ -15,11 +15,7 @@ type CleanupServiceImpl struct {
 
 func ProvideCleanupService(db db.DB, cfg *setting.Cfg) *CleanupServiceImpl {
 	return &CleanupServiceImpl{
-		store: &xormRepositoryImpl{
-			cfg: cfg,
-			db:  db,
-			log: log.New("annotations"),
-		},
+		store: NewXormStore(cfg, log.New("annotations"), db, nil),
 	}
 }
 

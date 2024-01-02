@@ -8,11 +8,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/grafana/grafana/pkg/bus"
+	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/infra/log/logtest"
 	"github.com/grafana/grafana/pkg/infra/tracing"
+	"github.com/grafana/grafana/pkg/services/accesscontrol"
+	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/folder"
 	"github.com/grafana/grafana/pkg/services/folder/folderimpl"
+	"github.com/grafana/grafana/pkg/services/ngalert/testutil"
 	"github.com/grafana/grafana/pkg/services/org"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/services/user"
@@ -21,6 +28,7 @@ import (
 	"golang.org/x/exp/rand"
 
 	"github.com/grafana/grafana/pkg/infra/db"
+	acmock "github.com/grafana/grafana/pkg/services/accesscontrol/mock"
 	"github.com/grafana/grafana/pkg/services/ngalert/models"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
@@ -31,7 +39,7 @@ func TestIntegrationUpdateAlertRules(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	cfg := setting.NewCfg()
-	cfg.UnifiedAlerting = setting.UnifiedAlertingSettings{BaseInterval: time.Duration(rand.Int63n(100)) * time.Second}
+	cfg.UnifiedAlerting = setting.UnifiedAlertingSettings{BaseInterval: time.Duration(rand.Int63n(100)+1) * time.Second}
 	sqlStore := db.InitTestDB(t)
 	store := &DBstore{
 		SQLStore:      sqlStore,
@@ -39,9 +47,10 @@ func TestIntegrationUpdateAlertRules(t *testing.T) {
 		FolderService: setupFolderService(t, sqlStore, cfg),
 		Logger:        &logtest.Fake{},
 	}
+	generator := models.AlertRuleGen(withIntervalMatching(store.Cfg.BaseInterval), models.WithUniqueID())
 
 	t.Run("should increase version", func(t *testing.T) {
-		rule := createRule(t, store)
+		rule := createRule(t, store, generator)
 		newRule := models.CopyRule(rule)
 		newRule.Title = util.GenerateShortUID()
 		err := store.UpdateAlertRules(context.Background(), []models.UpdateRule{{
@@ -63,7 +72,7 @@ func TestIntegrationUpdateAlertRules(t *testing.T) {
 	})
 
 	t.Run("should fail due to optimistic locking if version does not match", func(t *testing.T) {
-		rule := createRule(t, store)
+		rule := createRule(t, store, generator)
 		rule.Version-- // simulate version discrepancy
 
 		newRule := models.CopyRule(rule)
@@ -93,13 +102,13 @@ func TestIntegrationUpdateAlertRulesWithUniqueConstraintViolation(t *testing.T) 
 		Logger:        &logtest.Fake{},
 	}
 
-	//idMutator := models.WithUniqueID()
+	idMutator := models.WithUniqueID()
 	createRuleInFolder := func(title string, orgID int64, namespaceUID string) *models.AlertRule {
-		//generator := models.AlertRuleGen(withIntervalMatching(store.Cfg.BaseInterval), idMutator, models.WithNamespace(&folder.Folder{
-		//	UID:   namespaceUID,
-		//	Title: namespaceUID,
-		//}), withOrgID(orgID), models.WithTitle(title))
-		return createRule(t, store)
+		generator := models.AlertRuleGen(withIntervalMatching(store.Cfg.BaseInterval), idMutator, models.WithNamespace(&folder.Folder{
+			UID:   namespaceUID,
+			Title: namespaceUID,
+		}), withOrgID(orgID), models.WithTitle(title))
+		return createRule(t, store, generator)
 	}
 
 	t.Run("should handle update chains without unique constraint violation", func(t *testing.T) {
@@ -321,15 +330,17 @@ func TestIntegration_GetAlertRulesForScheduling(t *testing.T) {
 
 	sqlStore := db.InitTestDB(t)
 	store := &DBstore{
-		SQLStore: sqlStore,
-		Cfg: setting.UnifiedAlertingSettings{
-			BaseInterval: time.Duration(rand.Int63n(100)) * time.Second,
-		},
-		FolderService: setupFolderService(t, sqlStore, cfg),
+		SQLStore:       sqlStore,
+		Cfg:            cfg.UnifiedAlerting,
+		FolderService:  setupFolderService(t, sqlStore, cfg),
+		FeatureToggles: featuremgmt.WithFeatures(),
 	}
 
-	rule1 := createRule(t, store)
-	rule2 := createRule(t, store)
+	generator := models.AlertRuleGen(withIntervalMatching(store.Cfg.BaseInterval), models.WithUniqueID(), models.WithUniqueOrgID())
+	rule1 := createRule(t, store, generator)
+	rule2 := createRule(t, store, generator)
+	createFolder(t, store, rule1.NamespaceUID, rule1.Title, rule1.OrgID)
+	createFolder(t, store, rule2.NamespaceUID, rule2.Title, rule2.OrgID)
 
 	tc := []struct {
 		name         string
@@ -402,7 +413,7 @@ func TestIntegration_GetAlertRulesForScheduling(t *testing.T) {
 
 func withIntervalMatching(baseInterval time.Duration) func(*models.AlertRule) {
 	return func(rule *models.AlertRule) {
-		rule.IntervalSeconds = int64(baseInterval.Seconds()) * rand.Int63n(10)
+		rule.IntervalSeconds = int64(baseInterval.Seconds()) * (rand.Int63n(10) + 1)
 		rule.For = time.Duration(rule.IntervalSeconds*rand.Int63n(9)+1) * time.Second
 	}
 }
@@ -415,7 +426,7 @@ func TestIntegration_CountAlertRules(t *testing.T) {
 	sqlStore := db.InitTestDB(t)
 	cfg := setting.NewCfg()
 	store := &DBstore{SQLStore: sqlStore, FolderService: setupFolderService(t, sqlStore, cfg)}
-	rule := createRule(t, store)
+	rule := createRule(t, store, nil)
 
 	tests := map[string]struct {
 		query     *models.CountAlertRulesQuery
@@ -442,7 +453,8 @@ func TestIntegration_CountAlertRules(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			count, err := store.CountAlertRulesInFolder(context.Background(), test.query)
+			count, err := store.CountInFolder(context.Background(),
+				test.query.OrgID, test.query.NamespaceUID, nil)
 			if test.expectErr {
 				require.Error(t, err)
 			} else {
@@ -453,10 +465,119 @@ func TestIntegration_CountAlertRules(t *testing.T) {
 	}
 }
 
-func createRule(t *testing.T, store *DBstore) *models.AlertRule {
+func TestIntegration_DeleteInFolder(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	sqlStore := db.InitTestDB(t)
+	cfg := setting.NewCfg()
+	store := &DBstore{
+		SQLStore:      sqlStore,
+		FolderService: setupFolderService(t, sqlStore, cfg),
+		Logger:        log.New("test-dbstore"),
+	}
+	rule := createRule(t, store, nil)
+
+	t.Run("should not be able to delete folder without permissions to delete rules", func(t *testing.T) {
+		store.AccessControl = acmock.New()
+		err := store.DeleteInFolder(context.Background(), rule.OrgID, rule.NamespaceUID, &user.SignedInUser{})
+		require.ErrorIs(t, err, dashboards.ErrFolderAccessDenied)
+	})
+
+	t.Run("should be able to delete folder with permissions to delete rules", func(t *testing.T) {
+		store.AccessControl = acmock.New().WithPermissions([]accesscontrol.Permission{
+			{Action: accesscontrol.ActionAlertingRuleDelete, Scope: dashboards.ScopeFoldersAll},
+		})
+		err := store.DeleteInFolder(context.Background(), rule.OrgID, rule.NamespaceUID, &user.SignedInUser{})
+		require.NoError(t, err)
+
+		c, err := store.CountInFolder(context.Background(), rule.OrgID, rule.NamespaceUID, &user.SignedInUser{})
+		require.NoError(t, err)
+		require.Equal(t, int64(0), c)
+	})
+}
+
+func TestIntegration_GetNamespaceByUID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	sqlStore := db.InitTestDB(t)
+	cfg := setting.NewCfg()
+	store := &DBstore{
+		SQLStore:      sqlStore,
+		FolderService: setupFolderService(t, sqlStore, cfg),
+		Logger:        log.New("test-dbstore"),
+	}
+
+	u := &user.SignedInUser{
+		UserID:         1,
+		OrgID:          1,
+		OrgRole:        org.RoleAdmin,
+		IsGrafanaAdmin: true,
+	}
+
+	uid := uuid.NewString()
+	title := "folder-title"
+	createFolder(t, store, uid, title, 1)
+
+	actual, err := store.GetNamespaceByUID(context.Background(), uid, 1, u)
+	require.NoError(t, err)
+	require.Equal(t, title, actual.Title)
+	require.Equal(t, uid, actual.UID)
+}
+
+func TestIntegrationInsertAlertRules(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	sqlStore := db.InitTestDB(t)
+	cfg := setting.NewCfg()
+	cfg.UnifiedAlerting.BaseInterval = 1 * time.Second
+	store := &DBstore{
+		SQLStore:      sqlStore,
+		FolderService: setupFolderService(t, sqlStore, cfg),
+		Logger:        log.New("test-dbstore"),
+		Cfg:           cfg.UnifiedAlerting,
+	}
+
+	rules := models.GenerateAlertRules(5, models.AlertRuleGen(models.WithOrgID(1), withIntervalMatching(store.Cfg.BaseInterval)))
+	deref := make([]models.AlertRule, 0, len(rules))
+	for _, rule := range rules {
+		deref = append(deref, *rule)
+	}
+
+	ids, err := store.InsertAlertRules(context.Background(), deref)
+	require.NoError(t, err)
+	require.Len(t, ids, len(rules))
+
+	dbRules, err := store.ListAlertRules(context.Background(), &models.ListAlertRulesQuery{
+		OrgID: 1,
+	})
+	require.NoError(t, err)
+	for idx, keyWithID := range ids {
+		found := false
+		for _, rule := range dbRules {
+			if rule.GetKey() == keyWithID.AlertRuleKey {
+				expected := rules[idx]
+				require.Equal(t, keyWithID.ID, rule.ID)
+				require.Equal(t, expected.Title, rule.Title)
+				found = true
+				break
+			}
+		}
+		require.Truef(t, found, "Rule with key %#v was not found in database", keyWithID)
+	}
+}
+
+func createRule(t *testing.T, store *DBstore, generate func() *models.AlertRule) *models.AlertRule {
 	t.Helper()
-	rule := models.AlertRuleGen(withIntervalMatching(store.Cfg.BaseInterval), models.WithUniqueID())()
-	createFolder(t, store, rule.NamespaceUID, rule.Title, rule.OrgID)
+	if generate == nil {
+		generate = models.AlertRuleGen(withIntervalMatching(store.Cfg.BaseInterval), models.WithUniqueID())
+	}
+	rule := generate()
 	err := store.SQLStore.WithDbSession(context.Background(), func(sess *db.Session) error {
 		_, err := sess.Table(models.AlertRule{}).InsertOne(rule)
 		if err != nil {
@@ -481,7 +602,7 @@ func createRule(t *testing.T, store *DBstore) *models.AlertRule {
 	return rule
 }
 
-func createFolder(t *testing.T, store *DBstore, namespace, title string, orgID int64) {
+func createFolder(t *testing.T, store *DBstore, uid, title string, orgID int64) {
 	t.Helper()
 	u := &user.SignedInUser{
 		UserID:         1,
@@ -491,7 +612,7 @@ func createFolder(t *testing.T, store *DBstore, namespace, title string, orgID i
 	}
 
 	_, err := store.FolderService.Create(context.Background(), &folder.CreateFolderCommand{
-		UID:          namespace,
+		UID:          uid,
 		OrgID:        orgID,
 		Title:        title,
 		Description:  "",
@@ -505,7 +626,7 @@ func setupFolderService(t *testing.T, sqlStore *sqlstore.SQLStore, cfg *setting.
 	tracer := tracing.InitializeTracerForTest()
 	inProcBus := bus.ProvideBus(tracer)
 	folderStore := folderimpl.ProvideDashboardFolderStore(sqlStore)
-	_, dashboardStore := SetupDashboardService(t, sqlStore, folderStore, cfg)
+	_, dashboardStore := testutil.SetupDashboardService(t, sqlStore, folderStore, cfg)
 
-	return SetupFolderService(t, cfg, dashboardStore, folderStore, inProcBus)
+	return testutil.SetupFolderService(t, cfg, sqlStore, dashboardStore, folderStore, inProcBus)
 }

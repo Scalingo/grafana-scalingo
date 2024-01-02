@@ -15,9 +15,15 @@ weight: 800
 
 Auditing allows you to track important changes to your Grafana instance. By default, audit logs are logged to file but the auditing feature also supports sending logs directly to Loki.
 
+{{% admonition type="note" %}}
+To enable sending Grafana Cloud audit logs to your Grafana Cloud Logs instance, please [file a support ticket](/profile/org/tickets/new). Note that standard ingest and retention rates apply for ingesting these audit logs.
+{{% /admonition %}}
+
 Only API requests or UI actions that trigger an API request generate an audit log.
 
-> **Note:** Available in [Grafana Enterprise]({{< relref "../../introduction/grafana-enterprise/" >}}) version 7.3 and later, and [Grafana Cloud Advanced](/docs/grafana-cloud).
+{{% admonition type="note" %}}
+Available in [Grafana Enterprise]({{< relref "../../introduction/grafana-enterprise" >}}) version 7.3 and later, and [Grafana Cloud](/docs/grafana-cloud).
+{{% /admonition %}}
 
 ## Audit logs
 
@@ -135,7 +141,7 @@ to the action when the user requests a report's preview to be sent through email
 
 \* Where `AUTH-MODULE` is the name of the authentication module: `grafana`, `saml`,
 `ldap`, etc. \
-\*\* Includes manual log out, token expired/revoked, and [SAML Single Logout]({{< relref "configure-authentication/saml/#single-logout" >}}).
+\*\* Includes manual log out, token expired/revoked, and [SAML Single Logout]({{< relref "./configure-authentication/saml#single-logout" >}}).
 
 #### Service accounts
 
@@ -363,10 +369,12 @@ Furthermore, you can also record `GET` requests. See below how to configure it.
 
 ## Configuration
 
-> **Note:** The auditing feature is disabled by default.
+{{% admonition type="note" %}}
+The auditing feature is disabled by default.
+{{% /admonition %}}
 
 Audit logs can be saved into files, sent to a Loki instance or sent to the Grafana default logger. By default, only the file exporter is enabled.
-You can choose which exporter to use in the [configuration file]({{< relref "../configure-grafana/" >}}).
+You can choose which exporter to use in the [configuration file]({{< relref "../configure-grafana" >}}).
 
 Options are `file`, `loki`, and `logger`. Use spaces to separate multiple modes, such as `file loki`.
 
@@ -410,13 +418,15 @@ max_file_size_mb = 256
 
 Audit logs are sent to a [Loki](/oss/loki/) service, through HTTP or gRPC.
 
-> **Note:** The HTTP option for the Loki exporter is available only in Grafana Enterprise version 7.4 and later.
+{{% admonition type="note" %}}
+The HTTP option for the Loki exporter is available only in Grafana Enterprise version 7.4 and later.
+{{% /admonition %}}
 
 ```ini
 [auditing.logs.loki]
 # Set the communication protocol to use with Loki (can be grpc or http)
 type = grpc
-# Set the address for writing logs to Loki (format must be host:port)
+# Set the address for writing logs to Loki
 url = localhost:9095
 # Defaults to true. If true, it establishes a secure connection to Loki
 tls = true
@@ -431,6 +441,15 @@ If you have multiple Grafana instances sending logs to the same Loki service or 
 - **grafana_instance** - Application URL.
 - **kind** - `auditing`
 
+When basic authentication is needed to ingest logs in your Loki instance, you can specify credentials in the URL field. For example:
+
+```ini
+# Set the communication protocol to use with Loki (can be grpc or http)
+type = http
+# Set the address for writing logs to Loki
+url = user:password@localhost:3000
+```
+
 ### Console exporter
 
-Audit logs are sent to the Grafana default logger. The audit logs use the `auditing.console` logger and are logged on `debug`-level, learn how to enable debug logging in the [log configuration]({{< relref "../configure-grafana/#log" >}}) section of the documentation. Accessing the audit logs in this way is not recommended for production use.
+Audit logs are sent to the Grafana default logger. The audit logs use the `auditing.console` logger and are logged on `debug`-level, learn how to enable debug logging in the [log configuration]({{< relref "../configure-grafana#log" >}}) section of the documentation. Accessing the audit logs in this way is not recommended for production use.

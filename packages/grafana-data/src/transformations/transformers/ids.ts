@@ -37,4 +37,7 @@ export enum DataTransformerID {
   limit = 'limit',
   partitionByValues = 'partitionByValues',
   timeSeriesTable = 'timeSeriesTable',
+  formatTime = 'formatTime',
+  formatString = 'formatString',
+  regression = 'regression',
 }

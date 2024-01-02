@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs/cloudwatchlogsiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/oam"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi"
 	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi/resourcegroupstaggingapiiface"
@@ -50,10 +49,10 @@ var NewCWLogsClient = func(sess *session.Session) cloudwatchlogsiface.CloudWatch
 	return cloudwatchlogs.New(sess)
 }
 
-// EC2 client factory.
+// NewEC2Client is a client factory.
 //
 // Stubbable by tests.
-var newEC2Client = func(provider client.ConfigProvider) ec2iface.EC2API {
+var NewEC2Client = func(provider client.ConfigProvider) models.EC2APIProvider {
 	return ec2.New(provider)
 }
 

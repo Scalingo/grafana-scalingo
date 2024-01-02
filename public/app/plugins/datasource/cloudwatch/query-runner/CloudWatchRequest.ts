@@ -1,6 +1,13 @@
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
 
-import { DataSourceInstanceSettings, DataSourceRef, getDataSourceRef, ScopedVars } from '@grafana/data';
+import {
+  DataQueryRequest,
+  DataQueryResponse,
+  DataSourceInstanceSettings,
+  DataSourceRef,
+  getDataSourceRef,
+  ScopedVars,
+} from '@grafana/data';
 import { BackendDataSourceResponse, FetchResponse, getBackendSrv } from '@grafana/runtime';
 import { notifyApp } from 'app/core/actions';
 import { createErrorNotification } from 'app/core/copy/appNotification';
@@ -9,20 +16,26 @@ import { store } from 'app/store/store';
 import { AppNotificationTimeout } from 'app/types';
 
 import memoizedDebounce from '../memoizedDebounce';
-import { CloudWatchJsonData, Dimensions, MetricRequest, MultiFilters } from '../types';
+import { CloudWatchJsonData, CloudWatchQuery, Dimensions, MetricRequest, MultiFilters } from '../types';
 
 export abstract class CloudWatchRequest {
   templateSrv: TemplateSrv;
   ref: DataSourceRef;
   dsQueryEndpoint = '/api/ds/query';
+  query: (request: DataQueryRequest<CloudWatchQuery>) => Observable<DataQueryResponse>;
   debouncedCustomAlert: (title: string, message: string) => void = memoizedDebounce(
     displayCustomError,
     AppNotificationTimeout.Error
   );
 
-  constructor(public instanceSettings: DataSourceInstanceSettings<CloudWatchJsonData>, templateSrv: TemplateSrv) {
+  constructor(
+    public instanceSettings: DataSourceInstanceSettings<CloudWatchJsonData>,
+    templateSrv: TemplateSrv,
+    queryFn: (request: DataQueryRequest<CloudWatchQuery>) => Observable<DataQueryResponse> = () => of({ data: [] })
+  ) {
     this.templateSrv = templateSrv;
     this.ref = getDataSourceRef(instanceSettings);
+    this.query = queryFn;
   }
 
   awsRequest(

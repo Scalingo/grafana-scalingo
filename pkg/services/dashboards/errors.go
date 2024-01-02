@@ -116,20 +116,14 @@ var (
 		StatusCode: 404,
 		Status:     "not-found",
 	}
-	ErrDashboardThumbnailNotFound = DashboardErr{
-		Reason:     "Dashboard thumbnail not found",
-		StatusCode: 404,
-		Status:     "not-found",
-	}
 
-	ErrFolderNotFound           = errors.New("folder not found")
-	ErrFolderVersionMismatch    = errors.New("the folder has been changed by someone else")
-	ErrFolderTitleEmpty         = errors.New("folder title cannot be empty")
-	ErrFolderWithSameUIDExists  = errors.New("a folder/dashboard with the same uid already exists")
-	ErrFolderInvalidUID         = errors.New("invalid uid for folder provided")
-	ErrFolderSameNameExists     = errors.New("a folder or dashboard in the general folder with the same name already exists")
-	ErrFolderAccessDenied       = errors.New("access denied to folder")
-	ErrFolderContainsAlertRules = errors.New("folder contains alert rules")
+	ErrFolderNotFound          = errors.New("folder not found")
+	ErrFolderVersionMismatch   = errors.New("the folder has been changed by someone else")
+	ErrFolderTitleEmpty        = errors.New("folder title cannot be empty")
+	ErrFolderWithSameUIDExists = errors.New("a folder/dashboard with the same uid already exists")
+	ErrFolderInvalidUID        = errors.New("invalid uid for folder provided")
+	ErrFolderSameNameExists    = errors.New("a folder or dashboard in the general folder with the same name already exists")
+	ErrFolderAccessDenied      = errors.New("access denied to folder")
 )
 
 // DashboardErr represents a dashboard error.

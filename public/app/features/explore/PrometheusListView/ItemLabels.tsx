@@ -24,7 +24,7 @@ const getItemLabelsStyles = (theme: GrafanaTheme2, expanded: boolean) => {
   };
 };
 
-const formatValueName = (name: string): string => {
+export const formatValueName = (name: string): string => {
   if (name.includes(InstantQueryRefIdIndex)) {
     return name.replace(InstantQueryRefIdIndex, '');
   }
@@ -32,7 +32,7 @@ const formatValueName = (name: string): string => {
 };
 
 export const ItemLabels = ({ valueLabels, expanded }: { valueLabels: Field[]; expanded: boolean }) => {
-  const styles = useStyles2((theme) => getItemLabelsStyles(theme, expanded));
+  const styles = useStyles2(getItemLabelsStyles, expanded);
 
   return (
     <div className={styles.itemLabelsWrap}>

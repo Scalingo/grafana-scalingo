@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -10,18 +11,18 @@ import (
 	"github.com/grafana/grafana/pkg/tsdb/cloudwatch/models/resources"
 )
 
-func LogGroupFieldsHandler(pluginCtx backend.PluginContext, reqCtxFactory models.RequestContextFactoryFunc, parameters url.Values) ([]byte, *models.HttpError) {
+func LogGroupFieldsHandler(ctx context.Context, pluginCtx backend.PluginContext, reqCtxFactory models.RequestContextFactoryFunc, parameters url.Values) ([]byte, *models.HttpError) {
 	request, err := resources.ParseLogGroupFieldsRequest(parameters)
 	if err != nil {
 		return nil, models.NewHttpError("error in LogGroupFieldsHandler", http.StatusBadRequest, err)
 	}
 
-	service, err := newLogGroupsService(pluginCtx, reqCtxFactory, request.Region)
+	service, err := newLogGroupsService(ctx, pluginCtx, reqCtxFactory, request.Region)
 	if err != nil {
 		return nil, models.NewHttpError("newLogGroupsService error", http.StatusInternalServerError, err)
 	}
 
-	logGroupFields, err := service.GetLogGroupFields(request)
+	logGroupFields, err := service.GetLogGroupFieldsWithContext(ctx, request)
 	if err != nil {
 		return nil, models.NewHttpError("GetLogGroupFields error", http.StatusInternalServerError, err)
 	}

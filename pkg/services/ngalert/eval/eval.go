@@ -21,7 +21,9 @@ import (
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	"github.com/grafana/grafana/pkg/services/ngalert/models"
+	"github.com/grafana/grafana/pkg/services/pluginsintegration/pluginstore"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/util/errutil"
 )
 
 var logger = log.New("ngalert.eval")
@@ -55,7 +57,7 @@ type conditionEvaluator struct {
 func (r *conditionEvaluator) EvaluateRaw(ctx context.Context, now time.Time) (resp *backend.QueryDataResponse, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			logger.FromContext(ctx).Error("alert rule panic", "error", e, "stack", string(debug.Stack()))
+			logger.FromContext(ctx).Error("Alert rule panic", "error", e, "stack", string(debug.Stack()))
 			panicErr := fmt.Errorf("alert rule panic; please check the logs for the full stack")
 			if err != nil {
 				err = fmt.Errorf("queries and expressions execution failed: %w; %v", err, panicErr.Error())
@@ -88,14 +90,14 @@ type evaluatorImpl struct {
 	evaluationTimeout time.Duration
 	dataSourceCache   datasources.CacheService
 	expressionService *expr.Service
-	pluginsStore      plugins.Store
+	pluginsStore      pluginstore.Store
 }
 
 func NewEvaluatorFactory(
 	cfg setting.UnifiedAlertingSettings,
 	datasourceCache datasources.CacheService,
 	expressionService *expr.Service,
-	pluginsStore plugins.Store,
+	pluginsStore pluginstore.Store,
 ) EvaluatorFactory {
 	return &evaluatorImpl{
 		evaluationTimeout: cfg.EvaluationTimeout,
@@ -133,6 +135,9 @@ type ExecutionResults struct {
 	// Results contains the results of all queries, reduce and math expressions
 	Results map[string]data.Frames
 
+	// Errors contains a map of RefIDs that returned an error
+	Errors map[string]error
+
 	// NoData contains the DatasourceUID for RefIDs that returned no data.
 	NoData map[string]string
 
@@ -142,6 +147,7 @@ type ExecutionResults struct {
 // Results is a slice of evaluated alert instances states.
 type Results []Result
 
+// HasErrors returns true when Results contains at least one element with error
 func (evalResults Results) HasErrors() bool {
 	for _, r := range evalResults {
 		if r.State == Error {
@@ -149,6 +155,55 @@ func (evalResults Results) HasErrors() bool {
 		}
 	}
 	return false
+}
+
+// HasNonRetryableErrors returns true if we have at least 1 result with:
+// 1. A `State` of `Error`
+// 2. The `Error` attribute is not nil
+// 3. The `Error` type is of `&invalidEvalResultFormatError`
+// Our thinking with this approach, is that we don't want to retry errors that have relation with invalid alert definition format.
+func (evalResults Results) HasNonRetryableErrors() bool {
+	for _, r := range evalResults {
+		if r.State == Error && r.Error != nil {
+			var nonRetryableError *invalidEvalResultFormatError
+			if errors.As(r.Error, &nonRetryableError) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// HasErrors returns true when Results contains at least one element and all elements are errors
+func (evalResults Results) IsError() bool {
+	for _, r := range evalResults {
+		if r.State != Error {
+			return false
+		}
+	}
+	return len(evalResults) > 0
+}
+
+// IsNoData returns true when all items are NoData or Results is empty
+func (evalResults Results) IsNoData() bool {
+	for _, result := range evalResults {
+		if result.State != NoData {
+			return false
+		}
+	}
+	return true
+}
+
+// Error returns the aggregated `error` of all results of which state is `Error`.
+func (evalResults Results) Error() error {
+	var errs []error
+	for _, result := range evalResults {
+		if result.State == Error && result.Error != nil {
+			errs = append(errs, result.Error)
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // Result contains the evaluated State of an alert instance
@@ -245,8 +300,9 @@ func buildDatasourceHeaders(ctx context.Context) map[string]string {
 // getExprRequest validates the condition, gets the datasource information and creates an expr.Request from it.
 func getExprRequest(ctx EvaluationContext, data []models.AlertQuery, dsCacheService datasources.CacheService) (*expr.Request, error) {
 	req := &expr.Request{
-		OrgId:   ctx.User.OrgID,
+		OrgId:   ctx.User.GetOrgID(),
 		Headers: buildDatasourceHeaders(ctx.Ctx),
+		User:    ctx.User,
 	}
 
 	datasources := make(map[string]*datasources.DataSource, len(data))
@@ -268,13 +324,14 @@ func getExprRequest(ctx EvaluationContext, data []models.AlertQuery, dsCacheServ
 
 		ds, ok := datasources[q.DatasourceUID]
 		if !ok {
-			if expr.IsDataSource(q.DatasourceUID) {
-				ds = expr.DataSourceModel()
-			} else {
+			switch nodeType := expr.NodeTypeFromDatasourceUID(q.DatasourceUID); nodeType {
+			case expr.TypeDatasourceNode:
 				ds, err = dsCacheService.GetDatasourceByUID(ctx.Ctx, q.DatasourceUID, ctx.User, false /*skipCache*/)
-				if err != nil {
-					return nil, fmt.Errorf("failed to build query '%s': %w", q.RefID, err)
-				}
+			default:
+				ds, err = expr.DataSourceModelFromNodeType(nodeType)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to build query '%s': %w", q.RefID, err)
 			}
 			datasources[q.DatasourceUID] = ds
 		}
@@ -299,15 +356,16 @@ type NumberValueCapture struct {
 	Value *float64
 }
 
+//nolint:gocyclo
 func queryDataResponseToExecutionResults(c models.Condition, execResp *backend.QueryDataResponse) ExecutionResults {
 	// captures contains the values of all instant queries and expressions for each dimension
-	captures := make(map[string]map[fingerprint]NumberValueCapture)
+	captures := make(map[string]map[data.Fingerprint]NumberValueCapture)
 	captureFn := func(refID string, labels data.Labels, value *float64) {
 		m := captures[refID]
 		if m == nil {
-			m = make(map[fingerprint]NumberValueCapture)
+			m = make(map[data.Fingerprint]NumberValueCapture)
 		}
-		fp := fingerprintLabels(labels)
+		fp := labels.Fingerprint()
 		m[fp] = NumberValueCapture{
 			Var:    refID,
 			Value:  value,
@@ -322,11 +380,19 @@ func queryDataResponseToExecutionResults(c models.Condition, execResp *backend.Q
 	for _, next := range c.Data {
 		datasourceUIDsForRefIDs[next.RefID] = next.DatasourceUID
 	}
-	// datasourceExprUID is a special DatasourceUID for expressions
-	datasourceExprUID := strconv.FormatInt(expr.DatasourceID, 10)
 
 	result := ExecutionResults{Results: make(map[string]data.Frames)}
 	for refID, res := range execResp.Responses {
+		if res.Error != nil {
+			if result.Errors == nil {
+				result.Errors = make(map[string]error)
+			}
+			result.Errors[refID] = res.Error
+			if refID == c.Condition {
+				result.Error = res.Error
+			}
+		}
+
 		// There are two possible frame formats for No Data:
 		//
 		// 1. A response with no frames
@@ -345,7 +411,7 @@ func queryDataResponseToExecutionResults(c models.Condition, execResp *backend.Q
 			hasNoFrames := len(res.Frames) == 0
 			hasNoFields := len(res.Frames) == 1 && len(res.Frames[0].Fields) == 0
 			if hasNoFrames || hasNoFields {
-				if s, ok := datasourceUIDsForRefIDs[refID]; ok && s != datasourceExprUID {
+				if s, ok := datasourceUIDsForRefIDs[refID]; ok && expr.NodeTypeFromDatasourceUID(s) == expr.TypeDatasourceNode { // TODO perhaps extract datasource UID from ML expression too.
 					result.NoData[refID] = s
 				}
 			}
@@ -383,7 +449,7 @@ func queryDataResponseToExecutionResults(c models.Condition, execResp *backend.Q
 
 		if len(frame.Fields) == 1 {
 			theseLabels := frame.Fields[0].Labels
-			fp := fingerprintLabels(theseLabels)
+			fp := theseLabels.Fingerprint()
 
 			for _, fps := range captures {
 				// First look for a capture whose labels are an exact match
@@ -405,6 +471,29 @@ func queryDataResponseToExecutionResults(c models.Condition, execResp *backend.Q
 						}
 					}
 				}
+			}
+		}
+	}
+
+	// If the error of the condition is an Error that indicates the condition failed
+	// because one of its dependent query or expressions failed, then we follow
+	// the dependency chain to an error that is not a dependency error.
+	if len(result.Errors) > 0 && result.Error != nil {
+		if errors.Is(result.Error, expr.DependencyError) {
+			var utilError errutil.Error
+			e := result.Error
+			for {
+				errors.As(e, &utilError)
+				depRefID := utilError.PublicPayload["depRefId"].(string)
+				depError, ok := result.Errors[depRefID]
+				if !ok {
+					return result
+				}
+				if !errors.Is(depError, expr.DependencyError) {
+					result.Error = depError
+					return result
+				}
+				e = depError
 			}
 		}
 	}
@@ -640,15 +729,24 @@ func (e *evaluatorImpl) Validate(ctx EvaluationContext, condition models.Conditi
 		return err
 	}
 	for _, query := range req.Queries {
-		if query.DataSource == nil || expr.IsDataSource(query.DataSource.UID) {
+		if query.DataSource == nil {
 			continue
 		}
-		p, found := e.pluginsStore.Plugin(ctx.Ctx, query.DataSource.Type)
-		if !found { // technically this should fail earlier during datasource resolution phase.
-			return fmt.Errorf("datasource refID %s could not be found: %w", query.RefID, plugins.ErrPluginUnavailable)
-		}
-		if !p.Backend {
-			return fmt.Errorf("datasource refID %s is not a backend datasource", query.RefID)
+		switch expr.NodeTypeFromDatasourceUID(query.DataSource.UID) {
+		case expr.TypeDatasourceNode:
+			p, found := e.pluginsStore.Plugin(ctx.Ctx, query.DataSource.Type)
+			if !found { // technically this should fail earlier during datasource resolution phase.
+				return fmt.Errorf("datasource refID %s could not be found: %w", query.RefID, plugins.ErrPluginUnavailable)
+			}
+			if !p.Backend {
+				return fmt.Errorf("datasource refID %s is not a backend datasource", query.RefID)
+			}
+		case expr.TypeMLNode:
+			_, found := e.pluginsStore.Plugin(ctx.Ctx, query.DataSource.Type)
+			if !found {
+				return fmt.Errorf("datasource refID %s could not be found: %w", query.RefID, plugins.ErrPluginUnavailable)
+			}
+		case expr.TypeCMDNode:
 		}
 	}
 	_, err = e.create(condition, req)

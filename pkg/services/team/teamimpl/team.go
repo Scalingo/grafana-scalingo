@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/grafana/grafana/pkg/infra/db"
-	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/dashboards/dashboardaccess"
 	"github.com/grafana/grafana/pkg/services/team"
 	"github.com/grafana/grafana/pkg/setting"
 )
@@ -14,7 +14,7 @@ type Service struct {
 }
 
 func ProvideService(db db.DB, cfg *setting.Cfg) team.Service {
-	return &Service{store: &xormStore{db: db, cfg: cfg}}
+	return &Service{store: &xormStore{db: db, cfg: cfg, deletes: []string{}}}
 }
 
 func (s *Service) CreateTeam(name, email string, orgID int64) (team.Team, error) {
@@ -41,7 +41,11 @@ func (s *Service) GetTeamsByUser(ctx context.Context, query *team.GetTeamsByUser
 	return s.store.GetByUser(ctx, query)
 }
 
-func (s *Service) AddTeamMember(userID, orgID, teamID int64, isExternal bool, permission dashboards.PermissionType) error {
+func (s *Service) GetTeamIDsByUser(ctx context.Context, query *team.GetTeamIDsByUserQuery) ([]int64, error) {
+	return s.store.GetIDsByUser(ctx, query)
+}
+
+func (s *Service) AddTeamMember(userID, orgID, teamID int64, isExternal bool, permission dashboardaccess.PermissionType) error {
 	return s.store.AddMember(userID, orgID, teamID, isExternal, permission)
 }
 
@@ -57,6 +61,10 @@ func (s *Service) RemoveTeamMember(ctx context.Context, cmd *team.RemoveTeamMemb
 	return s.store.RemoveMember(ctx, cmd)
 }
 
+func (s *Service) RemoveUsersMemberships(ctx context.Context, userID int64) error {
+	return s.store.RemoveUsersMemberships(ctx, userID)
+}
+
 func (s *Service) GetUserTeamMemberships(ctx context.Context, orgID, userID int64, external bool) ([]*team.TeamMemberDTO, error) {
 	return s.store.GetMemberships(ctx, orgID, userID, external)
 }
@@ -65,6 +73,6 @@ func (s *Service) GetTeamMembers(ctx context.Context, query *team.GetTeamMembers
 	return s.store.GetMembers(ctx, query)
 }
 
-func (s *Service) IsAdminOfTeams(ctx context.Context, query *team.IsAdminOfTeamsQuery) (bool, error) {
-	return s.store.IsAdmin(ctx, query)
+func (s *Service) RegisterDelete(query string) {
+	s.store.RegisterDelete(query)
 }

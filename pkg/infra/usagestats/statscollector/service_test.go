@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/grafana/pkg/registry"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
+	"github.com/grafana/grafana/pkg/services/pluginsintegration/pluginstore"
 	"github.com/grafana/grafana/pkg/services/stats"
 	"github.com/grafana/grafana/pkg/services/stats/statstest"
 	"github.com/grafana/grafana/pkg/setting"
@@ -84,16 +85,16 @@ func TestTotalStatsUpdate(t *testing.T) {
 var _ registry.ProvidesUsageStats = (*dummyUsageStatProvider)(nil)
 
 type dummyUsageStatProvider struct {
-	stats map[string]interface{}
+	stats map[string]any
 }
 
-func (d dummyUsageStatProvider) GetUsageStats(ctx context.Context) map[string]interface{} {
+func (d dummyUsageStatProvider) GetUsageStats(ctx context.Context) map[string]any {
 	return d.stats
 }
 
 func TestUsageStatsProviders(t *testing.T) {
-	provider1 := &dummyUsageStatProvider{stats: map[string]interface{}{"my_stat_1": "val1", "my_stat_2": "val2"}}
-	provider2 := &dummyUsageStatProvider{stats: map[string]interface{}{"my_stat_x": "valx", "my_stat_z": "valz"}}
+	provider1 := &dummyUsageStatProvider{stats: map[string]any{"my_stat_1": "val1", "my_stat_2": "val2"}}
+	provider2 := &dummyUsageStatProvider{stats: map[string]any{"my_stat_x": "valx", "my_stat_z": "valz"}}
 
 	store := dbtest.NewFakeDB()
 	statsService := statstest.NewFakeService()
@@ -128,13 +129,13 @@ func TestCollectingUsageStats(t *testing.T) {
 	statsService := statstest.NewFakeService()
 	expectedDataSources := []*datasources.DataSource{
 		{
-			JsonData: simplejson.NewFromAny(map[string]interface{}{}),
+			JsonData: simplejson.NewFromAny(map[string]any{}),
 		},
 		{
-			JsonData: simplejson.NewFromAny(map[string]interface{}{}),
+			JsonData: simplejson.NewFromAny(map[string]any{}),
 		},
 		{
-			JsonData: simplejson.NewFromAny(map[string]interface{}{}),
+			JsonData: simplejson.NewFromAny(map[string]any{}),
 		},
 	}
 
@@ -177,6 +178,7 @@ func TestCollectingUsageStats(t *testing.T) {
 	assert.EqualValues(t, 11, metrics["stats.data_keys.count"])
 	assert.EqualValues(t, 3, metrics["stats.active_data_keys.count"])
 	assert.EqualValues(t, 5, metrics["stats.public_dashboards.count"])
+	assert.EqualValues(t, 3, metrics["stats.correlations.count"])
 
 	assert.InDelta(t, int64(65), metrics["stats.uptime"], 6)
 }
@@ -336,6 +338,7 @@ func mockSystemStats(statsService *statstest.FakeService) {
 		DataKeys:                  11,
 		ActiveDataKeys:            3,
 		PublicDashboards:          5,
+		Correlations:              3,
 	}
 }
 
@@ -352,8 +355,8 @@ func (m *mockSocial) GetOAuthProviders() map[string]bool {
 func setupSomeDataSourcePlugins(t *testing.T, s *Service) {
 	t.Helper()
 
-	s.plugins = &plugins.FakePluginStore{
-		PluginList: []plugins.PluginDTO{
+	s.plugins = &pluginstore.FakePluginStore{
+		PluginList: []pluginstore.Plugin{
 			{JSONData: plugins.JSONData{ID: datasources.DS_ES}, Signature: "internal"},
 			{JSONData: plugins.JSONData{ID: datasources.DS_PROMETHEUS}, Signature: "internal"},
 			{JSONData: plugins.JSONData{ID: datasources.DS_GRAPHITE}, Signature: "internal"},
@@ -378,10 +381,10 @@ func createService(t testing.TB, cfg *setting.Cfg, store db.DB, statsService sta
 		cfg,
 		store,
 		&mockSocial{},
-		&plugins.FakePluginStore{},
+		&pluginstore.FakePluginStore{},
 		featuremgmt.WithFeatures("feature1", "feature2"),
 		o.datasources,
-		httpclient.NewProvider(),
+		httpclient.NewProvider(sdkhttpclient.ProviderOptions{Middlewares: []sdkhttpclient.Middleware{}}),
 	)
 }
 

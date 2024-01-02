@@ -24,6 +24,7 @@ func AddTablesMigrations(mg *migrator.Migrator) {
 	mg.AddMigration("add last_applied column to alert_configuration_history", migrator.NewAddColumnMigration(migrator.Table{Name: "alert_configuration_history"}, &migrator.Column{
 		Name: "last_applied", Type: migrator.DB_Int, Nullable: false, Default: "0",
 	}))
+	// End of migration log, add new migrations above this line.
 }
 
 // historicalTableMigrations contains those migrations that existed prior to creating the improved messaging around migration immutability.
@@ -491,9 +492,6 @@ func addAlertImageMigrations(mg *migrator.Migrator) {
 }
 
 func extractAlertmanagerConfigurationHistoryMigration(mg *migrator.Migrator) {
-	if !mg.Cfg.UnifiedAlerting.IsEnabled() {
-		return
-	}
 	// Since it's not always consistent as to what state the org ID indexes are in, just drop them all and rebuild from scratch.
 	// This is not expensive since this table is guaranteed to have a small number of rows.
 	mg.AddMigration("drop non-unique orgID index on alert_configuration", migrator.NewDropIndexMigration(migrator.Table{Name: "alert_configuration"}, &migrator.Index{Cols: []string{"org_id"}}))

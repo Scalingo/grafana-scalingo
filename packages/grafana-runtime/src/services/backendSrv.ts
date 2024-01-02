@@ -96,6 +96,7 @@ export interface FetchResponse<T = any> {
   readonly type: ResponseType;
   readonly url: string;
   readonly config: BackendSrvRequest;
+  readonly traceId?: string;
 }
 
 /**
@@ -122,6 +123,7 @@ export interface FetchError<T = any> {
   cancelled?: boolean;
   isHandled?: boolean;
   config: BackendSrvRequest;
+  traceId?: string;
 }
 
 export function isFetchError(e: unknown): e is FetchError {
@@ -145,10 +147,10 @@ export function isFetchError(e: unknown): e is FetchError {
  */
 export interface BackendSrv {
   get<T = any>(url: string, params?: any, requestId?: string, options?: Partial<BackendSrvRequest>): Promise<T>;
-  delete<T = any>(url: string, data?: any, options?: Partial<BackendSrvRequest>): Promise<T>;
-  post<T = any>(url: string, data?: any, options?: Partial<BackendSrvRequest>): Promise<T>;
-  patch<T = any>(url: string, data?: any, options?: Partial<BackendSrvRequest>): Promise<T>;
-  put<T = any>(url: string, data?: any, options?: Partial<BackendSrvRequest>): Promise<T>;
+  delete<T = unknown>(url: string, data?: unknown, options?: Partial<BackendSrvRequest>): Promise<T>;
+  post<T = any>(url: string, data?: unknown, options?: Partial<BackendSrvRequest>): Promise<T>;
+  patch<T = any>(url: string, data?: unknown, options?: Partial<BackendSrvRequest>): Promise<T>;
+  put<T = any>(url: string, data?: unknown, options?: Partial<BackendSrvRequest>): Promise<T>;
 
   /**
    * @deprecated Use the `.fetch()` function instead. If you prefer to work with a promise

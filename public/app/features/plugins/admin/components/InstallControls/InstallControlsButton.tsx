@@ -2,14 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { AppEvents } from '@grafana/data';
-import { locationService } from '@grafana/runtime';
+import { config, locationService } from '@grafana/runtime';
 import { Button, HorizontalGroup, ConfirmModal } from '@grafana/ui';
 import appEvents from 'app/core/app_events';
+import configCore from 'app/core/config';
 import { useQueryParams } from 'app/core/hooks/useQueryParams';
 import { removePluginFromNavTree } from 'app/core/reducers/navBarTree';
 import { useDispatch } from 'app/types';
 
-import { useInstallStatus, useUninstallStatus, useInstall, useUninstall, useUnsetInstall } from '../../state/hooks';
+import {
+  useInstallStatus,
+  useUninstallStatus,
+  useInstall,
+  useUninstall,
+  useUnsetInstall,
+  useFetchDetailsLazy,
+} from '../../state/hooks';
 import { trackPluginInstalled, trackPluginUninstalled } from '../../tracking';
 import { CatalogPlugin, PluginStatus, PluginTabIds, Version } from '../../types';
 
@@ -17,13 +25,15 @@ type InstallControlsButtonProps = {
   plugin: CatalogPlugin;
   pluginStatus: PluginStatus;
   latestCompatibleVersion?: Version;
-  setNeedReload: (needReload: boolean) => void;
+  hasInstallWarning?: boolean;
+  setNeedReload?: (needReload: boolean) => void;
 };
 
 export function InstallControlsButton({
   plugin,
   pluginStatus,
   latestCompatibleVersion,
+  hasInstallWarning,
   setNeedReload,
 }: InstallControlsButtonProps) {
   const dispatch = useDispatch();
@@ -34,6 +44,7 @@ export function InstallControlsButton({
   const install = useInstall();
   const uninstall = useUninstall();
   const unsetInstall = useUnsetInstall();
+  const fetchDetails = useFetchDetailsLazy();
   const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
   const showConfirmModal = () => setIsConfirmModalVisible(true);
   const hideConfirmModal = () => setIsConfirmModalVisible(false);
@@ -56,10 +67,17 @@ export function InstallControlsButton({
     trackPluginInstalled(trackingProps);
     const result = await install(plugin.id, latestCompatibleVersion?.version);
     if (!errorInstalling && !('error' in result)) {
-      appEvents.emit(AppEvents.alertSuccess, [`Installed ${plugin.name}`]);
-      if (plugin.type === 'app') {
-        setNeedReload(true);
+      let successMessage = `Installed ${plugin.name}`;
+      if (config.pluginAdminExternalManageEnabled && configCore.featureToggles.managedPluginsInstall) {
+        successMessage = 'Install requested, this may take a few minutes.';
       }
+
+      appEvents.emit(AppEvents.alertSuccess, [successMessage]);
+      if (plugin.type === 'app') {
+        setNeedReload?.(true);
+      }
+
+      await fetchDetails(plugin.id);
     }
   };
 
@@ -77,7 +95,7 @@ export function InstallControlsButton({
       appEvents.emit(AppEvents.alertSuccess, [`Uninstalled ${plugin.name}`]);
       if (plugin.type === 'app') {
         dispatch(removePluginFromNavTree({ pluginID: plugin.id }));
-        setNeedReload(false);
+        setNeedReload?.(false);
       }
     }
   };
@@ -110,6 +128,11 @@ export function InstallControlsButton({
     );
   }
 
+  if (!plugin.isPublished || hasInstallWarning) {
+    // Cannot be updated or installed
+    return null;
+  }
+
   if (pluginStatus === PluginStatus.UPDATE) {
     return (
       <HorizontalGroup align="flex-start" width="auto" height="auto">
@@ -122,9 +145,9 @@ export function InstallControlsButton({
       </HorizontalGroup>
     );
   }
-
+  const shouldDisable = isInstalling || errorInstalling || (!config.angularSupportEnabled && plugin.angularDetected);
   return (
-    <Button disabled={isInstalling || errorInstalling} onClick={onInstall}>
+    <Button disabled={shouldDisable} onClick={onInstall}>
       {isInstalling ? 'Installing' : 'Install'}
     </Button>
   );

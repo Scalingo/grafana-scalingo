@@ -1,6 +1,6 @@
-import { map, clone } from 'lodash';
+import { clone, map } from 'lodash';
 
-import { QueryPartDef, QueryPart, functionRenderer, suffixRenderer } from 'app/features/alerting/state/query_part';
+import { functionRenderer, QueryPart, QueryPartDef, suffixRenderer } from 'app/features/alerting/state/query_part';
 
 const index: any[] = [];
 const categories: any = {
@@ -33,7 +33,7 @@ function aliasRenderer(part: { params: string[] }, innerExpr: string) {
   return innerExpr + ' AS ' + '"' + part.params[0] + '"';
 }
 
-function fieldRenderer(part: { params: string[] }, innerExpr: any) {
+function fieldRenderer(part: { params: string[] }) {
   const param = part.params[0];
 
   if (param === '*') {
@@ -140,7 +140,7 @@ function addAliasStrategy(selectParts: any[], partModel: any) {
 
 function addFieldStrategy(selectParts: any, partModel: any, query: { selectModels: any[][] }) {
   // copy all parts
-  const parts = map(selectParts, (part: any) => {
+  const parts = map(selectParts, (part) => {
     return createPart({ type: part.def.type, params: clone(part.params) });
   });
 

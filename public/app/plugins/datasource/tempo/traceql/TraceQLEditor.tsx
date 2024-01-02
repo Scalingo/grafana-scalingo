@@ -1,5 +1,4 @@
 import { css } from '@emotion/css';
-import type { languages } from 'monaco-editor';
 import React, { useEffect, useRef } from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
@@ -12,6 +11,7 @@ import { dispatch } from '../../../../store/store';
 import { TempoDatasource } from '../datasource';
 
 import { CompletionProvider, CompletionType } from './autocomplete';
+import { getErrorNodes, setErrorMarkers } from './errorHighlighting';
 import { languageDefinition } from './traceql';
 
 interface Props {
@@ -28,6 +28,12 @@ export function TraceQLEditor(props: Props) {
   const setupAutocompleteFn = useAutocomplete(props.datasource);
   const theme = useTheme2();
   const styles = getStyles(theme, placeholder);
+  // work around the problem that `onEditorDidMount` is called once
+  // and wouldn't get new version of onRunQuery
+  const onRunQueryRef = useRef(onRunQuery);
+  onRunQueryRef.current = onRunQuery;
+
+  const errorTimeoutId = useRef<number>();
 
   return (
     <CodeEditor
@@ -56,10 +62,45 @@ export function TraceQLEditor(props: Props) {
       onEditorDidMount={(editor, monaco) => {
         if (!props.readOnly) {
           setupAutocompleteFn(editor, monaco, setupRegisterInteractionCommand(editor));
-          setupActions(editor, monaco, onRunQuery);
+          setupActions(editor, monaco, () => onRunQueryRef.current());
           setupPlaceholder(editor, monaco, styles);
         }
         setupAutoSize(editor);
+
+        // Parse query that might already exist (e.g., after a page refresh)
+        const model = editor.getModel();
+        if (model) {
+          const errorNodes = getErrorNodes(model.getValue());
+          setErrorMarkers(monaco, model, errorNodes);
+        }
+
+        // Register callback for query changes
+        editor.onDidChangeModelContent((changeEvent) => {
+          const model = editor.getModel();
+
+          if (!model) {
+            return;
+          }
+
+          // Remove previous callback if existing, to prevent squiggles from been shown while the user is still typing
+          window.clearTimeout(errorTimeoutId.current);
+
+          const errorNodes = getErrorNodes(model.getValue());
+          const cursorPosition = changeEvent.changes[0].rangeOffset;
+
+          // Immediately updates the squiggles, in case the user fixed an error,
+          // excluding the error around the cursor position
+          setErrorMarkers(
+            monaco,
+            model,
+            errorNodes.filter((errorNode) => !(errorNode.from <= cursorPosition && cursorPosition <= errorNode.to))
+          );
+
+          // Later on, show all errors
+          errorTimeoutId.current = window.setTimeout(() => {
+            setErrorMarkers(monaco, model, errorNodes);
+          }, 500);
+        });
       }}
     />
   );
@@ -149,16 +190,6 @@ function useAutocomplete(datasource: TempoDatasource) {
     const fetchTags = async () => {
       try {
         await datasource.languageProvider.start();
-        const tags = datasource.languageProvider.getTags();
-
-        if (tags) {
-          // This is needed because the /api/v2/search/tag/${tag}/values API expects "status" and the v1 API expects "status.code"
-          // so Tempo doesn't send anything and we inject it here for the autocomplete
-          if (!tags.find((t) => t === 'status')) {
-            tags.push('status');
-          }
-          providerRef.current.setTags(tags);
-        }
       } catch (error) {
         if (error instanceof Error) {
           dispatch(notifyApp(createErrorNotification('Error', error)));
@@ -200,8 +231,8 @@ function ensureTraceQL(monaco: Monaco) {
     traceqlSetupDone = true;
     const { aliases, extensions, mimetypes, def } = languageDefinition;
     monaco.languages.register({ id: langId, aliases, extensions, mimetypes });
-    monaco.languages.setMonarchTokensProvider(langId, def.language as languages.IMonarchLanguage);
-    monaco.languages.setLanguageConfiguration(langId, def.languageConfiguration as languages.LanguageConfiguration);
+    monaco.languages.setMonarchTokensProvider(langId, def.language);
+    monaco.languages.setLanguageConfiguration(langId, def.languageConfiguration);
   }
 }
 
@@ -213,7 +244,7 @@ interface EditorStyles {
 const getStyles = (theme: GrafanaTheme2, placeholder: string): EditorStyles => {
   return {
     queryField: css`
-      border-radius: ${theme.shape.borderRadius()};
+      border-radius: ${theme.shape.radius.default};
       border: 1px solid ${theme.components.input.borderColor};
       flex: 1;
     `,

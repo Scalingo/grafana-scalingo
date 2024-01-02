@@ -2,8 +2,9 @@ import { css } from '@emotion/css';
 import React from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
+import { ScalarDimensionConfig } from '@grafana/schema';
 import { useStyles2 } from '@grafana/ui';
-import { DimensionContext, ScalarDimensionConfig } from 'app/features/dimensions';
+import { DimensionContext } from 'app/features/dimensions';
 import { ScalarDimensionEditor } from 'app/features/dimensions/editors';
 
 import { CanvasElementItem, CanvasElementProps, defaultBgColor } from '../element';
@@ -79,7 +80,7 @@ const DroneTopDisplay = ({ data }: CanvasElementProps<DroneTopConfig, DroneTopDa
   );
 };
 
-export const droneTopItem: CanvasElementItem<any, any> = {
+export const droneTopItem: CanvasElementItem = {
   id: 'droneTop',
   name: 'Drone Top',
   description: 'Drone top',
@@ -155,23 +156,23 @@ export const droneTopItem: CanvasElementItem<any, any> = {
 };
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  propeller: css`
-    transform-origin: 50% 50%;
-    transform-box: fill-box;
-    display: block;
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-      to {
-        transform: rotate(360deg);
-      }
-    }
-  `,
-  propellerCW: css`
-    animation-direction: normal;
-  `,
-  propellerCCW: css`
-    animation-direction: reverse;
-  `,
+  propeller: css({
+    transformOrigin: '50% 50%',
+    transformBox: 'fill-box',
+    display: 'block',
+    '@keyframes spin': {
+      from: {
+        transform: 'rotate(0deg)',
+      },
+      to: {
+        transform: 'rotate(360deg)',
+      },
+    },
+  }),
+  propellerCW: css({
+    animationDirection: 'normal',
+  }),
+  propellerCCW: css({
+    animationDirection: 'reverse',
+  }),
 });

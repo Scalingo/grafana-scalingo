@@ -1,4 +1,4 @@
-import { ComponentMeta } from '@storybook/react';
+import { Meta } from '@storybook/react';
 import React from 'react';
 
 import { GraphContextMenuHeader } from '..';
@@ -8,7 +8,7 @@ import { VerticalGroup } from '../Layout/Layout';
 import { Menu } from './Menu';
 import mdx from './Menu.mdx';
 
-const meta: ComponentMeta<typeof Menu> = {
+const meta: Meta<typeof Menu> = {
   title: 'General/Menu',
   component: Menu,
   argTypes: {},
@@ -49,6 +49,42 @@ export function Examples() {
           <Menu.Item label="With destructive prop set" icon="trash-alt" destructive />
         </Menu>
       </StoryExample>
+      <StoryExample name="With item menu description">
+        <Menu>
+          <Menu.Item label="item1" icon="history" description="item 1 is an important element" shortcut="q p" />
+          <Menu.Item
+            label="Item with a very long title"
+            icon="apps"
+            description="long titles can be hard to read"
+            childItems={[
+              <Menu.Item key="subitem1" label="subitem1" icon="history" />,
+              <Menu.Item key="subitem2" label="subitem2" icon="apps" />,
+              <Menu.Item
+                key="subitem3"
+                label="subitem3"
+                icon="search-plus"
+                childItems={[
+                  <Menu.Item key="subitem1" label="subitem1" icon="history" />,
+                  <Menu.Item key="subitem2" label="subitem2" icon="apps" />,
+                  <Menu.Item key="subitem3" label="subitem3" icon="search-plus" />,
+                ]}
+              />,
+            ]}
+            shortcut="p s"
+          />
+          <Menu.Item
+            label="item3"
+            icon="filter"
+            description="item 3 is an important element"
+            childItems={[
+              <Menu.Item key="subitem1" label="subitem1" icon="history" description="a subitem with a description" />,
+              <Menu.Item key="subitem2" label="subitem2" icon="apps" />,
+              <Menu.Item key="subitem3" label="subitem3" icon="search-plus" />,
+            ]}
+          />
+        </Menu>
+      </StoryExample>
+
       <StoryExample name="With disabled items">
         <Menu>
           <Menu.Item label="Google" icon="search-plus" />

@@ -1,9 +1,10 @@
 import { css } from '@emotion/css';
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect } from 'react';
 
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import { Button, FilterInput, MultiSelect, RangeSlider, Select, useStyles2 } from '@grafana/ui';
+import { Trans, t } from 'app/core/internationalization';
 import {
   createDatasourcesList,
   mapNumbertoTimeInSlider,
@@ -12,7 +13,7 @@ import {
   RichHistorySearchFilters,
   RichHistorySettings,
 } from 'app/core/utils/richHistory';
-import { ExploreId, RichHistoryQuery } from 'app/types/explore';
+import { RichHistoryQuery } from 'app/types/explore';
 
 import { getSortOrderOptions } from './RichHistory';
 import RichHistoryCard from './RichHistoryCard';
@@ -27,13 +28,11 @@ export interface RichHistoryQueriesTabProps {
   loadMoreRichHistory: () => void;
   richHistorySettings: RichHistorySettings;
   richHistorySearchFilters?: RichHistorySearchFilters;
-  exploreId: ExploreId;
+  exploreId: string;
   height: number;
 }
 
 const getStyles = (theme: GrafanaTheme2, height: number) => {
-  const bgColor = theme.isLight ? theme.v1.palette.gray5 : theme.v1.palette.dark4;
-
   return {
     container: css`
       display: flex;
@@ -76,11 +75,6 @@ const getStyles = (theme: GrafanaTheme2, height: number) => {
     multiselect: css`
       width: 100%;
       margin-bottom: ${theme.spacing(1)};
-      .gf-form-select-box__multi-value {
-        background-color: ${bgColor};
-        padding: ${theme.spacing(0.25, 0.5, 0.25, 1)};
-        border-radius: ${theme.shape.borderRadius(1)};
-      }
     `,
     sort: css`
       width: 170px;
@@ -133,7 +127,7 @@ export function RichHistoryQueriesTab(props: RichHistoryQueriesTabProps) {
     activeDatasourceInstance,
   } = props;
 
-  const styles = useStyles2(useCallback((theme: GrafanaTheme2) => getStyles(theme, height), [height]));
+  const styles = useStyles2(getStyles, height);
 
   const listOfDatasources = createDatasourcesList();
 
@@ -159,7 +153,11 @@ export function RichHistoryQueriesTab(props: RichHistoryQueriesTabProps) {
   }, []);
 
   if (!richHistorySearchFilters) {
-    return <span>Loading...</span>;
+    return (
+      <span>
+        <Trans i18nKey="explore.rich-history-queries-tab.loading">Loading...</Trans>;
+      </span>
+    );
   }
 
   /* mappedQueriesToHeadings is an object where query headings (stringified dates/data sources)
@@ -173,7 +171,9 @@ export function RichHistoryQueriesTab(props: RichHistoryQueriesTabProps) {
     <div className={styles.container}>
       <div className={styles.containerSlider}>
         <div className={styles.fixedSlider}>
-          <div className={styles.labelSlider}>Filter history</div>
+          <div className={styles.labelSlider}>
+            <Trans i18nKey="explore.rich-history-queries-tab.filter-history">Filter history</Trans>
+          </div>
           <div className={styles.labelSlider}>{mapNumbertoTimeInSlider(richHistorySearchFilters.from)}</div>
           <div className={styles.slider}>
             <RangeSlider
@@ -193,7 +193,7 @@ export function RichHistoryQueriesTab(props: RichHistoryQueriesTabProps) {
         </div>
       </div>
 
-      <div className={styles.containerContent}>
+      <div className={styles.containerContent} data-testid="query-history-queries-tab">
         <div className={styles.selectors}>
           {!richHistorySettings.activeDatasourceOnly && (
             <MultiSelect
@@ -202,8 +202,11 @@ export function RichHistoryQueriesTab(props: RichHistoryQueriesTabProps) {
                 return { value: ds.name, label: ds.name };
               })}
               value={richHistorySearchFilters.datasourceFilters}
-              placeholder="Filter queries for data sources(s)"
-              aria-label="Filter queries for data sources(s)"
+              placeholder={t(
+                'explore.rich-history-queries-tab.filter-placeholder',
+                'Filter queries for data sources(s)'
+              )}
+              aria-label={t('explore.rich-history-queries-tab.filter-aria-label', 'Filter queries for data sources(s)')}
               onChange={(options: SelectableValue[]) => {
                 updateFilters({ datasourceFilters: options.map((option) => option.value) });
               }}
@@ -212,22 +215,29 @@ export function RichHistoryQueriesTab(props: RichHistoryQueriesTabProps) {
           <div className={styles.filterInput}>
             <FilterInput
               escapeRegex={false}
-              placeholder="Search queries"
+              placeholder={t('explore.rich-history-queries-tab.search-placeholder', 'Search queries')}
               value={richHistorySearchFilters.search}
               onChange={(search: string) => updateFilters({ search })}
             />
           </div>
-          <div aria-label="Sort queries" className={styles.sort}>
+          <div
+            aria-label={t('explore.rich-history-queries-tab.sort-aria-label', 'Sort queries')}
+            className={styles.sort}
+          >
             <Select
               value={sortOrderOptions.filter((order) => order.value === richHistorySearchFilters.sortOrder)}
               options={sortOrderOptions}
-              placeholder="Sort queries by"
+              placeholder={t('explore.rich-history-queries-tab.sort-placeholder', 'Sort queries by')}
               onChange={(e: SelectableValue<SortOrder>) => updateFilters({ sortOrder: e.value })}
             />
           </div>
         </div>
 
-        {loading && <span>Loading results...</span>}
+        {loading && (
+          <span>
+            <Trans i18nKey="explore.rich-history-queries-tab.loading-results">Loading results...</Trans>
+          </span>
+        )}
 
         {!loading &&
           Object.keys(mappedQueriesToHeadings).map((heading) => {
@@ -236,23 +246,48 @@ export function RichHistoryQueriesTab(props: RichHistoryQueriesTabProps) {
                 <div className={styles.heading}>
                   {heading}{' '}
                   <span className={styles.queries}>
-                    {partialResults ? 'Displaying ' : ''}
-                    {mappedQueriesToHeadings[heading].length} queries
+                    {partialResults ? (
+                      <Trans
+                        i18nKey="explore.rich-history-queries-tab.displaying-partial-queries"
+                        defaults="Displaying {{ count }} queries"
+                        values={{ count: mappedQueriesToHeadings[heading].length }}
+                      />
+                    ) : (
+                      <Trans
+                        i18nKey="explore.rich-history-queries-tab.displaying-queries"
+                        defaults="{{ count }} queries"
+                        values={{ count: mappedQueriesToHeadings[heading].length }}
+                      />
+                    )}
                   </span>
                 </div>
                 {mappedQueriesToHeadings[heading].map((q) => {
-                  return <RichHistoryCard query={q} key={q.id} exploreId={exploreId} />;
+                  return <RichHistoryCard queryHistoryItem={q} key={q.id} exploreId={exploreId} />;
                 })}
               </div>
             );
           })}
         {partialResults ? (
           <div>
-            Showing {queries.length} of {totalQueries} <Button onClick={loadMoreRichHistory}>Load more</Button>
+            <Trans
+              i18nKey="explore.rich-history-queries-tab.showing-queries"
+              defaults="Showing {{ shown }} of {{ total }} <0>Load more</0>"
+              values={{ shown: queries.length, total: totalQueries }}
+              components={[
+                <Button onClick={loadMoreRichHistory} key="loadMoreButton">
+                  Load more
+                </Button>,
+              ]}
+            />
           </div>
         ) : null}
         <div className={styles.footer}>
-          {!config.queryHistoryEnabled ? 'The history is local to your browser and is not shared with others.' : ''}
+          {!config.queryHistoryEnabled
+            ? t(
+                'explore.rich-history-queries-tab.history-local',
+                'The history is local to your browser and is not shared with others.'
+              )
+            : ''}
         </div>
       </div>
     </div>

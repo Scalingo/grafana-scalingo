@@ -1,4 +1,4 @@
-import { DataTransformerInfo } from '../../types/transformations';
+import { DataFrame, DataTransformerInfo, TransformationApplicabilityLevels } from '../../types';
 
 import { filterFieldsByNameTransformer } from './filterByName';
 import { DataTransformerID } from './ids';
@@ -9,6 +9,7 @@ export interface OrganizeFieldsTransformerOptions
   extends OrderFieldsTransformerOptions,
     RenameFieldsTransformerOptions {
   excludeByName: Record<string, boolean>;
+  includeByName?: Record<string, boolean>;
 }
 
 export const organizeFieldsTransformer: DataTransformerInfo<OrganizeFieldsTransformerOptions> = {
@@ -19,16 +20,22 @@ export const organizeFieldsTransformer: DataTransformerInfo<OrganizeFieldsTransf
     excludeByName: {},
     indexByName: {},
     renameByName: {},
+    includeByName: {},
   },
-
+  isApplicable: (data: DataFrame[]) => {
+    return data.length > 1
+      ? TransformationApplicabilityLevels.NotPossible
+      : TransformationApplicabilityLevels.Applicable;
+  },
   /**
-   * Return a modified copy of the series.  If the transform is not or should not
+   * Return a modified copy of the series. If the transform is not or should not
    * be applied, just return the input series
    */
   operator: (options, ctx) => (source) =>
     source.pipe(
       filterFieldsByNameTransformer.operator(
         {
+          include: options.includeByName ? { names: mapToExcludeArray(options.includeByName) } : undefined,
           exclude: { names: mapToExcludeArray(options.excludeByName) },
         },
         ctx

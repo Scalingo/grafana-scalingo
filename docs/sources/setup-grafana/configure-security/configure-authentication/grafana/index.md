@@ -2,8 +2,12 @@
 aliases:
   - ../../../auth/grafana/
 description: Grafana OAuthentication Guide
-title: Configure Grafana authentication
+labels:
+  products:
+    - enterprise
+    - oss
 menuTitle: Basic auth
+title: Configure Grafana authentication
 weight: 200
 ---
 
@@ -54,7 +58,7 @@ api_key_max_seconds_to_live = -1
 
 ### Anonymous authentication
 
-You can make Grafana accessible without any login required by enabling anonymous access in the configuration file. For more information, refer to [Implications of allowing anonymous access to dashboards]({{< relref "../#implications-of-enabling-anonymous-access-to-dashboards" >}}).
+You can make Grafana accessible without any login required by enabling anonymous access in the configuration file. For more information, refer to [Anonymous authentication]({{< relref "../../configure-authentication#anonymous-authentication" >}}).
 
 Example:
 
@@ -117,16 +121,21 @@ disable_signout_menu = true
 
 ### URL redirect after signing out
 
-URL to redirect the user to after signing out from Grafana. This can for example be used to enable signout from oauth provider.
+The URL to redirect the user to after signing out from Grafana can be configured under `[auth]` or under a specific OAuth provider section (for example, `[auth.generic_oauth]`). The URL configured under a specific OAuth provider section takes precedence over the URL configured in `[auth]` section. This can, for example, enable signout from the OAuth provider.
 
 ```bash
+[auth.generic_oauth]
+signout_redirect_url =
+
 [auth]
 signout_redirect_url =
 ```
 
 ### Protected roles
 
-> **Note:** Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise" >}}) and [Grafana Cloud Advanced]({{< relref "../../../../introduction/grafana-cloud" >}}).
+{{% admonition type="note" %}}
+Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise" >}}) and [Grafana Cloud]({{< relref "../../../../introduction/grafana-cloud" >}}).
+{{% /admonition %}}
 
 By default, after you configure an authorization provider, Grafana will adopt existing users into the new authentication scheme. For example, if you have created a user with basic authentication having the login `jsmith@example.com`, then set up SAML authentication where `jsmith@example.com` is an account, the user's authentication type will be changed to SAML if they perform a SAML sign-in.
 

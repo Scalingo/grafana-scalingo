@@ -20,6 +20,7 @@ const (
 	alertmanagerDefaultGossipInterval     = cluster.DefaultGossipInterval
 	alertmanagerDefaultPushPullInterval   = cluster.DefaultPushPullInterval
 	alertmanagerDefaultConfigPollInterval = time.Minute
+	alertmanagerRedisDefaultMaxConns      = 5
 	// To start, the alertmanager needs at least one route defined.
 	// TODO: we should move this to Grafana settings and define this as the default.
 	alertmanagerDefaultConfiguration = `{
@@ -46,7 +47,7 @@ const (
 	evaluatorDefaultEvaluationTimeout       = 30 * time.Second
 	schedulerDefaultAdminConfigPollInterval = time.Minute
 	schedulereDefaultExecuteAlerts          = true
-	schedulerDefaultMaxAttempts             = 3
+	schedulerDefaultMaxAttempts             = 1
 	schedulerDefaultLegacyMinInterval       = 1
 	screenshotsDefaultCapture               = false
 	screenshotsDefaultCaptureTimeout        = 10 * time.Second
@@ -71,6 +72,14 @@ type UnifiedAlertingSettings struct {
 	HAPeerTimeout                  time.Duration
 	HAGossipInterval               time.Duration
 	HAPushPullInterval             time.Duration
+	HALabel                        string
+	HARedisAddr                    string
+	HARedisPeerName                string
+	HARedisPrefix                  string
+	HARedisUsername                string
+	HARedisPassword                string
+	HARedisDB                      int
+	HARedisMaxConns                int
 	MaxAttempts                    int64
 	MinInterval                    time.Duration
 	EvaluationTimeout              time.Duration
@@ -86,8 +95,19 @@ type UnifiedAlertingSettings struct {
 	Screenshots                   UnifiedAlertingScreenshotSettings
 	ReservedLabels                UnifiedAlertingReservedLabelSettings
 	StateHistory                  UnifiedAlertingStateHistorySettings
+	RemoteAlertmanager            RemoteAlertmanagerSettings
+	Upgrade                       UnifiedAlertingUpgradeSettings
 	// MaxStateSaveConcurrency controls the number of goroutines (per rule) that can save alert state in parallel.
 	MaxStateSaveConcurrency int
+}
+
+// RemoteAlertmanagerSettings contains the configuration needed
+// to disable the internal Alertmanager and use an external one instead.
+type RemoteAlertmanagerSettings struct {
+	Enable   bool
+	URL      string
+	TenantID string
+	Password string
 }
 
 type UnifiedAlertingScreenshotSettings struct {
@@ -115,6 +135,11 @@ type UnifiedAlertingStateHistorySettings struct {
 	MultiPrimary          string
 	MultiSecondaries      []string
 	ExternalLabels        map[string]string
+}
+
+type UnifiedAlertingUpgradeSettings struct {
+	// CleanUpgrade controls whether the upgrade process should clean up UA data when upgrading from legacy alerting.
+	CleanUpgrade bool
 }
 
 // IsEnabled returns true if UnifiedAlertingSettings.Enabled is either nil or true.
@@ -226,6 +251,14 @@ func (cfg *Cfg) ReadUnifiedAlertingSettings(iniFile *ini.File) error {
 	}
 	uaCfg.HAListenAddr = ua.Key("ha_listen_address").MustString(alertmanagerDefaultClusterAddr)
 	uaCfg.HAAdvertiseAddr = ua.Key("ha_advertise_address").MustString("")
+	uaCfg.HALabel = ua.Key("ha_label").MustString("")
+	uaCfg.HARedisAddr = ua.Key("ha_redis_address").MustString("")
+	uaCfg.HARedisPeerName = ua.Key("ha_redis_peer_name").MustString("")
+	uaCfg.HARedisPrefix = ua.Key("ha_redis_prefix").MustString("")
+	uaCfg.HARedisUsername = ua.Key("ha_redis_username").MustString("")
+	uaCfg.HARedisPassword = ua.Key("ha_redis_password").MustString("")
+	uaCfg.HARedisDB = ua.Key("ha_redis_db").MustInt(0)
+	uaCfg.HARedisMaxConns = ua.Key("ha_redis_max_conns").MustInt(alertmanagerRedisDefaultMaxConns)
 	peers := ua.Key("ha_peers").MustString("")
 	uaCfg.HAPeers = make([]string, 0)
 	if peers != "" {
@@ -261,17 +294,30 @@ func (cfg *Cfg) ReadUnifiedAlertingSettings(iniFile *ini.File) error {
 	}
 	uaCfg.EvaluationTimeout = uaEvaluationTimeout
 
-	uaMaxAttempts := ua.Key("max_attempts").MustInt64(schedulerDefaultMaxAttempts)
-	if uaMaxAttempts == schedulerDefaultMaxAttempts { // unified option or equals the default
-		legacyMaxAttempts := alerting.Key("max_attempts").MustInt64(schedulerDefaultMaxAttempts)
-		if legacyMaxAttempts != schedulerDefaultMaxAttempts {
-			cfg.Logger.Warn("falling back to legacy setting of 'max_attempts'; please use the configuration option in the `unified_alerting` section if Grafana 8 alerts are enabled.")
-		}
-		uaMaxAttempts = legacyMaxAttempts
-	}
-	uaCfg.MaxAttempts = uaMaxAttempts
+	uaCfg.MaxAttempts = ua.Key("max_attempts").MustInt64(schedulerDefaultMaxAttempts)
 
 	uaCfg.BaseInterval = SchedulerBaseInterval
+
+	// The base interval of the scheduler for evaluating alerts.
+	// 1. It is used by the internal scheduler's timer to tick at this interval.
+	// 2. to spread evaluations of rules that need to be evaluated at the current tick T. In other words, the evaluation of rules at the tick T will be evenly spread in the interval from T to T+scheduler_tick_interval.
+	//    For example, if there are 100 rules that need to be evaluated at tick T, and the base interval is 10s, rules will be evaluated every 100ms.
+	// 3. It increases delay between rule updates and state reset.
+	// NOTE:
+	// 1. All alert rule intervals should be times of this interval. Otherwise, the rules will not be evaluated. It is not recommended to set it lower than 10s or odd numbers. Recommended: 10s, 30s, 1m
+	// 2. The increasing of the interval will affect how slow alert rule updates will reset the state, and therefore reset notification. Higher the interval - slower propagation of the changes.
+	baseInterval, err := gtime.ParseDuration(valueAsString(ua, "scheduler_tick_interval", SchedulerBaseInterval.String()))
+	if cfg.IsFeatureToggleEnabled("configurableSchedulerTick") { // use literal to avoid cycle imports
+		if err != nil {
+			return fmt.Errorf("failed to parse setting 'scheduler_tick_interval' as duration: %w", err)
+		}
+		if baseInterval != SchedulerBaseInterval {
+			cfg.Logger.Warn("Scheduler tick interval is changed to non-default", "interval", baseInterval, "default", SchedulerBaseInterval)
+		}
+		uaCfg.BaseInterval = baseInterval
+	} else if baseInterval != SchedulerBaseInterval {
+		cfg.Logger.Warn("Scheduler tick interval is changed to non-default but the feature flag is not enabled. Using default.", "interval", baseInterval, "default", SchedulerBaseInterval)
+	}
 
 	uaMinInterval, err := gtime.ParseDuration(valueAsString(ua, "min_interval", uaCfg.BaseInterval.String()))
 	if err != nil || uaMinInterval == uaCfg.BaseInterval { // unified option is invalid duration or equals the default
@@ -298,6 +344,15 @@ func (cfg *Cfg) ReadUnifiedAlertingSettings(iniFile *ini.File) error {
 	if uaMinInterval > uaCfg.DefaultRuleEvaluationInterval {
 		uaCfg.DefaultRuleEvaluationInterval = uaMinInterval
 	}
+
+	remoteAlertmanager := iniFile.Section("remote.alertmanager")
+	uaCfgRemoteAM := RemoteAlertmanagerSettings{
+		Enable:   remoteAlertmanager.Key("enabled").MustBool(false),
+		URL:      remoteAlertmanager.Key("url").MustString(""),
+		TenantID: remoteAlertmanager.Key("tenant").MustString(""),
+		Password: remoteAlertmanager.Key("password").MustString(""),
+	}
+	uaCfg.RemoteAlertmanager = uaCfgRemoteAM
 
 	screenshots := iniFile.Section("unified_alerting.screenshots")
 	uaCfgScreenshots := uaCfg.Screenshots
@@ -341,6 +396,12 @@ func (cfg *Cfg) ReadUnifiedAlertingSettings(iniFile *ini.File) error {
 	uaCfg.StateHistory = uaCfgStateHistory
 
 	uaCfg.MaxStateSaveConcurrency = ua.Key("max_state_save_concurrency").MustInt(1)
+
+	upgrade := iniFile.Section("unified_alerting.upgrade")
+	uaCfgUpgrade := UnifiedAlertingUpgradeSettings{
+		CleanUpgrade: upgrade.Key("clean_upgrade").MustBool(false),
+	}
+	uaCfg.Upgrade = uaCfgUpgrade
 
 	cfg.UnifiedAlerting = uaCfg
 	return nil

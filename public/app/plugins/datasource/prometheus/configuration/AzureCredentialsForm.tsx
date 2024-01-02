@@ -1,9 +1,9 @@
+import { cx } from '@emotion/css';
 import React, { ChangeEvent, useEffect, useMemo, useReducer, useState } from 'react';
 
 import { SelectableValue } from '@grafana/data';
-import { InlineFormLabel, Button } from '@grafana/ui/src/components';
-import { Input } from '@grafana/ui/src/components/Forms/Legacy/Input/Input';
-import { Select } from '@grafana/ui/src/components/Forms/Legacy/Select/Select';
+import { config } from '@grafana/runtime';
+import { InlineFormLabel, Button, Select, Input } from '@grafana/ui';
 
 import { AzureAuthType, AzureCredentials, isCredentialsComplete } from './AzureCredentials';
 
@@ -172,6 +172,7 @@ export const AzureCredentialsForm = (props: Props) => {
     };
     onCredentialsChange(updated);
   };
+  const prometheusConfigOverhaulAuth = config.featureToggles.prometheusConfigOverhaulAuth;
 
   return (
     <div className="gf-form-group">
@@ -214,7 +215,7 @@ export const AzureCredentialsForm = (props: Props) => {
               <InlineFormLabel className="width-12">Directory (tenant) ID</InlineFormLabel>
               <div className="width-15">
                 <Input
-                  className="width-30"
+                  className={cx(prometheusConfigOverhaulAuth ? 'width-20' : 'width-30')}
                   placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
                   value={credentials.tenantId || ''}
                   onChange={onTenantIdChange}
@@ -228,7 +229,7 @@ export const AzureCredentialsForm = (props: Props) => {
               <InlineFormLabel className="width-12">Application (client) ID</InlineFormLabel>
               <div className="width-15">
                 <Input
-                  className="width-30"
+                  className={cx(prometheusConfigOverhaulAuth ? 'width-20' : 'width-30')}
                   placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
                   value={credentials.clientId || ''}
                   onChange={onClientIdChange}
@@ -243,11 +244,20 @@ export const AzureCredentialsForm = (props: Props) => {
                 <InlineFormLabel htmlFor="azure-client-secret" className="width-12">
                   Client Secret
                 </InlineFormLabel>
-                <Input id="azure-client-secret" className="width-25" placeholder="configured" disabled />
+                <Input
+                  id="azure-client-secret"
+                  className={cx(prometheusConfigOverhaulAuth ? 'width-20' : 'width-25')}
+                  placeholder="configured"
+                  disabled
+                />
               </div>
               {!disabled && (
                 <div className="gf-form">
-                  <div className="max-width-30 gf-form-inline">
+                  <div
+                    className={cx(
+                      prometheusConfigOverhaulAuth ? 'max-width-20 gf-form-inline' : 'max-width-30 gf-form-inline'
+                    )}
+                  >
                     <Button variant="secondary" type="button" onClick={onClientSecretReset}>
                       reset
                     </Button>
@@ -261,7 +271,7 @@ export const AzureCredentialsForm = (props: Props) => {
                 <InlineFormLabel className="width-12">Client Secret</InlineFormLabel>
                 <div className="width-15">
                   <Input
-                    className="width-30"
+                    className={cx(prometheusConfigOverhaulAuth ? 'width-20' : 'width-30')}
                     placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
                     value={credentials.clientSecret || ''}
                     onChange={onClientSecretChange}
@@ -278,7 +288,7 @@ export const AzureCredentialsForm = (props: Props) => {
           <div className="gf-form-inline">
             <div className="gf-form">
               <InlineFormLabel className="width-12">Default Subscription</InlineFormLabel>
-              <div className="width-25">
+              <div className={cx(prometheusConfigOverhaulAuth ? 'width-20' : 'width-25')}>
                 <Select
                   value={
                     credentials.defaultSubscriptionId

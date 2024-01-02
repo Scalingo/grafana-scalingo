@@ -1,9 +1,10 @@
-import produce from 'immer';
+import { produce } from 'immer';
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 import { SIGV4ConnectionConfig } from '@grafana/aws-sdk';
 import { DataSourcePluginOptionsEditorProps, SelectableValue } from '@grafana/data';
-import { DataSourceHttpSettings, InlineField, InlineFormLabel, InlineSwitch, Select } from '@grafana/ui';
+import { DataSourceHttpSettings, InlineField, InlineFormLabel, InlineSwitch, Select, Text } from '@grafana/ui';
 import { config } from 'app/core/config';
 
 import { AlertManagerDataSourceJsonData, AlertManagerImplementation } from './types';
@@ -13,12 +14,6 @@ export type Props = DataSourcePluginOptionsEditorProps<AlertManagerDataSourceJso
 const IMPL_OPTIONS: Array<SelectableValue<AlertManagerImplementation>> = [
   {
     value: AlertManagerImplementation.mimir,
-    label: 'Mimir',
-    description: `https://grafana.com/oss/mimir/. An open source, horizontally scalable, highly available, multi-tenant, long-term storage for Prometheus.`,
-  },
-  {
-    value: AlertManagerImplementation.mimir,
-    icon: 'public/img/alerting/mimir_logo.svg',
     label: 'Mimir',
     description: `https://grafana.com/oss/mimir/. An open source, horizontally scalable, highly available, multi-tenant, long-term storage for Prometheus.`,
   },
@@ -79,6 +74,11 @@ export const ConfigEditor = (props: Props) => {
             />
           </InlineField>
         </div>
+        {options.jsonData.handleGrafanaManagedAlerts && (
+          <Text variant="bodySmall" color="secondary">
+            Make sure to enable the alert forwarding on the <Link to="/alerting/admin">admin page</Link>.
+          </Text>
+        )}
       </div>
       <DataSourceHttpSettings
         defaultUrl={''}
@@ -87,6 +87,7 @@ export const ConfigEditor = (props: Props) => {
         onChange={onOptionsChange}
         sigV4AuthToggleEnabled={config.sigV4AuthEnabled}
         renderSigV4Editor={<SIGV4ConnectionConfig {...props}></SIGV4ConnectionConfig>}
+        secureSocksDSProxyEnabled={false} // the proxy is not implemented to work with the alertmanager
       />
     </>
   );

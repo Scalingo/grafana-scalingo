@@ -1,6 +1,6 @@
 import { cloneDeep } from 'lodash';
 
-import { ArrayVector, DataQueryResponse, QueryResultMetaStat, DataFrame, FieldType } from '@grafana/data';
+import { DataQueryResponse, QueryResultMetaStat, DataFrame, FieldType } from '@grafana/data';
 
 import { getMockFrames } from './mocks';
 import {
@@ -13,6 +13,7 @@ import {
   cloneQueryResponse,
   combineResponses,
 } from './responseUtils';
+import { LabelType } from './types';
 
 const frame: DataFrame = {
   length: 1,
@@ -21,19 +22,49 @@ const frame: DataFrame = {
       name: 'Time',
       config: {},
       type: FieldType.time,
-      values: new ArrayVector([1]),
+      values: [1],
     },
     {
       name: 'labels',
       config: {},
       type: FieldType.other,
-      values: new ArrayVector([{ level: 'info' }]),
+      values: [{ level: 'info' }],
     },
     {
       name: 'Line',
       config: {},
       type: FieldType.string,
-      values: new ArrayVector(['line1']),
+      values: ['line1'],
+    },
+  ],
+};
+
+const frameWithTypes: DataFrame = {
+  length: 1,
+  fields: [
+    {
+      name: 'Time',
+      config: {},
+      type: FieldType.time,
+      values: [1],
+    },
+    {
+      name: 'labels',
+      config: {},
+      type: FieldType.other,
+      values: [{ level: 'info', structured: 'foo' }],
+    },
+    {
+      name: 'Line',
+      config: {},
+      type: FieldType.string,
+      values: ['line1'],
+    },
+    {
+      name: 'labelTypes',
+      config: {},
+      type: FieldType.other,
+      values: [{ level: 'I', structured: 'S' }],
     },
   ],
 };
@@ -41,7 +72,7 @@ const frame: DataFrame = {
 describe('dataFrameHasParsingError', () => {
   it('handles frame with parsing error', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([{ level: 'info', __error__: 'error' }]);
+    input.fields[1].values = [{ level: 'info', __error__: 'error' }];
     expect(dataFrameHasLokiError(input)).toBe(true);
   });
   it('handles frame without parsing error', () => {
@@ -53,12 +84,12 @@ describe('dataFrameHasParsingError', () => {
 describe('dataFrameHasLevelLabel', () => {
   it('returns true if level label is present', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([{ level: 'info' }]);
+    input.fields[1].values = [{ level: 'info' }];
     expect(dataFrameHasLevelLabel(input)).toBe(true);
   });
   it('returns false if level label is present', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([{ foo: 'bar' }]);
+    input.fields[1].values = [{ foo: 'bar' }];
     expect(dataFrameHasLevelLabel(input)).toBe(false);
   });
 });
@@ -66,17 +97,17 @@ describe('dataFrameHasLevelLabel', () => {
 describe('extractLevelLikeLabelFromDataFrame', () => {
   it('returns label if lvl label is present', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([{ lvl: 'info' }]);
+    input.fields[1].values = [{ lvl: 'info' }];
     expect(extractLevelLikeLabelFromDataFrame(input)).toBe('lvl');
   });
   it('returns label if level-like label is present', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([{ error_level: 'info' }]);
+    input.fields[1].values = [{ error_level: 'info' }];
     expect(extractLevelLikeLabelFromDataFrame(input)).toBe('error_level');
   });
   it('returns undefined if no level-like label is present', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([{ foo: 'info' }]);
+    input.fields[1].values = [{ foo: 'info' }];
     expect(extractLevelLikeLabelFromDataFrame(input)).toBe(null);
   });
 });
@@ -88,12 +119,12 @@ describe('extractLogParserFromDataFrame', () => {
   });
   it('identifies JSON', () => {
     const input = cloneDeep(frame);
-    input.fields[2].values = new ArrayVector(['{"a":"b"}']);
+    input.fields[2].values = ['{"a":"b"}'];
     expect(extractLogParserFromDataFrame(input)).toEqual({ hasJSON: true, hasLogfmt: false, hasPack: false });
   });
   it('identifies logfmt', () => {
     const input = cloneDeep(frame);
-    input.fields[2].values = new ArrayVector(['a=b']);
+    input.fields[2].values = ['a=b'];
     expect(extractLogParserFromDataFrame(input)).toEqual({ hasJSON: false, hasLogfmt: true, hasPack: false });
   });
 });
@@ -101,24 +132,40 @@ describe('extractLogParserFromDataFrame', () => {
 describe('extractLabelKeysFromDataFrame', () => {
   it('returns empty by default', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([]);
+    input.fields[1].values = [];
     expect(extractLabelKeysFromDataFrame(input)).toEqual([]);
   });
+
   it('extracts label keys', () => {
     const input = cloneDeep(frame);
     expect(extractLabelKeysFromDataFrame(input)).toEqual(['level']);
+  });
+
+  it('extracts indexed label keys', () => {
+    const input = cloneDeep(frameWithTypes);
+    expect(extractLabelKeysFromDataFrame(input)).toEqual(['level']);
+  });
+
+  it('extracts structured metadata label keys', () => {
+    const input = cloneDeep(frameWithTypes);
+    expect(extractLabelKeysFromDataFrame(input, LabelType.StructuredMetadata)).toEqual(['structured']);
+  });
+
+  it('does not extract structured metadata label keys from non-typed frame', () => {
+    const input = cloneDeep(frame);
+    expect(extractLabelKeysFromDataFrame(input, LabelType.StructuredMetadata)).toEqual([]);
   });
 });
 
 describe('extractUnwrapLabelKeysFromDataFrame', () => {
   it('returns empty by default', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([]);
+    input.fields[1].values = [];
     expect(extractUnwrapLabelKeysFromDataFrame(input)).toEqual([]);
   });
   it('extracts possible unwrap label keys', () => {
     const input = cloneDeep(frame);
-    input.fields[1].values = new ArrayVector([{ number: 13 }]);
+    input.fields[1].values = [{ number: 13 }];
     expect(extractUnwrapLabelKeysFromDataFrame(input)).toEqual(['number']);
   });
 });
@@ -152,19 +199,19 @@ describe('combineResponses', () => {
               config: {},
               name: 'Time',
               type: 'time',
-              values: new ArrayVector([1, 2, 3, 4]),
+              values: [1, 2, 3, 4],
             },
             {
               config: {},
               name: 'Line',
               type: 'string',
-              values: new ArrayVector(['line3', 'line4', 'line1', 'line2']),
+              values: ['line3', 'line4', 'line1', 'line2'],
             },
             {
               config: {},
               name: 'labels',
               type: 'other',
-              values: new ArrayVector([
+              values: [
                 {
                   otherLabel: 'other value',
                 },
@@ -174,23 +221,26 @@ describe('combineResponses', () => {
                 {
                   otherLabel: 'other value',
                 },
-              ]),
+              ],
             },
             {
               config: {},
               name: 'tsNs',
               type: 'string',
-              values: new ArrayVector(['1000000', '2000000', '3000000', '4000000']),
+              values: ['1000000', '2000000', '3000000', '4000000'],
             },
             {
               config: {},
               name: 'id',
               type: 'string',
-              values: new ArrayVector(['id3', 'id4', 'id1', 'id2']),
+              values: ['id3', 'id4', 'id1', 'id2'],
             },
           ],
           length: 4,
           meta: {
+            custom: {
+              frameType: 'LabeledTimeValues',
+            },
             stats: [
               {
                 displayName: 'Summary: total bytes processed',
@@ -221,17 +271,21 @@ describe('combineResponses', () => {
               config: {},
               name: 'Time',
               type: 'time',
-              values: new ArrayVector([1000000, 2000000, 3000000, 4000000]),
+              values: [1000000, 2000000, 3000000, 4000000],
             },
             {
               config: {},
               name: 'Value',
               type: 'number',
-              values: new ArrayVector([6, 7, 5, 4]),
+              values: [6, 7, 5, 4],
+              labels: {
+                level: 'debug',
+              },
             },
           ],
           length: 4,
           meta: {
+            type: 'timeseries-multi',
             stats: [
               {
                 displayName: 'Summary: total bytes processed',
@@ -262,17 +316,21 @@ describe('combineResponses', () => {
               config: {},
               name: 'Time',
               type: 'time',
-              values: new ArrayVector([1000000, 2000000, 3000000, 4000000]),
+              values: [1000000, 2000000, 3000000, 4000000],
             },
             {
               config: {},
               name: 'Value',
               type: 'number',
-              values: new ArrayVector([6, 7, 5, 4]),
+              values: [6, 7, 5, 4],
+              labels: {
+                level: 'debug',
+              },
             },
           ],
           length: 4,
           meta: {
+            type: 'timeseries-multi',
             stats: [
               {
                 displayName: 'Summary: total bytes processed',
@@ -390,6 +448,81 @@ describe('combineResponses', () => {
     expect(combined.errors).toHaveLength(2);
     expect(combined.errors?.[0]?.message).toBe('errorA');
     expect(combined.errors?.[1]?.message).toBe('errorB');
+  });
+
+  it('combines frames with nanoseconds', () => {
+    const { logFrameA, logFrameB } = getMockFrames();
+    logFrameA.fields[0].nanos = [333333, 444444];
+    logFrameB.fields[0].nanos = [111111, 222222];
+    const responseA: DataQueryResponse = {
+      data: [logFrameA],
+    };
+    const responseB: DataQueryResponse = {
+      data: [logFrameB],
+    };
+    expect(combineResponses(responseA, responseB)).toEqual({
+      data: [
+        {
+          fields: [
+            {
+              config: {},
+              name: 'Time',
+              type: 'time',
+              values: [1, 2, 3, 4],
+              nanos: [111111, 222222, 333333, 444444],
+            },
+            {
+              config: {},
+              name: 'Line',
+              type: 'string',
+              values: ['line3', 'line4', 'line1', 'line2'],
+            },
+            {
+              config: {},
+              name: 'labels',
+              type: 'other',
+              values: [
+                {
+                  otherLabel: 'other value',
+                },
+                {
+                  label: 'value',
+                },
+                {
+                  otherLabel: 'other value',
+                },
+              ],
+            },
+            {
+              config: {},
+              name: 'tsNs',
+              type: 'string',
+              values: ['1000000', '2000000', '3000000', '4000000'],
+            },
+            {
+              config: {},
+              name: 'id',
+              type: 'string',
+              values: ['id3', 'id4', 'id1', 'id2'],
+            },
+          ],
+          length: 4,
+          meta: {
+            custom: {
+              frameType: 'LabeledTimeValues',
+            },
+            stats: [
+              {
+                displayName: 'Summary: total bytes processed',
+                unit: 'decbytes',
+                value: 33,
+              },
+            ],
+          },
+          refId: 'A',
+        },
+      ],
+    });
   });
 
   describe('combine stats', () => {

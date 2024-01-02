@@ -306,7 +306,7 @@ func (server *Server) Users(logins []string) (
 	}
 
 	server.log.Debug(
-		"LDAP users found", "users", fmt.Sprintf("%v", serializedUsers),
+		"LDAP users found", "users", fmt.Sprintf("%+v", serializedUsers),
 	)
 
 	return serializedUsers, nil
@@ -452,7 +452,7 @@ func (server *Server) buildGrafanaUser(user *ldap.Entry) (*login.ExternalUserInf
 
 	// Skipping org role sync
 	if server.cfg.LDAPSkipOrgRoleSync {
-		server.log.Debug("skipping organization role mapping.")
+		server.log.Debug("Skipping organization role mapping.")
 		return extUser, nil
 	}
 

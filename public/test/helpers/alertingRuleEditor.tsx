@@ -11,7 +11,7 @@ import { TestProvider } from './TestProvider';
 
 export const ui = {
   inputs: {
-    name: byRole('textbox', { name: /rule name name for the alert rule\./i }),
+    name: byRole('textbox', { name: 'name' }),
     alertType: byTestId('alert-type-picker'),
     dataSource: byTestId('datasource-picker'),
     folder: byTestId('folder-picker'),
@@ -25,22 +25,23 @@ export const ui = {
     expr: byTestId('expr'),
   },
   buttons: {
-    save: byRole('button', { name: 'Save' }),
+    saveAndExit: byRole('button', { name: 'Save rule and exit' }),
+    save: byRole('button', { name: 'Save rule' }),
     addAnnotation: byRole('button', { name: /Add info/ }),
     addLabel: byRole('button', { name: /Add label/ }),
-    // alert type buttons
-    grafanaManagedAlert: byRole('button', { name: /Grafana managed/ }),
-    lotexAlert: byRole('button', { name: /Mimir or Loki alert/ }),
-    lotexRecordingRule: byRole('button', { name: /Mimir or Loki recording rule/ }),
   },
 };
 
-export function renderRuleEditor(identifier?: string) {
-  locationService.push(identifier ? `/alerting/${identifier}/edit` : `/alerting/new`);
+export function renderRuleEditor(identifier?: string, recording = false) {
+  if (identifier) {
+    locationService.push(`/alerting/${identifier}/edit`);
+  } else {
+    locationService.push(`/alerting/new/${recording ? 'recording' : 'alerting'}`);
+  }
 
   return render(
     <TestProvider>
-      <Route path={['/alerting/new', '/alerting/:id/edit']} component={RuleEditor} />
+      <Route path={['/alerting/new/:type', '/alerting/:id/edit']} component={RuleEditor} />
     </TestProvider>
   );
 }

@@ -94,6 +94,9 @@ type AlertmanagerAggregatedMetrics struct {
 	nflogQueryDuration           *prometheus.Desc
 	nflogPropagatedMessagesTotal *prometheus.Desc
 
+	// exporter metrics, gathered from the Alertmanager Alert Marker.
+	markerAlerts *prometheus.Desc
+
 	// exported metrics, gathered from Alertmanager Silences
 	silencesGCDuration              *prometheus.Desc
 	silencesSnapshotDuration        *prometheus.Desc
@@ -107,6 +110,13 @@ type AlertmanagerAggregatedMetrics struct {
 	// exported metrics, gathered from Alertmanager Dispatcher
 	dispatchAggrGroups         *prometheus.Desc
 	dispatchProcessingDuration *prometheus.Desc
+
+	// added to measure usage of matchers, match_re, match and
+	// object_matchers
+	matchers       *prometheus.Desc
+	matchRE        *prometheus.Desc
+	match          *prometheus.Desc
+	objectMatchers *prometheus.Desc
 }
 
 func NewAlertmanagerAggregatedMetrics(registries *metrics.TenantRegistries) *AlertmanagerAggregatedMetrics {
@@ -180,6 +190,11 @@ func NewAlertmanagerAggregatedMetrics(registries *metrics.TenantRegistries) *Ale
 			"Number of received gossip messages that have been further gossiped.",
 			nil, nil),
 
+		markerAlerts: prometheus.NewDesc(
+			fmt.Sprintf("%s_%s_alertmanager_alerts", Namespace, Subsystem),
+			"How many alerts by state are in Grafana's Alertmanager.",
+			[]string{"org", "state"}, nil),
+
 		silencesGCDuration: prometheus.NewDesc(
 			fmt.Sprintf("%s_%s_silences_gc_duration_seconds", Namespace, Subsystem),
 			"Duration of the last silence garbage collection cycle.",
@@ -221,6 +236,23 @@ func NewAlertmanagerAggregatedMetrics(registries *metrics.TenantRegistries) *Ale
 			fmt.Sprintf("%s_%s_dispatcher_alert_processing_duration_seconds", Namespace, Subsystem),
 			"Summary of latencies for the processing of alerts.",
 			nil, nil),
+
+		matchers: prometheus.NewDesc(
+			fmt.Sprintf("%s_%s_alertmanager_config_matchers", Namespace, Subsystem),
+			"The total number of matchers",
+			nil, nil),
+		matchRE: prometheus.NewDesc(
+			fmt.Sprintf("%s_%s_alertmanager_config_match_re", Namespace, Subsystem),
+			"The total number of matchRE",
+			nil, nil),
+		match: prometheus.NewDesc(
+			fmt.Sprintf("%s_%s_alertmanager_config_match", Namespace, Subsystem),
+			"The total number of match",
+			nil, nil),
+		objectMatchers: prometheus.NewDesc(
+			fmt.Sprintf("%s_%s_alertmanager_config_object_matchers", Namespace, Subsystem),
+			"The total number of object_matchers",
+			nil, nil),
 	}
 
 	return aggregatedMetrics
@@ -246,6 +278,8 @@ func (a *AlertmanagerAggregatedMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- a.nflogQueryDuration
 	out <- a.nflogPropagatedMessagesTotal
 
+	out <- a.markerAlerts
+
 	out <- a.silencesGCDuration
 	out <- a.silencesSnapshotDuration
 	out <- a.silencesSnapshotSize
@@ -257,6 +291,11 @@ func (a *AlertmanagerAggregatedMetrics) Describe(out chan<- *prometheus.Desc) {
 
 	out <- a.dispatchAggrGroups
 	out <- a.dispatchProcessingDuration
+
+	out <- a.matchers
+	out <- a.matchRE
+	out <- a.match
+	out <- a.objectMatchers
 }
 
 func (a *AlertmanagerAggregatedMetrics) Collect(out chan<- prometheus.Metric) {
@@ -281,6 +320,8 @@ func (a *AlertmanagerAggregatedMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, a.nflogQueryDuration, "alertmanager_nflog_query_duration_seconds")
 	data.SendSumOfCounters(out, a.nflogPropagatedMessagesTotal, "alertmanager_nflog_gossip_messages_propagated_total")
 
+	data.SendSumOfGaugesPerTenantWithLabels(out, a.markerAlerts, "alertmanager_alerts", "state")
+
 	data.SendSumOfSummaries(out, a.silencesGCDuration, "alertmanager_silences_gc_duration_seconds")
 	data.SendSumOfSummaries(out, a.silencesSnapshotDuration, "alertmanager_silences_snapshot_duration_seconds")
 	data.SendSumOfGauges(out, a.silencesSnapshotSize, "alertmanager_silences_snapshot_size_bytes")
@@ -292,4 +333,9 @@ func (a *AlertmanagerAggregatedMetrics) Collect(out chan<- prometheus.Metric) {
 
 	data.SendSumOfGauges(out, a.dispatchAggrGroups, "alertmanager_dispatcher_aggregation_groups")
 	data.SendSumOfSummaries(out, a.dispatchProcessingDuration, "alertmanager_dispatcher_alert_processing_duration_seconds")
+
+	data.SendSumOfGauges(out, a.matchers, "alertmanager_config_matchers")
+	data.SendSumOfGauges(out, a.matchRE, "alertmanager_config_match_re")
+	data.SendSumOfGauges(out, a.match, "alertmanager_config_match")
+	data.SendSumOfGauges(out, a.objectMatchers, "alertmanager_config_object_matchers")
 }

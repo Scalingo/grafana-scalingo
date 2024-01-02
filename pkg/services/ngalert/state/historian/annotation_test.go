@@ -31,7 +31,7 @@ func TestAnnotationHistorian(t *testing.T) {
 	t.Run("alert annotations are queryable", func(t *testing.T) {
 		anns := createTestAnnotationBackendSut(t)
 		items := []annotations.Item{createAnnotation()}
-		require.NoError(t, anns.recordAnnotations(context.Background(), nil, items, 1, log.NewNopLogger()))
+		require.NoError(t, anns.store.Save(context.Background(), nil, items, 1, log.NewNopLogger()))
 
 		q := models.HistoryQuery{
 			RuleUID: "my-rule",
@@ -62,7 +62,7 @@ func TestAnnotationHistorian(t *testing.T) {
 
 	t.Run("emits expected write metrics", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		met := metrics.NewHistorianMetrics(reg)
+		met := metrics.NewHistorianMetrics(reg, metrics.Subsystem)
 		anns := createTestAnnotationBackendSutWithMetrics(t, met)
 		errAnns := createFailingAnnotationSut(t, met)
 		rule := createTestRule()
@@ -101,7 +101,7 @@ grafana_alerting_state_history_writes_total{backend="annotations",org="1"} 2
 }
 
 func createTestAnnotationBackendSut(t *testing.T) *AnnotationBackend {
-	return createTestAnnotationBackendSutWithMetrics(t, metrics.NewHistorianMetrics(prometheus.NewRegistry()))
+	return createTestAnnotationBackendSutWithMetrics(t, metrics.NewHistorianMetrics(prometheus.NewRegistry(), metrics.Subsystem))
 }
 
 func createTestAnnotationBackendSutWithMetrics(t *testing.T, met *metrics.Historian) *AnnotationBackend {
@@ -113,7 +113,8 @@ func createTestAnnotationBackendSutWithMetrics(t *testing.T, met *metrics.Histor
 	}
 	dbs := &dashboards.FakeDashboardService{}
 	dbs.On("GetDashboard", mock.Anything, mock.Anything).Return(&dashboards.Dashboard{}, nil)
-	return NewAnnotationBackend(fakeAnnoRepo, dbs, rules, met)
+	store := NewAnnotationStore(fakeAnnoRepo, dbs, met)
+	return NewAnnotationBackend(store, rules, met)
 }
 
 func createFailingAnnotationSut(t *testing.T, met *metrics.Historian) *AnnotationBackend {
@@ -124,7 +125,8 @@ func createFailingAnnotationSut(t *testing.T, met *metrics.Historian) *Annotatio
 	}
 	dbs := &dashboards.FakeDashboardService{}
 	dbs.On("GetDashboard", mock.Anything, mock.Anything).Return(&dashboards.Dashboard{}, nil)
-	return NewAnnotationBackend(fakeAnnoRepo, dbs, rules, met)
+	store := NewAnnotationStore(fakeAnnoRepo, dbs, met)
+	return NewAnnotationBackend(store, rules, met)
 }
 
 func createAnnotation() annotations.Item {

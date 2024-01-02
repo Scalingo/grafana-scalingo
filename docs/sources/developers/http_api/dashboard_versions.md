@@ -11,6 +11,10 @@ keywords:
   - api
   - dashboard
   - versions
+labels:
+  products:
+    - enterprise
+    - oss
 title: 'Dashboard Versions HTTP API '
 ---
 
@@ -18,7 +22,9 @@ title: 'Dashboard Versions HTTP API '
 
 ## Get all dashboard versions
 
-> **Warning:** This API is deprecated since Grafana v9.0.0 and will be removed in a future release. Refer to the [new dashboard versions API](#get-all-dashboard-versions-by-dashboard-uid).
+{{% admonition type="warning" %}}
+This API is deprecated since Grafana v9.0.0 and will be removed in a future release. Refer to the [new dashboard versions API](#get-all-dashboard-versions-by-dashboard-uid).
+{{% /admonition %}}
 
 Query parameters:
 
@@ -138,7 +144,9 @@ Status Codes:
 
 ## Get dashboard version
 
-> **Warning:** This API is deprecated since Grafana v9.0.0 and will be removed in a future release. Refer to the [new get dashboard version API](#get-dashboard-version-by-dashboard-uid).
+{{% admonition type="warning" %}}
+This API is deprecated since Grafana v9.0.0 and will be removed in a future release. Refer to the [new get dashboard version API](#get-dashboard-version-by-dashboard-uid).
+{{% /admonition %}}
 
 `GET /api/dashboards/id/:dashboardId/versions/:version`
 
@@ -197,8 +205,7 @@ Content-Length: 1300
       }
     ],
     "schemaVersion": 14,
-    "style": "dark",
-    "tags": [
+      "tags": [
 
     ],
     "templating": {
@@ -309,8 +316,7 @@ Content-Length: 1300
       }
     ],
     "schemaVersion": 14,
-    "style": "dark",
-    "tags": [
+      "tags": [
 
     ],
     "templating": {
@@ -363,7 +369,9 @@ Status Codes:
 
 ## Restore dashboard
 
-> **Warning:** This API is deprecated since Grafana v9.0.0 and will be removed in a future release. Refer to the [new restore dashboard API](#restore-dashboard-by-dashboard-uid).
+{{% admonition type="warning" %}}
+This API is deprecated since Grafana v9.0.0 and will be removed in a future release. Refer to the [new restore dashboard API](#restore-dashboard-by-dashboard-uid).
+{{% /admonition %}}
 
 `POST /api/dashboards/id/:dashboardId/restore`
 

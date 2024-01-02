@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/apikey"
 	"github.com/grafana/grafana/pkg/services/apikey/apikeytest"
 	"github.com/grafana/grafana/pkg/services/authn"
+	"github.com/grafana/grafana/pkg/services/login"
 	"github.com/grafana/grafana/pkg/services/org"
 	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/services/user/usertest"
@@ -55,6 +56,7 @@ func TestAPIKey_Authenticate(t *testing.T) {
 				ClientParams: authn.ClientParams{
 					SyncPermissions: true,
 				},
+				AuthenticatedBy: login.APIKeyAuthModule,
 			},
 		},
 		{
@@ -74,20 +76,19 @@ func TestAPIKey_Authenticate(t *testing.T) {
 				UserID:           1,
 				OrgID:            1,
 				IsServiceAccount: true,
-				OrgCount:         1,
 				OrgRole:          org.RoleViewer,
 				Name:             "test",
 			},
 			expectedIdentity: &authn.Identity{
 				ID:             "service-account:1",
 				OrgID:          1,
-				OrgCount:       1,
 				Name:           "test",
 				OrgRoles:       map[int64]org.RoleType{1: org.RoleViewer},
 				IsGrafanaAdmin: boolPtr(false),
 				ClientParams: authn.ClientParams{
 					SyncPermissions: true,
 				},
+				AuthenticatedBy: login.APIKeyAuthModule,
 			},
 		},
 		{
@@ -108,6 +109,17 @@ func TestAPIKey_Authenticate(t *testing.T) {
 			},
 			expectedErr: errAPIKeyRevoked,
 		},
+		{
+			desc: "should fail for api key in another organization",
+			req:  &authn.Request{OrgID: 1, HTTPRequest: &http.Request{Header: map[string][]string{"Authorization": {"Bearer " + secret}}}},
+			expectedKey: &apikey.APIKey{
+				ID:               1,
+				OrgID:            2,
+				Key:              hash,
+				ServiceAccountId: intPtr(1),
+			},
+			expectedErr: errAPIKeyOrgMismatch,
+		},
 	}
 
 	for _, tt := range tests {
@@ -122,10 +134,12 @@ func TestAPIKey_Authenticate(t *testing.T) {
 			if tt.expectedErr != nil {
 				assert.Nil(t, identity)
 				assert.ErrorIs(t, err, tt.expectedErr)
-			} else {
-				assert.NoError(t, err)
-				assert.EqualValues(t, *tt.expectedIdentity, *identity)
+				return
 			}
+
+			assert.NoError(t, err)
+			assert.EqualValues(t, *tt.expectedIdentity, *identity)
+			assert.Equal(t, tt.req.OrgID, tt.expectedIdentity.OrgID, "the request organization should match the identity's one")
 		})
 	}
 }

@@ -5,7 +5,8 @@ import { BarAlignment, GraphDrawStyle, GraphTransform, LineInterpolation, Stacki
 
 import { attachDebugger } from '../../utils';
 import { createLogger } from '../../utils/logger';
-import { buildScaleKey } from '../GraphNG/utils';
+
+import { buildScaleKey } from './internal';
 
 const ALLOWED_FORMAT_STRINGS_REGEX = /\b(YYYY|YY|MMMM|MMM|MM|M|DD|D|WWWW|WWW|HH|H|h|AA|aa|a|mm|m|ss|s|fff)\b/g;
 
@@ -82,7 +83,7 @@ export function getStackingBands(group: StackingGroup) {
 export function getStackingGroups(frame: DataFrame) {
   let groups: Map<string, StackingGroup> = new Map();
 
-  frame.fields.forEach(({ config, values }, i) => {
+  frame.fields.forEach(({ config, values, type }, i) => {
     // skip x or time field
     if (i === 0) {
       return;
@@ -114,19 +115,21 @@ export function getStackingGroups(frame: DataFrame) {
     }
 
     // will this be stacked up or down after any transforms applied
-    let vals = values.toArray();
     let transform = custom.transform;
-    let stackDir = getStackDirection(transform, vals);
+    let stackDir = getStackDirection(transform, values);
 
-    let drawStyle = custom.drawStyle as GraphDrawStyle;
-    let drawStyle2 =
+    let drawStyle: GraphDrawStyle = custom.drawStyle;
+    let drawStyle2: BarAlignment | LineInterpolation | null =
       drawStyle === GraphDrawStyle.Bars
-        ? (custom.barAlignment as BarAlignment)
+        ? custom.barAlignment
         : drawStyle === GraphDrawStyle.Line
-        ? (custom.lineInterpolation as LineInterpolation)
+        ? custom.lineInterpolation
         : null;
 
-    let stackKey = `${stackDir}|${stackingMode}|${stackingGroup}|${buildScaleKey(config)}|${drawStyle}|${drawStyle2}`;
+    let stackKey = `${stackDir}|${stackingMode}|${stackingGroup}|${buildScaleKey(
+      config,
+      type
+    )}|${drawStyle}|${drawStyle2}`;
 
     let group = groups.get(stackKey);
 
@@ -151,7 +154,7 @@ export function preparePlotData2(
   stackingGroups: StackingGroup[],
   onStackMeta?: (meta: StackMeta) => void
 ) {
-  let data = Array(frame.fields.length) as AlignedData;
+  let data: AlignedData = Array(frame.fields.length);
 
   let stacksQty = stackingGroups.length;
 
@@ -174,7 +177,7 @@ export function preparePlotData2(
         return;
       }
 
-      let vals = field.values.toArray();
+      let vals = field.values;
 
       for (let i = 0; i < dataLen; i++) {
         if (vals[i] != null) {
@@ -185,11 +188,11 @@ export function preparePlotData2(
   });
 
   frame.fields.forEach((field, i) => {
-    let vals = field.values.toArray();
+    let vals = field.values;
 
     if (i === 0) {
       if (field.type === FieldType.time) {
-        data[i] = ensureTimeField(field).values.toArray();
+        data[i] = ensureTimeField(field).values;
       } else {
         data[i] = vals;
       }
@@ -378,7 +381,7 @@ function hasNegSample(data: unknown[], samples = 100) {
     for (let i = firstIdx; i <= lastIdx; i += stride) {
       const v = data[i];
 
-      if (v != null) {
+      if (v != null && typeof v === 'number') {
         if (v < 0 || Object.is(v, -0)) {
           negCount++;
         } else if (v > 0) {

@@ -5,11 +5,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import { GrafanaTheme2, SelectableValue, TimeRange } from '@grafana/data';
 import { EditorField, EditorFieldGroup, EditorRow } from '@grafana/experimental';
+import { reportInteraction } from '@grafana/runtime';
 import { getSelectStyles, Select, AsyncSelect, useStyles2, useTheme2 } from '@grafana/ui';
 
 import CloudMonitoringDatasource from '../datasource';
 import { getAlignmentPickerData, getMetricType, setMetricType } from '../functions';
-import { CustomMetaData, MetricDescriptor, MetricKind, PreprocessorType, TimeSeriesList, ValueTypes } from '../types';
+import { PreprocessorType, TimeSeriesList, MetricKind, ValueTypes } from '../types/query';
+import { CustomMetaData, MetricDescriptor } from '../types/types';
 
 import { AliasBy } from './AliasBy';
 import { Alignment } from './Alignment';
@@ -40,7 +42,7 @@ export function Editor({
   aliasBy,
   onChangeAliasBy,
 }: React.PropsWithChildren<Props>) {
-  const [labels, setLabels] = useState<{ [k: string]: any }>({});
+  const [labels, setLabels] = useState<{ [k: string]: string[] }>({});
   const [metricDescriptors, setMetricDescriptors] = useState<MetricDescriptor[]>([]);
   const [metricDescriptor, setMetricDescriptor] = useState<MetricDescriptor>();
   const [metrics, setMetrics] = useState<Array<SelectableValue<string>>>([]);
@@ -88,6 +90,9 @@ export function Editor({
     const loadMetricDescriptors = async () => {
       if (projectName) {
         const metricDescriptors = await datasource.getMetricTypes(projectName);
+        reportInteraction('cloud-monitoring-metric-descriptors-loaded', {
+          count: metricDescriptors.length,
+        });
         const services = getServicesList(metricDescriptors);
         setMetricDescriptors(metricDescriptors);
         setServices(services);

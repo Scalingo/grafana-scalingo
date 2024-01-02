@@ -8,7 +8,9 @@ import {
   toOption,
   updateDatasourcePluginJsonDataOption,
 } from '@grafana/data';
+import { ConfigSubSection } from '@grafana/experimental';
 import { InlineField, InlineFieldRow, Input, Select, useStyles2 } from '@grafana/ui';
+import { ConfigDescriptionLink } from 'app/core/components/ConfigDescriptionLink';
 
 export interface SpanBarOptions {
   type?: string;
@@ -31,12 +33,6 @@ export default function SpanBarSettings({ options, onOptionsChange }: Props) {
 
   return (
     <div className={css({ width: '100%' })}>
-      <h3 className="page-heading">Span bar</h3>
-
-      <div className={styles.infoText}>
-        Add additional info next to the service and operation on a span bar row in the trace view.
-      </div>
-
       <InlineFieldRow className={styles.row}>
         <InlineField label="Label" labelWidth={26} tooltip="Default: duration" grow>
           <Select
@@ -82,13 +78,32 @@ export default function SpanBarSettings({ options, onOptionsChange }: Props) {
   );
 }
 
+export const SpanBarSection = ({ options, onOptionsChange }: DataSourcePluginOptionsEditorProps) => {
+  let suffix = options.type;
+  suffix += options.type === 'tempo' ? '/configure-tempo-data-source/#span-bar' : '/#span-bar';
+
+  return (
+    <ConfigSubSection
+      title="Span bar"
+      description={
+        <ConfigDescriptionLink
+          description="Add additional info next to the service and operation on a span bar row in the trace view."
+          suffix={suffix}
+          feature="the span bar"
+        />
+      }
+    >
+      <SpanBarSettings options={options} onOptionsChange={onOptionsChange} />
+    </ConfigSubSection>
+  );
+};
+
 const getStyles = (theme: GrafanaTheme2) => ({
   infoText: css`
     label: infoText;
     padding-bottom: ${theme.spacing(2)};
     color: ${theme.colors.text.secondary};
   `,
-
   row: css`
     label: row;
     align-items: baseline;

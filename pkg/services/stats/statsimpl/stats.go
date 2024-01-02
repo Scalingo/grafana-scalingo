@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafana/pkg/infra/db"
-	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/dashboards/dashboardaccess"
 	"github.com/grafana/grafana/pkg/services/libraryelements/model"
 	"github.com/grafana/grafana/pkg/services/org"
 	"github.com/grafana/grafana/pkg/services/sqlstore/migrator"
@@ -63,16 +63,17 @@ func notServiceAccount(dialect migrator.Dialect) string {
 }
 
 func (ss *sqlStatsService) GetSystemStats(ctx context.Context, query *stats.GetSystemStatsQuery) (result *stats.SystemStats, err error) {
+	dialect := ss.db.GetDialect()
 	err = ss.db.WithDbSession(ctx, func(dbSession *db.Session) error {
 		sb := &db.SQLBuilder{}
 		sb.Write("SELECT ")
-		dialect := ss.db.GetDialect()
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("user") + ` WHERE ` + notServiceAccount(dialect) + `) AS users,`)
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("org") + `) AS orgs,`)
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("data_source") + `) AS datasources,`)
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("star") + `) AS stars,`)
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("playlist") + `) AS playlists,`)
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("alert") + `) AS alerts,`)
+		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("correlation") + `) AS correlations,`)
 
 		now := time.Now()
 		activeUserDeadlineDate := now.Add(-activeUserTimeLimit)
@@ -88,6 +89,8 @@ func (ss *sqlStatsService) GetSystemStats(ctx context.Context, query *stats.GetS
 			notServiceAccount(dialect)+` AND last_seen_at > ?) AS monthly_active_users,`, monthlyActiveUserDeadlineDate)
 
 		sb.Write(`(SELECT COUNT(id) FROM `+dialect.Quote("dashboard")+` WHERE is_folder = ?) AS dashboards,`, dialect.BooleanStr(false))
+		sb.Write(`(SELECT SUM(LENGTH(data)) FROM `+dialect.Quote("dashboard")+` WHERE is_folder = ?) AS dashboard_bytes_total,`, dialect.BooleanStr(false))
+		sb.Write(`(SELECT MAX(LENGTH(data)) FROM `+dialect.Quote("dashboard")+` WHERE is_folder = ?) AS dashboard_bytes_max,`, dialect.BooleanStr(false))
 		sb.Write(`(SELECT COUNT(id) FROM `+dialect.Quote("dashboard")+` WHERE is_folder = ?) AS folders,`, dialect.BooleanStr(true))
 
 		sb.Write(`(
@@ -106,10 +109,10 @@ func (ss *sqlStatsService) GetSystemStats(ctx context.Context, query *stats.GetS
 		WHERE d.is_folder = ?
 	) AS folder_permissions,`, dialect.BooleanStr(true))
 
-		sb.Write(viewersPermissionsCounterSQL(ss.db, "dashboards_viewers_can_edit", false, dashboards.PERMISSION_EDIT))
-		sb.Write(viewersPermissionsCounterSQL(ss.db, "dashboards_viewers_can_admin", false, dashboards.PERMISSION_ADMIN))
-		sb.Write(viewersPermissionsCounterSQL(ss.db, "folders_viewers_can_edit", true, dashboards.PERMISSION_EDIT))
-		sb.Write(viewersPermissionsCounterSQL(ss.db, "folders_viewers_can_admin", true, dashboards.PERMISSION_ADMIN))
+		sb.Write(viewersPermissionsCounterSQL(ss.db, "dashboards_viewers_can_edit", false, dashboardaccess.PERMISSION_EDIT))
+		sb.Write(viewersPermissionsCounterSQL(ss.db, "dashboards_viewers_can_admin", false, dashboardaccess.PERMISSION_ADMIN))
+		sb.Write(viewersPermissionsCounterSQL(ss.db, "folders_viewers_can_edit", true, dashboardaccess.PERMISSION_EDIT))
+		sb.Write(viewersPermissionsCounterSQL(ss.db, "folders_viewers_can_admin", true, dashboardaccess.PERMISSION_ADMIN))
 
 		sb.Write(`(SELECT COUNT(id) FROM ` + dialect.Quote("dashboard_provisioning") + `) AS provisioned_dashboards,`)
 		sb.Write(`(SELECT COUNT(id) FROM ` + dialect.Quote("dashboard_snapshot") + `) AS snapshots,`)
@@ -123,9 +126,11 @@ func (ss *sqlStatsService) GetSystemStats(ctx context.Context, query *stats.GetS
 		sb.Write(`(SELECT COUNT(id) FROM `+dialect.Quote("library_element")+` WHERE kind = ?) AS library_variables,`, model.VariableElement)
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("data_keys") + `) AS data_keys,`)
 		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("data_keys") + `WHERE active = true) AS active_data_keys,`)
-
-		// TODO: table name will change and filter should check only for is_enabled = true
-		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("dashboard_public") + `WHERE is_enabled = true) AS public_dashboards,`)
+		sb.Write(`(SELECT COUNT(*) FROM ` + dialect.Quote("dashboard_public") + `) AS public_dashboards,`)
+		sb.Write(`(SELECT MIN(timestamp) FROM ` + dialect.Quote("migration_log") + `) AS database_created_time,`)
+		if ss.IsUnifiedAlertingEnabled() {
+			sb.Write(`(SELECT COUNT(DISTINCT (` + dialect.Quote("rule_group") + `)) FROM ` + dialect.Quote("alert_rule") + `) AS rule_groups,`)
+		}
 
 		sb.Write(ss.roleCounterSQL(ctx))
 
@@ -137,8 +142,11 @@ func (ss *sqlStatsService) GetSystemStats(ctx context.Context, query *stats.GetS
 
 		result = &stats
 
+		result.DatabaseDriver = dialect.DriverName()
+
 		return nil
 	})
+
 	return result, err
 }
 
@@ -161,7 +169,7 @@ func (ss *sqlStatsService) roleCounterSQL(ctx context.Context) string {
 	return sqlQuery
 }
 
-func viewersPermissionsCounterSQL(db db.DB, statName string, isFolder bool, permission dashboards.PermissionType) string {
+func viewersPermissionsCounterSQL(db db.DB, statName string, isFolder bool, permission dashboardaccess.PermissionType) string {
 	dialect := db.GetDialect()
 	return `(
 		SELECT COUNT(*)

@@ -2,26 +2,30 @@
 // however there are many cases where your component may not need an aria-label
 // (a <button> with clear text, for example, does not need an aria-label as it's already labeled)
 // but you still might need to select it for testing,
-// in that case please add the attribute data-test-id={selector} in the component and
-// prefix your selector string with 'data-test-id' so that when create the selectors we know to search for it on the right attribute
+// in that case please add the attribute data-testid={selector} in the component and
+// prefix your selector string with 'data-testid' so that when create the selectors we know to search for it on the right attribute
 /**
  * Selectors grouped/defined in Components
  *
  * @alpha
  */
 export const Components = {
+  RadioButton: {
+    container: 'data-testid radio-button',
+  },
   Breadcrumbs: {
     breadcrumb: (title: string) => `data-testid ${title} breadcrumb`,
   },
   TimePicker: {
     openButton: 'data-testid TimePicker Open Button',
-    fromField: 'Time Range from field',
-    toField: 'Time Range to field',
+    overlayContent: 'data-testid TimePicker Overlay Content',
+    fromField: 'data-testid Time Range from field',
+    toField: 'data-testid Time Range to field',
     applyTimeRange: 'data-testid TimePicker submit button',
     calendar: {
-      label: 'Time Range calendar',
-      openButton: 'Open time range calendar',
-      closeButton: 'Close time range Calendar',
+      label: 'data-testid Time Range calendar',
+      openButton: 'data-testid Open time range calendar',
+      closeButton: 'data-testid Close time range Calendar',
     },
     absoluteTimeRangeTitle: 'data-testid-absolute-time-range-narrow',
   },
@@ -30,6 +34,9 @@ export const Components = {
     roleType: 'Role to add new permission to',
     rolePicker: 'Built-in role picker',
     permissionLevel: 'Permission Level',
+  },
+  DateTimePicker: {
+    input: 'data-testid date-time-input',
   },
   DataSource: {
     TestData: {
@@ -53,6 +60,7 @@ export const Components = {
     },
     Prometheus: {
       configPage: {
+        connectionSettings: 'Data source connection URL',
         exemplarsAddButton: 'Add exemplar config button',
         internalLinkSwitch: 'Internal link switch',
       },
@@ -71,11 +79,17 @@ export const Components = {
   Panels: {
     Panel: {
       title: (title: string) => `data-testid Panel header ${title}`,
-      headerItems: (item: string) => `Panel header item ${item}`,
+      headerItems: (item: string) => `data-testid Panel header item ${item}`,
       menuItems: (item: string) => `data-testid Panel menu item ${item}`,
       menu: (title: string) => `data-testid Panel menu ${title}`,
       containerByTitle: (title: string) => `${title} panel`,
       headerCornerInfo: (mode: string) => `Panel header ${mode}`,
+      status: (status: string) => `data-testid Panel status ${status}`,
+      loadingBar: () => `Panel loading bar`,
+      HoverWidget: {
+        container: 'data-testid hover-header-container',
+        dragIcon: 'data-testid drag-icon',
+      },
     },
     Visualization: {
       Graph: {
@@ -107,6 +121,7 @@ export const Components = {
       Table: {
         header: 'table header',
         footer: 'table-footer',
+        body: 'data-testid table body',
       },
     },
   },
@@ -136,11 +151,17 @@ export const Components = {
       content: 'Panel editor data pane content',
     },
     applyButton: 'data-testid Apply changes and go back to dashboard',
-    toggleVizPicker: 'toggle-viz-picker',
-    toggleVizOptions: 'toggle-viz-options',
+    toggleVizPicker: 'data-testid toggle-viz-picker',
+    toggleVizOptions: 'data-testid toggle-viz-options',
     toggleTableView: 'toggle-table-view',
 
     // [Geomap] Map controls
+    showZoomField: 'Map controls Show zoom control field property editor',
+    showAttributionField: 'Map controls Show attribution field property editor',
+    showScaleField: 'Map controls Show scale field property editor',
+    showMeasureField: 'Map controls Show measure tools field property editor',
+    showDebugField: 'Map controls Show debug field property editor',
+
     measureButton: 'show measure tools',
   },
   PanelInspector: {
@@ -178,8 +199,8 @@ export const Components = {
   QueryTab: {
     content: 'Query editor tab content',
     queryInspectorButton: 'Query inspector button',
-    queryHistoryButton: 'Rich history button',
-    addQuery: 'Query editor add query button',
+    queryHistoryButton: 'data-testid query-history-button',
+    addQuery: 'data-testid query-tab-add-query',
   },
   QueryHistory: {
     queryText: 'Query text',
@@ -188,12 +209,12 @@ export const Components = {
     rows: 'Query editor row',
   },
   QueryEditorRow: {
-    actionButton: (title: string) => `${title} query operation action`,
+    actionButton: (title: string) => `${title}`,
     title: (refId: string) => `Query editor row title ${refId}`,
     container: (refId: string) => `Query editor row ${refId}`,
   },
   AlertTab: {
-    content: 'Alert editor tab content',
+    content: 'data-testid Alert editor tab content',
   },
   Alert: {
     /**
@@ -203,20 +224,20 @@ export const Components = {
     alertV2: (severity: string) => `data-testid Alert ${severity}`,
   },
   TransformTab: {
-    content: 'Transform editor tab content',
-    newTransform: (name: string) => `New transform ${name}`,
-    transformationEditor: (name: string) => `Transformation editor ${name}`,
-    transformationEditorDebugger: (name: string) => `Transformation editor debugger ${name}`,
+    content: 'data-testid Transform editor tab content',
+    newTransform: (name: string) => `data-testid New transform ${name}`,
+    transformationEditor: (name: string) => `data-testid Transformation editor ${name}`,
+    transformationEditorDebugger: (name: string) => `data-testid Transformation editor debugger ${name}`,
   },
   Transforms: {
-    card: (name: string) => `New transform ${name}`,
+    card: (name: string) => `data-testid New transform ${name}`,
     Reduce: {
-      modeLabel: 'Transform mode label',
-      calculationsLabel: 'Transform calculations label',
+      modeLabel: 'data-testid Transform mode label',
+      calculationsLabel: 'data-testid Transform calculations label',
     },
     SpatialOperations: {
       actionLabel: 'root Action field property editor',
-      locationLabel: 'root Location field property editor',
+      locationLabel: 'root Location Mode field property editor',
       location: {
         autoOption: 'Auto location option',
         coords: {
@@ -235,20 +256,23 @@ export const Components = {
         },
       },
     },
-    searchInput: 'search transformations',
+    searchInput: 'data-testid search transformations',
+    noTransformationsMessage: 'data-testid no transformations message',
+    addTransformationButton: 'data-testid add transformation button',
   },
   NavBar: {
     Configuration: {
       button: 'Configuration',
     },
     Toggle: {
-      button: 'Toggle menu',
+      button: 'data-testid Toggle menu',
     },
     Reporting: {
       button: 'Reporting',
     },
   },
   NavMenu: {
+    Menu: 'data-testid navigation mega-menu',
     item: 'data-testid Nav menu item',
   },
   NavToolbar: {
@@ -296,12 +320,12 @@ export const Components = {
     container: 'data-testid Readonly folder picker select container',
   },
   DataSourcePicker: {
-    container: 'Data source picker select container',
+    container: 'data-testid Data source picker select container',
     /**
      * @deprecated use inputV2 instead
      */
     input: () => 'input[id="data-source-picker"]',
-    inputV2: 'Select a data source',
+    inputV2: 'data-testid Select a data source',
   },
   TimeZonePicker: {
     /**
@@ -371,7 +395,7 @@ export const Components = {
     singleLink: 'Data link',
   },
   CodeEditor: {
-    container: 'Code editor container',
+    container: 'data-testid Code editor container',
   },
   DashboardImportPage: {
     textarea: 'data-testid-import-dashboard-textarea',
@@ -382,7 +406,7 @@ export const Components = {
     submit: 'data-testid-import-dashboard-submit',
   },
   PanelAlertTabContent: {
-    content: 'Unified alert editor tab content',
+    content: 'data-testid Unified alert editor tab content',
   },
   VisualizationPreview: {
     card: (name: string) => `data-testid suggestion-${name}`,
@@ -398,6 +422,8 @@ export const Components = {
     preferencesSaveButton: 'data-testid-shared-prefs-save',
     orgsTable: 'data-testid-user-orgs-table',
     sessionsTable: 'data-testid-user-sessions-table',
+    extensionPointTabs: 'data-testid-extension-point-tabs',
+    extensionPointTab: (tabId: string) => `data-testid-extension-point-tab-${tabId}`,
   },
   FileUpload: {
     inputField: 'data-testid-file-upload-input-field',
@@ -414,5 +440,12 @@ export const Components = {
   },
   Variables: {
     variableOption: 'data-testid variable-option',
+  },
+  Annotations: {
+    annotationsTypeInput: 'annotations-type-input',
+    annotationsChoosePanelInput: 'choose-panels-input',
+  },
+  Tooltip: {
+    container: 'data-testid tooltip',
   },
 };

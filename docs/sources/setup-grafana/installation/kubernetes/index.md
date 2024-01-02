@@ -2,6 +2,10 @@
 aliases:
   - ../../installation/kubernetes/
 description: Guide for deploying Grafana on Kubernetes
+labels:
+  products:
+    - enterprise
+    - oss
 menuTitle: Grafana on Kubernetes
 title: Deploy Grafana on Kubernetes
 weight: 500
@@ -10,6 +14,8 @@ weight: 500
 # Deploy Grafana on Kubernetes
 
 On this page, you will find instructions for installing and running Grafana on Kubernetes using Kubernetes manifests for the setup. If Helm is your preferred option, refer to [Grafana Helm community charts](https://github.com/grafana/helm-charts).
+
+Watch this video to learn more about installing Grafana on Kubernetes: {{< vimeo 871940219 >}}
 
 ## Before you begin
 
@@ -29,7 +35,7 @@ This section provides minimum hardware and software requirements.
 
 - Disk space: 1 GB
 - Memory: 750 MiB (approx 750 MB)
-- CPU: 2500m (approx 2.5 cores)
+- CPU: 250m (approx 2.5 cores)
 
 ### Supported databases
 
@@ -656,7 +662,7 @@ The process for deploying Grafana Enterprise is almost identical to the precedin
 ### Obtain Grafana Enterprise license
 
 To run Grafana Enterprise, you need a valid license.
-To obtain a license, [contact a Grafana Labs representative](https://grafana.com/contact?about=grafana-enterprise).
+To obtain a license, [contact a Grafana Labs representative](/contact?about=grafana-enterprise).
 This topic assumes that you have a valid license in a `license.jwt` file.
 Associate your license with a URL that you can use later in the topic.
 

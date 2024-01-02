@@ -8,11 +8,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/ini.v1"
 	"xorm.io/xorm"
 
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
-	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/dashboards/dashboardaccess"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/org"
 	"github.com/grafana/grafana/pkg/services/sqlstore/migrations"
 	acmig "github.com/grafana/grafana/pkg/services/sqlstore/migrations/accesscontrol"
@@ -151,8 +153,10 @@ func TestMigrations(t *testing.T) {
 		{
 			desc: "with editors can admin",
 			config: &setting.Cfg{
-				EditorsCanAdmin:        true,
+				EditorsCanAdmin: true,
+				// nolint:staticcheck
 				IsFeatureToggleEnabled: func(key string) bool { return key == "accesscontrol" },
+				Raw:                    ini.Empty(),
 			},
 			expectedRolePerms: map[string][]rawPermission{
 				"managed:users:1:permissions": {{Action: "teams:read", Scope: team1Scope}},
@@ -179,9 +183,8 @@ func TestMigrations(t *testing.T) {
 		},
 		{
 			desc: "without editors can admin",
-			config: &setting.Cfg{
-				IsFeatureToggleEnabled: func(key string) bool { return key == "accesscontrol" },
-			},
+			// nolint:staticcheck
+			config: setting.NewCfgWithFeatures(featuremgmt.WithFeatures("accesscontrol").IsEnabledGlobally),
 			expectedRolePerms: map[string][]rawPermission{
 				"managed:users:1:permissions": {{Action: "teams:read", Scope: team1Scope}},
 				"managed:users:2:permissions": {{Action: "teams:read", Scope: team1Scope}},
@@ -253,10 +256,13 @@ func setupTestDB(t *testing.T) *xorm.Engine {
 	x, err := xorm.NewEngine(testDB.DriverName, testDB.ConnStr)
 	require.NoError(t, err)
 
-	err = migrator.NewDialect(x).CleanDB()
+	err = migrator.NewDialect(x.DriverName()).CleanDB(x)
 	require.NoError(t, err)
 
-	mg := migrator.NewMigrator(x, &setting.Cfg{Logger: log.New("acmigration.test")})
+	mg := migrator.NewMigrator(x, &setting.Cfg{
+		Logger: log.New("acmigration.test"),
+		Raw:    ini.Empty(),
+	})
 	migrations := &migrations.OSSMigrations{}
 	migrations.AddMigration(mg)
 
@@ -352,7 +358,7 @@ func setupTeams(t *testing.T, x *xorm.Engine) {
 			TeamID:     1,
 			UserID:     2,
 			External:   false,
-			Permission: dashboards.PERMISSION_ADMIN,
+			Permission: dashboardaccess.PERMISSION_ADMIN,
 			Created:    now,
 			Updated:    now,
 		},
@@ -362,7 +368,7 @@ func setupTeams(t *testing.T, x *xorm.Engine) {
 			TeamID:     1,
 			UserID:     3,
 			External:   false,
-			Permission: dashboards.PERMISSION_ADMIN,
+			Permission: dashboardaccess.PERMISSION_ADMIN,
 			Created:    now,
 			Updated:    now,
 		},
@@ -372,7 +378,7 @@ func setupTeams(t *testing.T, x *xorm.Engine) {
 			TeamID:     1,
 			UserID:     4,
 			External:   false,
-			Permission: dashboards.PERMISSION_ADMIN,
+			Permission: dashboardaccess.PERMISSION_ADMIN,
 			Created:    now,
 			Updated:    now,
 		},

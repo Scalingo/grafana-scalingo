@@ -5,6 +5,7 @@ import {
   DataSourceRef,
   DataSourceSelectItem,
   ScopedVars,
+  matchPluginId,
 } from '@grafana/data';
 import {
   DataSourceSrv as DataSourceService,
@@ -222,7 +223,7 @@ export class DatasourceSrv implements DataSourceService {
       if (filters.alerting && !x.meta.alerting) {
         return false;
       }
-      if (filters.pluginId && x.meta.id !== filters.pluginId) {
+      if (filters.pluginId && !matchPluginId(filters.pluginId, x.meta)) {
         return false;
       }
       if (filters.filter && !filters.filter(x)) {
@@ -254,12 +255,14 @@ export class DatasourceSrv implements DataSourceService {
           // Support for multi-value variables with only one selected datasource
           dsValue = dsValue[0];
         }
-        const dsSettings = !Array.isArray(dsValue) && this.settingsMapByName[dsValue];
+        const dsSettings =
+          !Array.isArray(dsValue) && (this.settingsMapByName[dsValue] || this.settingsMapByUid[dsValue]);
 
         if (dsSettings) {
           const key = `$\{${variable.name}\}`;
           base.push({
             ...dsSettings,
+            isDefault: false,
             name: key,
             uid: key,
           });
@@ -350,10 +353,10 @@ export function getNameOrUid(ref?: string | DataSourceRef | null): string | unde
   }
 
   const isString = typeof ref === 'string';
-  return isString ? (ref as string) : ((ref as any)?.uid as string | undefined);
+  return isString ? ref : ref?.uid;
 }
 
-export function variableInterpolation(value: any[]) {
+export function variableInterpolation<T>(value: T | T[]) {
   if (Array.isArray(value)) {
     return value[0];
   }

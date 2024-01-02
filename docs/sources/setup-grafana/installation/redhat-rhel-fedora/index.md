@@ -1,7 +1,11 @@
 ---
 description: Install guide for Grafana on RHEL and Fedora.
-title: Install Grafana on RHEL or Fedora
+labels:
+  products:
+    - enterprise
+    - oss
 menuTitle: RHEL or Fedora
+title: Install Grafana on RHEL or Fedora
 weight: 200
 ---
 
@@ -22,7 +26,9 @@ If you install from the RPM repository, then Grafana is automatically updated ev
 | Grafana Enterprise | grafana-enterprise | `https://rpm.grafana.com` |
 | Grafana OSS        | grafana            | `https://rpm.grafana.com` |
 
-> **Note:** Grafana Enterprise is the recommended and default edition. It is available for free and includes all the features of the OSS edition. You can also upgrade to the [full Enterprise feature set](https://grafana.com/products/enterprise/?utm_source=grafana-install-page), which has support for [Enterprise plugins](https://grafana.com/grafana/plugins/?enterprise=1&utcm_source=grafana-install-page).
+{{% admonition type="note" %}}
+Grafana Enterprise is the recommended and default edition. It is available for free and includes all the features of the OSS edition. You can also upgrade to the [full Enterprise feature set](/products/enterprise/?utm_source=grafana-install-page), which has support for [Enterprise plugins](/grafana/plugins/?enterprise=1&utcm_source=grafana-install-page).
+{{% /admonition %}}
 
 To install Grafana from the RPM repository, complete the following steps:
 
@@ -71,7 +77,7 @@ If you install Grafana manually using YUM or RPM, then you must manually update 
 
 **Note:** The RPM files are signed. You can verify the signature with this [public GPG key](https://rpm.grafana.com/gpg.key).
 
-1. On the [Grafana download page](https://grafana.com/grafana/download), select the Grafana version you want to install.
+1. On the [Grafana download page](/grafana/download), select the Grafana version you want to install.
    - The most recent Grafana version is selected by default.
    - The **Version** field displays only finished releases. If you want to install a beta version, click **Nightly Builds** and then select a version.
 1. Select an **Edition**.
@@ -88,7 +94,7 @@ If you install Grafana manually using YUM or RPM, then you must manually update 
 
 Complete the following steps to install Grafana using the standalone binaries:
 
-1. Navigate to the [Grafana download page](https://grafana.com/grafana/download).
+1. Navigate to the [Grafana download page](/grafana/download).
 1. Select the Grafana version you want to install.
    - The most recent Grafana version is selected by default.
    - The **Version** field displays only tagged releases. If you want to install a nightly build, click **Nightly Builds** and then select a version.
@@ -129,9 +135,9 @@ To uninstall Grafana, run the following commands in a terminal window:
 1. Optional: To remove the Grafana repository:
 
    ```shell
-   sudo rm -i /etc/apt/sources.list.d/grafana.list
+   sudo rm -i /etc/yum.repos.d/grafana.repo
    ```
 
 ## Next steps
 
-Refer to [Start the Grafana server]({{< relref "../../start-restart-grafana/" >}}).
+Refer to [Start the Grafana server]({{< relref "../../start-restart-grafana" >}}).

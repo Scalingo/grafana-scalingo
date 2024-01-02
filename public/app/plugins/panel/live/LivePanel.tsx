@@ -16,10 +16,10 @@ import {
   LoadingState,
   applyFieldOverrides,
   LiveChannelAddress,
+  StreamingDataFrame,
 } from '@grafana/data';
 import { config, getGrafanaLiveSrv } from '@grafana/runtime';
 import { Alert, stylesFactory, Button, JSONFormatter, CustomScrollbar, CodeEditor } from '@grafana/ui';
-import { StreamingDataFrame } from 'app/features/live/data/StreamingDataFrame';
 
 import { TablePanel } from '../table/TablePanel';
 
@@ -28,10 +28,10 @@ import { LivePanelOptions, MessageDisplayMode } from './types';
 interface Props extends PanelProps<LivePanelOptions> {}
 
 interface State {
-  error?: any;
+  error?: unknown;
   addr?: LiveChannelAddress;
   status?: LiveChannelStatusEvent;
-  message?: any;
+  message?: unknown;
   changed: number;
 }
 
@@ -192,10 +192,10 @@ export class LivePanel extends PureComponent<Props, State> {
           }),
           state: LoadingState.Streaming,
         } as PanelData;
-        const props = {
+        const props: PanelProps = {
           ...this.props,
           options: { frameIndex: 0, showHeader: true },
-        } as PanelProps<any>;
+        };
         return <TablePanel {...props} data={data} height={height} />;
       }
     }

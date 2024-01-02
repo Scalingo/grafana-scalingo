@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	alertingNotify "github.com/grafana/alerting/notify"
+	"github.com/prometheus/alertmanager/cluster/clusterpb"
 
 	"github.com/grafana/grafana/pkg/infra/kvstore"
 	"github.com/grafana/grafana/pkg/infra/log"
@@ -29,7 +30,7 @@ func NewFileStore(orgID int64, store kvstore.KVStore, workingDirPath string) *Fi
 		workingDirPath: workingDirPath,
 		orgID:          orgID,
 		kv:             kvstore.WithNamespace(store, orgID, KVNamespace),
-		logger:         log.New("filestore", "org", orgID),
+		logger:         log.New("ngalert.notifier.alertmanager.file_store", orgID),
 	}
 }
 
@@ -62,6 +63,45 @@ func (fileStore *FileStore) FilepathFor(ctx context.Context, filename string) (s
 	return fileStore.pathFor(filename), err
 }
 
+// GetFullState receives a list of keys, looks for the corresponding values in the kvstore,
+// and returns a base64-encoded protobuf message containing those key-value pairs.
+// That base64-encoded string represents the Alertmanager's internal state.
+func (fileStore *FileStore) GetFullState(ctx context.Context, filenames ...string) (string, error) {
+	all, err := fileStore.kv.GetAll(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	keys, ok := all[fileStore.orgID]
+	if !ok {
+		return "", fmt.Errorf("no values for org %d", fileStore.orgID)
+	}
+
+	var parts []clusterpb.Part
+	for _, f := range filenames {
+		v, ok := keys[f]
+		if !ok {
+			return "", fmt.Errorf("no value found for key %q", f)
+		}
+
+		b, err := decode(v)
+		if err != nil {
+			return "", fmt.Errorf("error decoding value for key %q", f)
+		}
+		parts = append(parts, clusterpb.Part{Key: f, Data: b})
+	}
+
+	fs := clusterpb.FullState{
+		Parts: parts,
+	}
+	b, err := fs.Marshal()
+	if err != nil {
+		return "", fmt.Errorf("error marshaling full state: %w", err)
+	}
+
+	return encode(b), nil
+}
+
 // Persist takes care of persisting the binary representation of internal state to the database as a base64 encoded string.
 func (fileStore *FileStore) Persist(ctx context.Context, filename string, st alertingNotify.State) (int64, error) {
 	var size int64
@@ -92,11 +132,11 @@ func (fileStore *FileStore) WriteFileToDisk(fn string, content []byte) error {
 // CleanUp will remove the working directory from disk.
 func (fileStore *FileStore) CleanUp() {
 	if err := os.RemoveAll(fileStore.workingDirPath); err != nil {
-		fileStore.logger.Warn("unable to delete the local working directory", "dir", fileStore.workingDirPath,
+		fileStore.logger.Warn("Unable to delete the local working directory", "dir", fileStore.workingDirPath,
 			"error", err)
 		return
 	}
-	fileStore.logger.Info("successfully deleted working directory", "dir", fileStore.workingDirPath)
+	fileStore.logger.Info("Successfully deleted working directory", "dir", fileStore.workingDirPath)
 }
 
 func (fileStore *FileStore) pathFor(fn string) string {

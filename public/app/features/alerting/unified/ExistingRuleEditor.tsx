@@ -6,7 +6,7 @@ import { useDispatch } from 'app/types';
 import { RuleIdentifier } from 'app/types/unified-alerting';
 
 import { AlertWarning } from './AlertWarning';
-import { AlertRuleForm } from './components/rule-editor/AlertRuleForm';
+import { AlertRuleForm } from './components/rule-editor/alert-rule-form/AlertRuleForm';
 import { useIsRuleEditable } from './hooks/useIsRuleEditable';
 import { useUnifiedAlertingSelector } from './hooks/useUnifiedAlertingSelector';
 import { fetchEditableRuleAction } from './state/actions';
@@ -15,9 +15,10 @@ import * as ruleId from './utils/rule-id';
 
 interface ExistingRuleEditorProps {
   identifier: RuleIdentifier;
+  id?: string;
 }
 
-export function ExistingRuleEditor({ identifier }: ExistingRuleEditorProps) {
+export function ExistingRuleEditor({ identifier, id }: ExistingRuleEditorProps) {
   useCleanup((state) => (state.unifiedAlerting.ruleForm.existingRule = initialAsyncRequestState));
 
   const {

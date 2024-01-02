@@ -8,16 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	pref "github.com/grafana/grafana/pkg/services/preference"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
 func TestGet_empty(t *testing.T) {
+	cfg := setting.NewCfg()
 	prefService := &Service{
 		store:    newFake(),
-		cfg:      setting.NewCfg(),
-		features: featuremgmt.WithFeatures(),
+		defaults: prefsFromConfig(cfg),
 	}
 	preference, err := prefService.Get(context.Background(), &pref.GetPreferenceQuery{})
 	require.NoError(t, err)
@@ -28,57 +27,16 @@ func TestGet_empty(t *testing.T) {
 }
 
 func TestGetDefaults(t *testing.T) {
+	cfg := setting.NewCfg()
+	cfg.DefaultLanguage = "en-US"
+	cfg.DefaultTheme = "light"
+	cfg.DateFormats.DefaultTimezone = "UTC"
 	prefService := &Service{
 		store:    newFake(),
-		cfg:      setting.NewCfg(),
-		features: featuremgmt.WithFeatures(),
+		defaults: prefsFromConfig(cfg),
 	}
-	prefService.cfg.DefaultLanguage = "en-US"
-	prefService.cfg.DefaultTheme = "light"
-	prefService.cfg.DateFormats.DefaultTimezone = "UTC"
+
 	weekStart := ""
-
-	t.Run("GetDefaults", func(t *testing.T) {
-		preference := prefService.GetDefaults()
-		expected := &pref.Preference{
-			WeekStart:       &weekStart,
-			Theme:           "light",
-			Timezone:        "UTC",
-			HomeDashboardID: 0,
-			JSONData:        &pref.PreferenceJSONData{},
-		}
-		if diff := cmp.Diff(expected, preference); diff != "" {
-			t.Fatalf("Result mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("GetWithDefaults", func(t *testing.T) {
-		query := &pref.GetPreferenceWithDefaultsQuery{OrgID: 1}
-		preference, err := prefService.GetWithDefaults(context.Background(), query)
-		require.NoError(t, err)
-		expected := &pref.Preference{
-			WeekStart:       &weekStart,
-			Theme:           "light",
-			Timezone:        "UTC",
-			HomeDashboardID: 0,
-			JSONData:        &pref.PreferenceJSONData{},
-		}
-		if diff := cmp.Diff(expected, preference); diff != "" {
-			t.Fatalf("Result mismatch (-want +got):\n%s", diff)
-		}
-	})
-}
-
-func TestGetDefaultsWithI18nFeatureFlag(t *testing.T) {
-	prefService := &Service{
-		store:    newFake(),
-		cfg:      setting.NewCfg(),
-		features: featuremgmt.WithFeatures(featuremgmt.FlagInternationalization),
-	}
-	weekStart := ""
-	prefService.cfg.DefaultLanguage = "en-US"
-	prefService.cfg.DefaultTheme = "light"
-	prefService.cfg.DateFormats.DefaultTimezone = "UTC"
 
 	t.Run("GetDefaults", func(t *testing.T) {
 		preference := prefService.GetDefaults()
@@ -95,15 +53,33 @@ func TestGetDefaultsWithI18nFeatureFlag(t *testing.T) {
 			t.Fatalf("Result mismatch (-want +got):\n%s", diff)
 		}
 	})
+
+	t.Run("GetWithDefaults", func(t *testing.T) {
+		query := &pref.GetPreferenceWithDefaultsQuery{OrgID: 1}
+		preference, err := prefService.GetWithDefaults(context.Background(), query)
+		require.NoError(t, err)
+		expected := &pref.Preference{
+			WeekStart:       &weekStart,
+			Theme:           "light",
+			Timezone:        "UTC",
+			HomeDashboardID: 0,
+			JSONData: &pref.PreferenceJSONData{
+				Language: "en-US",
+			},
+		}
+		if diff := cmp.Diff(expected, preference); diff != "" {
+			t.Fatalf("Result mismatch (-want +got):\n%s", diff)
+		}
+	})
 }
 
 func TestGetWithDefaults_withUserAndOrgPrefs(t *testing.T) {
+	cfg := setting.NewCfg()
+	cfg.DefaultLanguage = "en-US"
 	prefService := &Service{
 		store:    newFake(),
-		cfg:      setting.NewCfg(),
-		features: featuremgmt.WithFeatures(),
+		defaults: prefsFromConfig(cfg),
 	}
-	prefService.cfg.DefaultLanguage = "en-US"
 
 	weekStartOne := "1"
 	weekStartTwo := "2"
@@ -187,8 +163,7 @@ func TestGetDefaults_JSONData(t *testing.T) {
 	t.Run("users have precedence over org", func(t *testing.T) {
 		prefService := &Service{
 			store:    newFake(),
-			cfg:      setting.NewCfg(),
-			features: featuremgmt.WithFeatures(),
+			defaults: prefsFromConfig(setting.NewCfg()),
 		}
 
 		insertPrefs(t, prefService.store,
@@ -215,8 +190,7 @@ func TestGetDefaults_JSONData(t *testing.T) {
 	t.Run("user JSONData with missing language does not override org preference", func(t *testing.T) {
 		prefService := &Service{
 			store:    newFake(),
-			cfg:      setting.NewCfg(),
-			features: featuremgmt.WithFeatures(),
+			defaults: prefsFromConfig(setting.NewCfg()),
 		}
 
 		insertPrefs(t, prefService.store,
@@ -246,8 +220,7 @@ func TestGetDefaults_JSONData(t *testing.T) {
 	t.Run("teams have precedence over org and are read in ascending order", func(t *testing.T) {
 		prefService := &Service{
 			store:    newFake(),
-			cfg:      setting.NewCfg(),
-			features: featuremgmt.WithFeatures(),
+			defaults: prefsFromConfig(setting.NewCfg()),
 		}
 
 		insertPrefs(t, prefService.store,
@@ -284,8 +257,7 @@ func TestGetWithDefaults_teams(t *testing.T) {
 	weekStartTwo := "2"
 	prefService := &Service{
 		store:    newFake(),
-		cfg:      setting.NewCfg(),
-		features: featuremgmt.WithFeatures(),
+		defaults: prefsFromConfig(setting.NewCfg()),
 	}
 	insertPrefs(t, prefService.store,
 		pref.Preference{
@@ -331,8 +303,7 @@ func TestGetWithDefaults_teams(t *testing.T) {
 func TestPatch_toCreate(t *testing.T) {
 	prefService := &Service{
 		store:    newFake(),
-		cfg:      setting.NewCfg(),
-		features: featuremgmt.WithFeatures(),
+		defaults: prefsFromConfig(setting.NewCfg()),
 	}
 
 	themeValue := "light"
@@ -352,8 +323,7 @@ func TestPatch_toCreate(t *testing.T) {
 func TestSave(t *testing.T) {
 	prefService := &Service{
 		store:    newFake(),
-		cfg:      setting.NewCfg(),
-		features: featuremgmt.WithFeatures(),
+		defaults: prefsFromConfig(setting.NewCfg()),
 	}
 
 	t.Run("insert", func(t *testing.T) {

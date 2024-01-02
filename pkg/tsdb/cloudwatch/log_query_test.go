@@ -165,7 +165,7 @@ func TestLogsResultsToDataframes(t *testing.T) {
 		aws.String("fakelogstream"),
 	})
 	hiddenLogStreamField.SetConfig(&data.FieldConfig{
-		Custom: map[string]interface{}{
+		Custom: map[string]any{
 			"hidden": true,
 		},
 	})
@@ -176,7 +176,7 @@ func TestLogsResultsToDataframes(t *testing.T) {
 		aws.String("fakelog"),
 	})
 	hiddenLogField.SetConfig(&data.FieldConfig{
-		Custom: map[string]interface{}{
+		Custom: map[string]any{
 			"hidden": true,
 		},
 	})
@@ -193,7 +193,7 @@ func TestLogsResultsToDataframes(t *testing.T) {
 		},
 		RefID: "",
 		Meta: &data.FrameMeta{
-			Custom: map[string]interface{}{
+			Custom: map[string]any{
 				"Status": "ok",
 			},
 			Stats: []data.QueryStat{
@@ -265,7 +265,7 @@ func TestLogsResultsToDataframes_MixedTypes_NumericValuesMixedWithStringFallBack
 		},
 		RefID: "",
 		Meta: &data.FrameMeta{
-			Custom: map[string]interface{}{
+			Custom: map[string]any{
 				"Status": "ok",
 			},
 		},
@@ -417,7 +417,7 @@ func TestGroupingResults(t *testing.T) {
 		},
 	}
 
-	groupedResults, err := groupResults(fakeDataFrame, []string{"@log"})
+	groupedResults, err := groupResults(fakeDataFrame, []string{"@log"}, false)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, expectedGroupedFrames, groupedResults)
 }
@@ -538,7 +538,74 @@ func TestGroupingResultsWithNumericField(t *testing.T) {
 		},
 	}
 
-	groupedResults, err := groupResults(fakeDataFrame, []string{"httpresponse"})
+	groupedResults, err := groupResults(fakeDataFrame, []string{"httpresponse"}, false)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, expectedGroupedFrames, groupedResults)
+}
+
+func TestGroupingResultsWithFromSyncQueryTrue(t *testing.T) {
+	logField := data.NewField("@log", data.Labels{}, []*string{
+		aws.String("fakelog-a"),
+		aws.String("fakelog-b"),
+		aws.String("fakelog-a"),
+		aws.String("fakelog-b"),
+	})
+
+	streamField := data.NewField("stream", data.Labels{}, []*int32{
+		aws.Int32(1),
+		aws.Int32(1),
+		aws.Int32(1),
+		aws.Int32(1),
+	})
+
+	countField := data.NewField("count", data.Labels{}, []*string{
+		aws.String("100"),
+		aws.String("150"),
+		aws.String("57"),
+		aws.String("62"),
+	})
+
+	timeA := time.Time{}
+	timeB := time.Time{}.Add(1 * time.Minute)
+	fakeDataFrame := &data.Frame{
+		Name: "CloudWatchLogsResponse",
+		Fields: []*data.Field{
+			data.NewField("@timestamp", data.Labels{}, []*time.Time{&timeA, &timeA, &timeB, &timeB}),
+			logField,
+			streamField,
+			countField,
+		},
+		RefID: "",
+	}
+
+	expectedGroupedFrames := []*data.Frame{
+		{
+			Name: "fakelog-a1",
+			Fields: []*data.Field{
+				data.NewField("@timestamp", data.Labels{}, []*time.Time{&timeA, &timeB}),
+				data.NewField("count", data.Labels{"@log": "fakelog-a", "stream": "1"}, []*string{
+					aws.String("100"),
+					aws.String("57"),
+				}),
+			},
+			RefID: "",
+		},
+		{
+			Name: "fakelog-b1",
+			Fields: []*data.Field{
+				data.NewField("@timestamp", data.Labels{}, []*time.Time{&timeA, &timeB}),
+				data.NewField("count", data.Labels{"@log": "fakelog-b", "stream": "1"}, []*string{
+					aws.String("150"),
+					aws.String("62"),
+				}),
+			},
+			RefID: "",
+		},
+	}
+	expectedGroupedFrames[0].Fields[1].Config = &data.FieldConfig{DisplayNameFromDS: "fakelog-a1"}
+	expectedGroupedFrames[1].Fields[1].Config = &data.FieldConfig{DisplayNameFromDS: "fakelog-b1"}
+
+	groupedResults, err := groupResults(fakeDataFrame, []string{"@log", "stream"}, true)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, expectedGroupedFrames, groupedResults)
 }

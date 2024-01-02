@@ -1,10 +1,8 @@
 import { action } from '@storybook/addon-actions';
-import { ComponentStory, ComponentMeta } from '@storybook/react';
+import { StoryFn, Meta } from '@storybook/react';
 import React, { useState } from 'react';
 
 import { dateTime, DateTime } from '@grafana/data';
-
-import { withCenteredStory } from '../../../utils/storybook/withCenteredStory';
 
 import { DateTimePicker } from './DateTimePicker';
 import mdx from './DateTimePicker.mdx';
@@ -16,9 +14,8 @@ const today = new Date();
 const minimumDate = new Date();
 minimumDate.setDate(minimumDate.getDate() - 7);
 
-const meta: ComponentMeta<typeof DateTimePicker> = {
+const meta: Meta<typeof DateTimePicker> = {
   title: 'Pickers and Editors/TimePickers/DateTimePicker',
-  decorators: [withCenteredStory],
   component: DateTimePicker,
   argTypes: {
     date: {
@@ -43,12 +40,7 @@ const meta: ComponentMeta<typeof DateTimePicker> = {
   },
 };
 
-export const OnlyWorkingHoursEnabled: ComponentStory<typeof DateTimePicker> = ({
-  label,
-  minDate,
-  maxDate,
-  showSeconds,
-}) => {
+export const OnlyWorkingHoursEnabled: StoryFn<typeof DateTimePicker> = ({ label, minDate, maxDate, showSeconds }) => {
   const [date, setDate] = useState<DateTime>(dateTime(today));
   // the minDate arg can change from Date object to number, we need to handle this
   // scenario to avoid a crash in the component's story.
@@ -71,7 +63,7 @@ export const OnlyWorkingHoursEnabled: ComponentStory<typeof DateTimePicker> = ({
   );
 };
 
-export const Basic: ComponentStory<typeof DateTimePicker> = ({ label, minDate, maxDate, showSeconds }) => {
+export const Basic: StoryFn<typeof DateTimePicker> = ({ label, minDate, maxDate, showSeconds }) => {
   const [date, setDate] = useState<DateTime>(dateTime(today));
   // the minDate arg can change from Date object to number, we need to handle this
   // scenario to avoid a crash in the component's story.

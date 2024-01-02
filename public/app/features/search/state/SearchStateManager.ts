@@ -35,12 +35,22 @@ export const defaultQueryParams: SearchQueryParams = {
   layout: null,
 };
 
+const getLocalStorageLayout = () => {
+  const selectedLayout = localStorage.getItem(SEARCH_SELECTED_LAYOUT);
+  if (selectedLayout === SearchLayout.List) {
+    return SearchLayout.List;
+  } else {
+    return SearchLayout.Folders;
+  }
+};
 export class SearchStateManager extends StateManagerBase<SearchState> {
   updateLocation = debounce((query) => locationService.partial(query, true), 300);
   doSearchWithDebounce = debounce(() => this.doSearch(), 300);
   lastQuery?: SearchQuery;
 
-  initStateFromUrl(folderUid?: string) {
+  lastSearchTimestamp = 0;
+
+  initStateFromUrl(folderUid?: string, doInitialSearch = true) {
     const stateFromUrl = parseRouteParams(locationService.getSearchObject());
 
     // Force list view when conditions are specified from the URL
@@ -48,20 +58,33 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
       stateFromUrl.layout = SearchLayout.List;
     }
 
+    const layout = getLocalStorageLayout();
+    const prevSort = localStorage.getItem(SEARCH_SELECTED_SORT) ?? undefined;
+    const sort = layout === SearchLayout.List ? stateFromUrl.sort || prevSort : null;
+
     stateManager.setState({
+      ...initialState,
       ...stateFromUrl,
+      layout,
+      sort: sort ?? initialState.sort,
+      prevSort,
       folderUid: folderUid,
       eventTrackingNamespace: folderUid ? 'manage_dashboards' : 'dashboard_search',
     });
 
-    this.doSearch();
+    if (doInitialSearch && this.hasSearchFilters()) {
+      this.doSearch();
+    }
   }
+
   /**
    * Updates internal and url state, then triggers a new search
    */
   setStateAndDoSearch(state: Partial<SearchState>) {
+    const sort = state.sort || this.state.sort || localStorage.getItem(SEARCH_SELECTED_SORT) || undefined;
+
     // Set internal state
-    this.setState(state);
+    this.setState({ sort, ...state });
 
     // Update url state
     this.updateLocation({
@@ -73,8 +96,11 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
       sort: this.state.sort,
     });
 
-    // issue new search query
-    this.doSearchWithDebounce();
+    // Prevent searching when user is only clearing the input.
+    // We don't show these results anyway
+    if (this.hasSearchFilters()) {
+      this.doSearchWithDebounce();
+    }
   }
 
   onCloseSearch = () => {
@@ -92,6 +118,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
       tag: [],
       panel_type: undefined,
       starred: undefined,
+      sort: undefined,
     });
   };
 
@@ -162,7 +189,14 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
   };
 
   hasSearchFilters() {
-    return this.state.query || this.state.tag.length || this.state.starred || this.state.panel_type;
+    return (
+      this.state.query ||
+      this.state.tag.length ||
+      this.state.starred ||
+      this.state.panel_type ||
+      this.state.sort ||
+      this.state.layout === SearchLayout.List
+    );
   }
 
   getSearchQuery() {
@@ -217,45 +251,42 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
 
     this.setState({ loading: true });
 
-    if (this.state.starred) {
-      getGrafanaSearcher()
-        .starred(this.lastQuery)
-        .then((result) => this.setState({ result, loading: false }))
-        .catch((error) => {
-          reportSearchFailedQueryInteraction(this.state.eventTrackingNamespace, {
-            ...trackingInfo,
-            error: error?.message,
-          });
-          this.setState({ loading: false });
+    const searcher = getGrafanaSearcher();
+
+    const searchTimestamp = Date.now();
+    const searchPromise = this.state.starred ? searcher.starred(this.lastQuery) : searcher.search(this.lastQuery);
+
+    searchPromise
+      .then((result) => {
+        // Only keep the results if it's was issued after the most recently resolved search.
+        // This prevents results showing out of order if first request is slower than later ones
+        if (searchTimestamp > this.lastSearchTimestamp) {
+          this.setState({ result, loading: false });
+          this.lastSearchTimestamp = searchTimestamp;
+        }
+      })
+      .catch((error) => {
+        reportSearchFailedQueryInteraction(this.state.eventTrackingNamespace, {
+          ...trackingInfo,
+          error: error?.message,
         });
-    } else {
-      getGrafanaSearcher()
-        .search(this.lastQuery)
-        .then((result) => this.setState({ result, loading: false }))
-        .catch((error) => {
-          reportSearchFailedQueryInteraction(this.state.eventTrackingNamespace, {
-            ...trackingInfo,
-            error: error?.message,
-          });
-          this.setState({ loading: false });
-        });
-    }
+        this.setState({ loading: false });
+      });
   }
 
   // This gets the possible tags from within the query results
   getTagOptions = (): Promise<TermCount[]> => {
-    return getGrafanaSearcher().tags(this.lastQuery!);
+    const query = this.lastQuery ?? {
+      kind: ['dashboard', 'folder'],
+      query: '*',
+    };
+    return getGrafanaSearcher().tags(query);
   };
 
   /**
    * When item is selected clear some filters and report interaction
    */
   onSearchItemClicked = (e: React.MouseEvent<HTMLElement>) => {
-    // Clear some filters only if we're not opening a search item in a new tab
-    if (!e.altKey && !e.ctrlKey && !e.metaKey) {
-      this.setState({ tag: [], starred: false, sort: undefined, query: '', folderUid: undefined });
-    }
-
     reportSearchResultInteraction(this.state.eventTrackingNamespace, {
       layout: this.state.layout,
       starred: this.state.starred,
@@ -287,15 +318,21 @@ export function getSearchStateManager() {
   if (!stateManager) {
     const selectedLayout = localStorage.getItem(SEARCH_SELECTED_LAYOUT) as SearchLayout;
     const layout = selectedLayout ?? initialState.layout;
-    const sort = localStorage.getItem(SEARCH_SELECTED_SORT) ?? undefined;
 
     let includePanels = store.getBool(SEARCH_PANELS_LOCAL_STORAGE_KEY, true);
     if (includePanels) {
       includePanels = false;
     }
 
-    stateManager = new SearchStateManager({ ...initialState, layout, sort, includePanels });
+    stateManager = new SearchStateManager({ ...initialState, layout, includePanels });
   }
 
   return stateManager;
+}
+
+export function useSearchStateManager() {
+  const stateManager = getSearchStateManager();
+  const state = stateManager.useState();
+
+  return [state, stateManager] as const;
 }

@@ -5,8 +5,9 @@ import { GrafanaTheme2, LinkTarget } from '@grafana/data';
 
 import { useStyles2 } from '../../themes';
 import { getFocusStyles } from '../../themes/mixins';
-import { IconName } from '../../types';
+import { IconName } from '../../types/icon';
 import { Icon } from '../Icon/Icon';
+import { Stack } from '../Layout/Stack/Stack';
 
 import { SubMenu } from './SubMenu';
 
@@ -14,9 +15,11 @@ import { SubMenu } from './SubMenu';
 export type MenuItemElement = HTMLAnchorElement & HTMLButtonElement & HTMLDivElement;
 
 /** @internal */
-export interface MenuItemProps<T = any> {
+export interface MenuItemProps<T = unknown> {
   /** Label of the menu item */
   label: string;
+  /** Description of item */
+  description?: string;
   /** Aria label for accessibility support */
   ariaLabel?: string;
   /** Aria checked for accessibility support */
@@ -57,6 +60,7 @@ export const MenuItem = React.memo(
       url,
       icon,
       label,
+      description,
       ariaLabel,
       ariaChecked,
       target,
@@ -104,6 +108,7 @@ export const MenuItem = React.memo(
       },
       className
     );
+
     const disabledProps = {
       [ItemElement === 'button' ? 'disabled' : 'aria-disabled']: disabled,
       ...(ItemElement === 'a' && disabled && { href: undefined, onClick: undefined }),
@@ -159,14 +164,13 @@ export const MenuItem = React.memo(
         tabIndex={tabIndex}
         {...disabledProps}
       >
-        <>
+        <Stack direction="row" justifyContent="flex-start" alignItems="center">
           {icon && <Icon name={icon} className={styles.icon} aria-hidden />}
-          {label}
-
+          <span className={styles.ellipsis}>{label}</span>
           <div className={cx(styles.rightWrapper, { [styles.withShortcut]: hasShortcut })}>
             {hasShortcut && (
               <div className={styles.shortcut}>
-                <Icon name="keyboard" aria-hidden />
+                <Icon name="keyboard" title="keyboard shortcut" />
                 {shortcut}
               </div>
             )}
@@ -181,7 +185,16 @@ export const MenuItem = React.memo(
               />
             )}
           </div>
-        </>
+        </Stack>
+        {description && (
+          <div
+            className={cx(styles.description, styles.ellipsis, {
+              [styles.descriptionWithIcon]: icon !== undefined,
+            })}
+          >
+            {description}
+          </div>
+        )}
       </ItemElement>
     );
   })
@@ -191,88 +204,89 @@ MenuItem.displayName = 'MenuItem';
 
 const getStyles = (theme: GrafanaTheme2) => {
   return {
-    item: css`
-      background: none;
-      cursor: pointer;
-      white-space: nowrap;
-      color: ${theme.colors.text.primary};
-      display: flex;
-      align-items: center;
-      padding: ${theme.spacing(0.5, 2)};
-      min-height: ${theme.spacing(4)};
-      margin: 0;
-      border: none;
-      width: 100%;
-      position: relative;
+    item: css({
+      background: 'none',
+      cursor: 'pointer',
+      whiteSpace: 'nowrap',
+      color: theme.colors.text.primary,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      padding: theme.spacing(0.5, 2),
+      minHeight: theme.spacing(4),
+      margin: 0,
+      border: 'none',
+      width: '100%',
+      position: 'relative',
 
-      &:hover,
-      &:focus,
-      &:focus-visible {
-        background: ${theme.colors.action.hover};
-        color: ${theme.colors.text.primary};
-        text-decoration: none;
-      }
+      '&:hover, &:focus, &:focus-visible': {
+        background: theme.colors.action.hover,
+        color: theme.colors.text.primary,
+        textDecoration: 'none',
+      },
 
-      &:focus-visible {
-        ${getFocusStyles(theme)}
-      }
-    `,
-    active: css`
-      background: ${theme.colors.action.hover};
-    `,
-    destructive: css`
-      color: ${theme.colors.error.text};
+      '&:focus-visible': getFocusStyles(theme),
+    }),
+    active: css({
+      background: theme.colors.action.hover,
+    }),
+    destructive: css({
+      color: theme.colors.error.text,
 
-      svg {
-        color: ${theme.colors.error.text};
-      }
+      svg: {
+        color: theme.colors.error.text,
+      },
 
-      &:hover,
-      &:focus,
-      &:focus-visible {
-        background: ${theme.colors.error.main};
-        color: ${theme.colors.error.contrastText};
+      '&:hover, &:focus, &:focus-visible': {
+        background: theme.colors.error.main,
+        color: theme.colors.error.contrastText,
 
-        svg {
-          color: ${theme.colors.error.contrastText};
-        }
-      }
-    `,
-    disabled: css`
-      color: ${theme.colors.action.disabledText};
-
-      &:hover,
-      &:focus,
-      &:focus-visible {
-        cursor: not-allowed;
-        background: none;
-        color: ${theme.colors.action.disabledText};
-      }
-    `,
-    icon: css`
-      opacity: 0.7;
-      margin-right: 10px;
-      margin-left: -4px;
-      color: ${theme.colors.text.secondary};
-    `,
-    rightWrapper: css`
-      display: flex;
-      align-items: center;
-      margin-left: auto;
-    `,
-    shortcutIcon: css`
-      margin-right: ${theme.spacing(1)};
-    `,
-    withShortcut: css`
-      min-width: ${theme.spacing(10.5)};
-    `,
-    shortcut: css`
-      display: flex;
-      align-items: center;
-      gap: ${theme.spacing(1)};
-      margin-left: ${theme.spacing(2)};
-      color: ${theme.colors.text.secondary};
-      opacity: 0.7;
-    `,
+        svg: {
+          color: theme.colors.error.contrastText,
+        },
+      },
+    }),
+    disabled: css({
+      color: theme.colors.action.disabledText,
+      label: 'menu-item-disabled',
+      '&:hover, &:focus, &:focus-visible': {
+        cursor: 'not-allowed',
+        background: 'none',
+        color: theme.colors.action.disabledText,
+      },
+    }),
+    icon: css({
+      opacity: 0.7,
+      color: theme.colors.text.secondary,
+    }),
+    rightWrapper: css({
+      display: 'flex',
+      alignItems: 'center',
+      marginLeft: 'auto',
+    }),
+    withShortcut: css({
+      minWidth: theme.spacing(10.5),
+    }),
+    shortcut: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      marginLeft: theme.spacing(2),
+      color: theme.colors.text.secondary,
+      opacity: 0.7,
+    }),
+    description: css({
+      ...theme.typography.bodySmall,
+      color: theme.colors.text.secondary,
+      textAlign: 'start',
+    }),
+    descriptionWithIcon: css({
+      marginLeft: theme.spacing(3),
+    }),
+    ellipsis: css({
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    }),
   };
 };

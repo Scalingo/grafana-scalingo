@@ -2,8 +2,9 @@ import React from 'react';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 
 import { DataSourceInstanceSettings } from '@grafana/data';
-import { DataSourcePicker } from '@grafana/runtime';
 import { Field, FieldSet } from '@grafana/ui';
+import { Trans, t } from 'app/core/internationalization';
+import { DataSourcePicker } from 'app/features/datasources/components/picker/DataSourcePicker';
 
 import { QueryEditorField } from './QueryEditorField';
 import { useCorrelationsFormContext } from './correlationsFormContext';
@@ -16,16 +17,26 @@ export const ConfigureCorrelationTargetForm = () => {
 
   return (
     <>
-      <FieldSet label="Setup target query (2/3)">
-        <p>Clicking on a link runs a provided target query.</p>
+      <FieldSet label={t('correlations.target-form.title', 'Setup the target for the correlation (Step 2 of 3)')}>
+        <Trans i18nKey="correlations.target-form.sub-text">
+          <p>
+            Define what data source the correlation will link to, and what query will run when the correlation is
+            clicked.
+          </p>
+        </Trans>
         <Controller
           control={control}
           name="targetUID"
-          rules={{ required: { value: true, message: 'This field is required.' } }}
+          rules={{
+            required: { value: true, message: t('correlations.target-form.control-rules', 'This field is required.') },
+          }}
           render={({ field: { onChange, value } }) => (
             <Field
-              label="Target"
-              description="Specify which data source is queried when the link is clicked"
+              label={t('correlations.target-form.target-label', 'Target')}
+              description={t(
+                'correlations.target-form.target-description',
+                'Specify which data source is queried when the link is clicked'
+              )}
               htmlFor="target"
               invalid={!!formState.errors.targetUID}
               error={formState.errors.targetUID?.message}

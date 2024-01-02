@@ -78,6 +78,7 @@ export function getVisualizationOptions(props: OptionPaneRenderProps): OptionsPa
     return (categoryIndex[categoryName] = new OptionsPaneCategoryDescriptor({
       title: categoryName,
       id: categoryName,
+      sandboxId: plugin.meta.id,
     }));
   };
 
@@ -96,12 +97,14 @@ export function getVisualizationOptions(props: OptionPaneRenderProps): OptionsPa
    * Field options
    */
   for (const fieldOption of plugin.fieldConfigRegistry.list()) {
-    if (
-      fieldOption.isCustom &&
-      fieldOption.showIf &&
-      !fieldOption.showIf(currentFieldConfig.defaults.custom, data?.series)
-    ) {
-      continue;
+    if (fieldOption.isCustom) {
+      if (fieldOption.showIf && !fieldOption.showIf(currentFieldConfig.defaults.custom, data?.series)) {
+        continue;
+      }
+    } else {
+      if (fieldOption.showIf && !fieldOption.showIf(currentFieldConfig.defaults, data?.series)) {
+        continue;
+      }
     }
 
     if (fieldOption.hideFromDefaults) {
@@ -152,10 +155,10 @@ export function fillOptionsPaneItems(
   supplier: PanelOptionsSupplier<any>,
   access: NestedValueAccess,
   getOptionsPaneCategory: categoryGetter,
-  context: StandardEditorContext<any, any>,
+  context: StandardEditorContext<any>,
   parentCategory?: OptionsPaneCategoryDescriptor
 ) {
-  const builder = new PanelOptionsEditorBuilder<any>();
+  const builder = new PanelOptionsEditorBuilder();
   supplier(builder, context);
 
   for (const pluginOption of builder.getItems()) {

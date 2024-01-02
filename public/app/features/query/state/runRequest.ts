@@ -18,7 +18,7 @@ import {
   PanelData,
   TimeRange,
 } from '@grafana/data';
-import { toDataQueryError } from '@grafana/runtime';
+import { config, toDataQueryError, logError } from '@grafana/runtime';
 import { isExpressionReference } from '@grafana/runtime/src/utils/DataSourceWithBackend';
 import { backendSrv } from 'app/core/services/backend_srv';
 import { queryIsEmpty } from 'app/core/utils/query';
@@ -88,6 +88,13 @@ export function processResponsePacket(packet: DataQueryResponse, state: RunningQ
     timeRange,
   };
 
+  // we use a Set to deduplicate the traceIds
+  const traceIdSet = new Set([...(state.panelData.traceIds ?? []), ...(packet.traceIds ?? [])]);
+
+  if (traceIdSet.size > 0) {
+    panelData.traceIds = Array.from(traceIdSet);
+  }
+
   return { packets, panelData };
 }
 
@@ -149,8 +156,8 @@ export function runRequest(
     }),
     // handle errors
     catchError((err) => {
-      const errLog = typeof err === 'string' ? err : JSON.stringify(err);
-      console.error('runRequest.catchError', errLog);
+      console.error('runRequest.catchError', err);
+      logError(err);
       return of({
         ...state.panelData,
         state: LoadingState.Error,
@@ -187,7 +194,7 @@ export function callQueryMethod(
   );
 
   // If its a public datasource, just return the result. Expressions will be handled on the backend.
-  if (datasource.type === 'public-ds') {
+  if (config.publicDashboardAccessToken) {
     return from(datasource.query(request));
   }
 

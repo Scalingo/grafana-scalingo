@@ -4,8 +4,7 @@ import classnames from 'classnames';
 import React, { ReactElement, ReactNode, useRef } from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
-import { Stack } from '@grafana/experimental';
-import { Popover as GrafanaPopover, PopoverController, useStyles2 } from '@grafana/ui';
+import { Popover as GrafanaPopover, PopoverController, useStyles2, Stack } from '@grafana/ui';
 
 export interface HoverCardProps {
   children: ReactElement;
@@ -57,6 +56,8 @@ export const HoverCard = ({
                 wrapperClassName={classnames(styles.popover(arrow ? 1.25 : 0), wrapperClassName)}
                 onMouseLeave={hidePopper}
                 onMouseEnter={showPopper}
+                onFocus={showPopper}
+                onBlur={hidePopper}
                 referenceElement={popoverRef.current}
                 renderArrow={
                   arrow
@@ -70,6 +71,8 @@ export const HoverCard = ({
               ref: popoverRef,
               onMouseEnter: showPopper,
               onMouseLeave: hidePopper,
+              onFocus: showPopper,
+              onBlur: hidePopper,
             })}
           </>
         );
@@ -80,7 +83,7 @@ export const HoverCard = ({
 
 const getStyles = (theme: GrafanaTheme2) => ({
   popover: (offset: number) => css`
-    border-radius: ${theme.shape.borderRadius()};
+    border-radius: ${theme.shape.radius.default};
     box-shadow: ${theme.shadows.z3};
     background: ${theme.colors.background.primary};
     border: 1px solid ${theme.colors.border.medium};

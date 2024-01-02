@@ -1,6 +1,7 @@
 package macros
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -8,11 +9,9 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 
-	"github.com/grafana/grafana/pkg/components/simplejson"
-	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/services/datasources"
+	"github.com/grafana/grafana/pkg/tsdb/azuremonitor/kinds/dataquery"
 	"github.com/grafana/grafana/pkg/tsdb/azuremonitor/types"
-	"github.com/grafana/grafana/pkg/tsdb/legacydata/interval"
+	"github.com/grafana/grafana/pkg/tsdb/intervalv2"
 )
 
 const rsIdentifier = `__(timeFilter|timeFrom|timeTo|interval|contains|escapeMulti)`
@@ -34,17 +33,17 @@ type kqlMacroEngine struct {
 //   - $__escapeMulti('\\vm\eth0\Total','\\vm\eth2\Total') -> @'\\vm\eth0\Total',@'\\vm\eth2\Total'
 
 // KqlInterpolate interpolates macros for Kusto Query Language (KQL) queries
-func KqlInterpolate(logger log.Logger, query backend.DataQuery, dsInfo types.DatasourceInfo, kql string, defaultTimeField ...string) (string, error) {
+func KqlInterpolate(query backend.DataQuery, dsInfo types.DatasourceInfo, kql string, defaultTimeField ...string) (string, error) {
 	engine := kqlMacroEngine{}
 
 	defaultTimeFieldForAllDatasources := "timestamp"
-	if len(defaultTimeField) > 0 {
+	if len(defaultTimeField) > 0 && query.QueryType != string(dataquery.AzureQueryTypeAzureTraces) {
 		defaultTimeFieldForAllDatasources = defaultTimeField[0]
 	}
-	return engine.Interpolate(logger, query, dsInfo, kql, defaultTimeFieldForAllDatasources)
+	return engine.Interpolate(query, dsInfo, kql, defaultTimeFieldForAllDatasources)
 }
 
-func (m *kqlMacroEngine) Interpolate(logger log.Logger, query backend.DataQuery, dsInfo types.DatasourceInfo, kql string, defaultTimeField string) (string, error) {
+func (m *kqlMacroEngine) Interpolate(query backend.DataQuery, dsInfo types.DatasourceInfo, kql string, defaultTimeField string) (string, error) {
 	m.timeRange = query.TimeRange
 	m.query = query
 	rExp, _ := regexp.Compile(sExpr)
@@ -74,7 +73,7 @@ func (m *kqlMacroEngine) Interpolate(logger log.Logger, query backend.DataQuery,
 		for i, arg := range args {
 			args[i] = strings.Trim(arg, " ")
 		}
-		res, err := m.evaluateMacro(logger, groups[1], defaultTimeField, args, dsInfo)
+		res, err := m.evaluateMacro(groups[1], defaultTimeField, args, dsInfo)
 		if err != nil && macroError == nil {
 			macroError = err
 			return "macro_error()"
@@ -89,7 +88,12 @@ func (m *kqlMacroEngine) Interpolate(logger log.Logger, query backend.DataQuery,
 	return kql, nil
 }
 
-func (m *kqlMacroEngine) evaluateMacro(logger log.Logger, name string, defaultTimeField string, args []string, dsInfo types.DatasourceInfo) (string, error) {
+type interval struct {
+	IntervalMs int64
+	Interval   string
+}
+
+func (m *kqlMacroEngine) evaluateMacro(name string, defaultTimeField string, args []string, dsInfo types.DatasourceInfo) (string, error) {
 	switch name {
 	case "timeFilter":
 		timeColumn := defaultTimeField
@@ -110,16 +114,20 @@ func (m *kqlMacroEngine) evaluateMacro(logger log.Logger, name string, defaultTi
 			from := m.timeRange.From.UnixNano()
 			// default to "100 datapoints" if nothing in the query is more specific
 			defaultInterval := time.Duration((to - from) / 60)
-			model, err := simplejson.NewJson(m.query.JSON)
+			var queryInterval interval
+			err := json.Unmarshal(m.query.JSON, &queryInterval)
 			if err != nil {
-				logger.Warn("Unable to parse model from query", "JSON", m.query.JSON)
 				it = defaultInterval
 			} else {
-				it, err = interval.GetIntervalFrom(&datasources.DataSource{
-					JsonData: simplejson.NewFromAny(dsInfo.JSONData),
-				}, model, defaultInterval)
+				var (
+					dsInterval string
+					ok         bool
+				)
+				if dsInterval, ok = dsInfo.JSONData["interval"].(string); !ok {
+					dsInterval = ""
+				}
+				it, err = intervalv2.GetIntervalFrom(dsInterval, queryInterval.Interval, queryInterval.IntervalMs, defaultInterval)
 				if err != nil {
-					logger.Warn("Unable to get interval from query", "model", model)
 					it = defaultInterval
 				}
 			}
@@ -149,7 +157,7 @@ func (m *kqlMacroEngine) ReplaceAllStringSubmatchFunc(re *regexp.Regexp, str str
 	result := ""
 	lastIndex := 0
 
-	for _, v := range re.FindAllSubmatchIndex([]byte(str), -1) {
+	for _, v := range re.FindAllStringSubmatchIndex(str, -1) {
 		groups := []string{}
 		for i := 0; i < len(v); i += 2 {
 			if v[i] < 0 {

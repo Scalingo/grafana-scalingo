@@ -45,7 +45,7 @@ func TestSearchRequest(t *testing.T) {
 	t.Run("When adding size, sort, filters", func(t *testing.T) {
 		b := setup()
 		b.Size(200)
-		b.SortDesc(timeField, "boolean")
+		b.Sort(SortOrderDesc, timeField, "boolean")
 		filters := b.Query().Bool().Filter()
 		filters.AddDateRangeFilter(timeField, 10, 5, DateFormatEpochMS)
 		filters.AddQueryStringFilter("test", true)
@@ -110,7 +110,7 @@ func TestSearchRequest(t *testing.T) {
 		t.Run("should set correct props", func(t *testing.T) {
 			require.Nil(t, b.customProps["fields"])
 
-			scriptFields, ok := b.customProps["script_fields"].(map[string]interface{})
+			scriptFields, ok := b.customProps["script_fields"].(map[string]any)
 			require.True(t, ok)
 			require.Equal(t, 0, len(scriptFields))
 

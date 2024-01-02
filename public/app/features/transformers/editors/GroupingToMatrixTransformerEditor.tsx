@@ -8,9 +8,11 @@ import {
   TransformerUIProps,
   GroupingToMatrixTransformerOptions,
   SpecialValue,
+  TransformerCategory,
 } from '@grafana/data';
 import { InlineField, InlineFieldRow, Select } from '@grafana/ui';
 
+import { getTransformationContent } from '../docs/getTransformationContent';
 import { useAllFieldNamesFromDataFrames } from '../utils';
 
 export const GroupingToMatrixTransformerEditor = ({
@@ -91,6 +93,8 @@ export const groupingToMatrixTransformRegistryItem: TransformerRegistryItem<Grou
   id: DataTransformerID.groupingToMatrix,
   editor: GroupingToMatrixTransformerEditor,
   transformation: standardTransformers.groupingToMatrixTransformer,
-  name: 'Grouping to matrix',
-  description: `Takes a three fields combination and produces a Matrix`,
+  name: standardTransformers.groupingToMatrixTransformer.name,
+  description: 'Takes a three fields combination and produces a Matrix.',
+  categories: new Set([TransformerCategory.Combine, TransformerCategory.Reformat]),
+  help: getTransformationContent(DataTransformerID.groupingToMatrix).helperDocs,
 };

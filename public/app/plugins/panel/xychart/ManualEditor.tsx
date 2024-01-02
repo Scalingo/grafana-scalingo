@@ -7,13 +7,13 @@ import { FieldNamePicker } from '@grafana/ui/src/components/MatchersUI/FieldName
 import { LayerName } from 'app/core/components/Layers/LayerName';
 import { ColorDimensionEditor, ScaleDimensionEditor } from 'app/features/dimensions/editors';
 
-import { PanelOptions, ScatterSeriesConfig, defaultScatterFieldConfig } from './types';
+import { Options, ScatterSeriesConfig, defaultFieldConfig } from './panelcfg.gen';
 
 export const ManualEditor = ({
   value,
   onChange,
   context,
-}: StandardEditorProps<ScatterSeriesConfig[], any, PanelOptions>) => {
+}: StandardEditorProps<ScatterSeriesConfig[], any, Options>) => {
   const [selected, setSelected] = useState(0);
   const style = useStyles2(getStyles);
 
@@ -33,7 +33,7 @@ export const ManualEditor = ({
       ...value,
       {
         pointColor: {} as any,
-        pointSize: defaultScatterFieldConfig.pointSize,
+        pointSize: defaultFieldConfig.pointSize,
       },
     ]);
     setSelected(value.length);
@@ -66,7 +66,19 @@ export const ManualEditor = ({
       <div className={style.marginBot}>
         {value.map((series, index) => {
           return (
-            <div key={`series/${index}`} className={getRowStyle(index)} onMouseDown={() => setSelected(index)}>
+            <div
+              key={`series/${index}`}
+              className={getRowStyle(index)}
+              onClick={() => setSelected(index)}
+              role="button"
+              aria-label={`Select series ${index + 1}`}
+              tabIndex={0}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  setSelected(index);
+                }
+              }}
+            >
               <LayerName
                 name={series.name ?? `Series ${index + 1}`}
                 onChange={(v) => onFieldChange(v, index, 'name')}
@@ -77,6 +89,7 @@ export const ManualEditor = ({
                 title={'remove'}
                 className={cx(style.actionIcon)}
                 onClick={() => onSeriesDelete(index)}
+                tooltip="Delete series"
               />
             </div>
           );
@@ -131,7 +144,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   `,
   row: css`
     padding: ${theme.spacing(0.5, 1)};
-    border-radius: ${theme.shape.borderRadius(1)};
+    border-radius: ${theme.shape.radius.default};
     background: ${theme.colors.background.secondary};
     min-height: ${theme.spacing(4)};
     display: flex;

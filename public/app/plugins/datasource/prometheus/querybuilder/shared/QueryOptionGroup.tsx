@@ -3,14 +3,14 @@ import React from 'react';
 import { useToggle } from 'react-use';
 
 import { getValueFormat, GrafanaTheme2 } from '@grafana/data';
-import { Stack } from '@grafana/experimental';
-import { Icon, useStyles2 } from '@grafana/ui';
+import { config } from '@grafana/runtime';
+import { Collapse, Icon, Tooltip, useStyles2, Stack } from '@grafana/ui';
 import { QueryStats } from 'app/plugins/datasource/loki/types';
 
 export interface Props {
   title: string;
   collapsedInfo: string[];
-  queryStats?: QueryStats;
+  queryStats?: QueryStats | null;
   children: React.ReactNode;
 }
 
@@ -18,58 +18,56 @@ export function QueryOptionGroup({ title, children, collapsedInfo, queryStats }:
   const [isOpen, toggleOpen] = useToggle(false);
   const styles = useStyles2(getStyles);
 
-  const convertUnits = (): string => {
-    const { text, suffix } = getValueFormat('bytes')(queryStats!.bytes, 1);
-    return text + suffix;
-  };
-
   return (
     <div className={styles.wrapper}>
-      <Stack gap={0} direction="column">
-        <div className={styles.header} onClick={toggleOpen} title="Click to edit options">
-          <div className={styles.toggle}>
-            <Icon name={isOpen ? 'angle-down' : 'angle-right'} />
-          </div>
-          <h6 className={styles.title}>{title}</h6>
-          {!isOpen && (
-            <div className={styles.description}>
-              {collapsedInfo.map((x, i) => (
-                <span key={i}>{x}</span>
-              ))}
-            </div>
-          )}
-        </div>
-        {isOpen && <div className={styles.body}>{children}</div>}
-      </Stack>
-      {queryStats && <p className={styles.stats}>This query will process approximately {convertUnits()}.</p>}
+      <Collapse
+        className={styles.collapse}
+        collapsible
+        isOpen={isOpen}
+        onToggle={toggleOpen}
+        label={
+          <Stack gap={0}>
+            <h6 className={styles.title}>{title}</h6>
+            {!isOpen && (
+              <div className={styles.description}>
+                {collapsedInfo.map((x, i) => (
+                  <span key={i}>{x}</span>
+                ))}
+              </div>
+            )}
+          </Stack>
+        }
+      >
+        <div className={styles.body}>{children}</div>
+      </Collapse>
+
+      {queryStats && config.featureToggles.lokiQuerySplitting && (
+        <Tooltip content="Note: the query will be split into multiple parts and executed in sequence. Query limits will only apply each individual part.">
+          <Icon tabIndex={0} name="info-circle" className={styles.tooltip} size="sm" />
+        </Tooltip>
+      )}
+
+      {queryStats && <p className={styles.stats}>{generateQueryStats(queryStats)}</p>}
     </div>
   );
 }
 
 const getStyles = (theme: GrafanaTheme2) => {
   return {
+    collapse: css({
+      backgroundColor: 'unset',
+      border: 'unset',
+      marginBottom: 0,
+
+      ['> button']: {
+        padding: theme.spacing(0, 1),
+      },
+    }),
     wrapper: css({
       width: '100%',
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'baseline',
-    }),
-    switchLabel: css({
-      color: theme.colors.text.secondary,
-      cursor: 'pointer',
-      fontSize: theme.typography.bodySmall.fontSize,
-      '&:hover': {
-        color: theme.colors.text.primary,
-      },
-    }),
-    header: css({
-      display: 'flex',
-      cursor: 'pointer',
-      alignItems: 'baseline',
-      color: theme.colors.text.primary,
-      '&:hover': {
-        background: theme.colors.emphasize(theme.colors.background.primary, 0.03),
-      },
     }),
     title: css({
       flexGrow: 1,
@@ -81,24 +79,36 @@ const getStyles = (theme: GrafanaTheme2) => {
     description: css({
       color: theme.colors.text.secondary,
       fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.bodySmall.fontWeight,
       paddingLeft: theme.spacing(2),
       gap: theme.spacing(2),
       display: 'flex',
     }),
     body: css({
       display: 'flex',
-      paddingTop: theme.spacing(2),
       gap: theme.spacing(2),
       flexWrap: 'wrap',
-    }),
-    toggle: css({
-      color: theme.colors.text.secondary,
-      marginRight: `${theme.spacing(1)}`,
     }),
     stats: css({
       margin: '0px',
       color: theme.colors.text.secondary,
       fontSize: theme.typography.bodySmall.fontSize,
     }),
+    tooltip: css({
+      marginRight: theme.spacing(0.25),
+    }),
   };
+};
+
+const generateQueryStats = (queryStats: QueryStats) => {
+  if (queryStats.message) {
+    return queryStats.message;
+  }
+
+  return `This query will process approximately ${convertUnits(queryStats)}.`;
+};
+
+const convertUnits = (queryStats: QueryStats): string => {
+  const { text, suffix } = getValueFormat('bytes')(queryStats.bytes, 1);
+  return text + suffix;
 };

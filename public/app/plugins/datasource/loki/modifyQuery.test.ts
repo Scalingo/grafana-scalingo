@@ -1,10 +1,17 @@
+import { SyntaxNode } from '@lezer/common';
+
 import {
   addLabelFormatToQuery,
   addLabelToQuery,
+  addLineFilter,
   addNoPipelineErrorToQuery,
   addParserToQuery,
+  NodePosition,
+  queryHasFilter,
   removeCommentsFromQuery,
+  removeLabelFromQuery,
 } from './modifyQuery';
+import { LabelType } from './types';
 
 describe('addLabelToQuery()', () => {
   it.each`
@@ -52,6 +59,9 @@ describe('addLabelToQuery()', () => {
     ${'{foo="bar"} | logfmt'}                                                                                                         | ${'query with parser with an other escaped value'}                             | ${'bar'} | ${'='}   | ${'baz\\\\'}   | ${'{foo="bar"} | logfmt | bar=`baz\\`'}
     ${'{foo="bar"} | logfmt'}                                                                                                         | ${'query with parser with escaped value and regex operator'}                   | ${'bar'} | ${'~='}  | ${'\\"baz\\"'} | ${'{foo="bar"} | logfmt | bar~=`"baz"`'}
     ${'{foo="bar"} | logfmt'}                                                                                                         | ${'query with parser with escaped value and regex operator'}                   | ${'bar'} | ${'~='}  | ${'\\"baz\\"'} | ${'{foo="bar"} | logfmt | bar~=`"baz"`'}
+    ${'{foo="bar"} | logfmt'}                                                                                                         | ${'query with parser, > operator and number value'}                            | ${'bar'} | ${'>'}   | ${'5'}         | ${'{foo="bar"} | logfmt | bar>5'}
+    ${'{foo="bar"} | logfmt'}                                                                                                         | ${'query with parser, < operator and non-number value'}                        | ${'bar'} | ${'<'}   | ${'5KiB'}      | ${'{foo="bar"} | logfmt | bar<`5KiB`'}
+    ${'sum(rate({x="y"} | logfmt [5m])) + sum(rate({x="z"} | logfmt [5m]))'}                                                          | ${'metric query with non empty selectors and parsers'}                         | ${'bar'} | ${'='}   | ${'baz'}       | ${'sum(rate({x="y"} | logfmt | bar=`baz` [5m])) + sum(rate({x="z"} | logfmt | bar=`baz` [5m]))'}
   `(
     'should add label to query:  $query, description: $description',
     ({ query, description, label, operator, value, expectedResult }) => {
@@ -64,6 +74,30 @@ describe('addLabelToQuery()', () => {
       }
     }
   );
+
+  it('should always add label as labelFilter if label type is parsed', () => {
+    expect(addLabelToQuery('{foo="bar"}', 'forcedLabel', '=', 'value', LabelType.Parsed)).toEqual(
+      '{foo="bar"} | forcedLabel=`value`'
+    );
+  });
+
+  it('should always add label as labelFilter if label type is parsed with parser', () => {
+    expect(addLabelToQuery('{foo="bar"} | logfmt', 'forcedLabel', '=', 'value', LabelType.Parsed)).toEqual(
+      '{foo="bar"} | logfmt | forcedLabel=`value`'
+    );
+  });
+
+  it('should always add label as labelFilter if label type is structured', () => {
+    expect(addLabelToQuery('{foo="bar"}', 'forcedLabel', '=', 'value', LabelType.StructuredMetadata)).toEqual(
+      '{foo="bar"} | forcedLabel=`value`'
+    );
+  });
+
+  it('should always add label as labelFilter if label type is structured with parser', () => {
+    expect(addLabelToQuery('{foo="bar"} | logfmt', 'forcedLabel', '=', 'value', LabelType.StructuredMetadata)).toEqual(
+      '{foo="bar"} | logfmt | forcedLabel=`value`'
+    );
+  });
 });
 
 describe('addParserToQuery', () => {
@@ -154,6 +188,7 @@ describe('removeCommentsFromQuery', () => {
     ${'{job="grafana", bar="baz"} |="test" | logfmt | label_format level=lvl #hello'} | ${'{job="grafana", bar="baz"} |="test" | logfmt | label_format level=lvl '}
     ${`#sum(rate(\n{host="containers"}\n#[1m]))`}                                     | ${`\n{host="containers"}\n`}
     ${`#sum(rate(\n{host="containers"}\n#| logfmt\n#[1m]))`}                          | ${`\n{host="containers"}\n\n`}
+    ${'{job="grafana"}\n#hello\n| logfmt'}                                            | ${'{job="grafana"}\n\n| logfmt'}
   `('strips comments in log query:  {$query}', ({ query, expectedResult }) => {
     expect(removeCommentsFromQuery(query)).toBe(expectedResult);
   });
@@ -183,5 +218,124 @@ describe('removeCommentsFromQuery', () => {
     ${'rate({job="grafana"} | logfmt | foo="bar" [10m])'}     | ${'rate({job="grafana"} | logfmt | foo="bar" [10m])'}
   `('returns original query if no comments in metrics query:  {$query}', ({ query, expectedResult }) => {
     expect(removeCommentsFromQuery(query)).toBe(expectedResult);
+  });
+});
+
+describe('NodePosition', () => {
+  describe('contains', () => {
+    it('should return true if the position is contained within the current position', () => {
+      const position = new NodePosition(5, 10);
+      const containedPosition = new NodePosition(6, 9);
+      const result = position.contains(containedPosition);
+      expect(result).toBe(true);
+    });
+
+    it('should return false if the position is not contained within the current position', () => {
+      const position = new NodePosition(5, 10);
+      const outsidePosition = new NodePosition(11, 15);
+      const result = position.contains(outsidePosition);
+      expect(result).toBe(false);
+    });
+
+    it('should return true if the position is the same as the current position', () => {
+      const position = new NodePosition(5, 10);
+      const samePosition = new NodePosition(5, 10);
+      const result = position.contains(samePosition);
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('getExpression', () => {
+    it('should return the substring of the query within the given position', () => {
+      const position = new NodePosition(7, 12);
+      const query = 'Hello, world!';
+      const result = position.getExpression(query);
+      expect(result).toBe('world');
+    });
+
+    it('should return an empty string if the position is out of range', () => {
+      const position = new NodePosition(15, 20);
+      const query = 'Hello, world!';
+      const result = position.getExpression(query);
+      expect(result).toBe('');
+    });
+  });
+
+  describe('fromNode', () => {
+    it('should create a new NodePosition instance from a SyntaxNode', () => {
+      const syntaxNode = {
+        from: 5,
+        to: 10,
+        type: 'identifier',
+      } as unknown as SyntaxNode;
+      const result = NodePosition.fromNode(syntaxNode);
+      expect(result).toBeInstanceOf(NodePosition);
+      expect(result.from).toBe(5);
+      expect(result.to).toBe(10);
+      expect(result.type).toBe('identifier');
+    });
+  });
+});
+
+describe('queryHasFilter', () => {
+  it.each([
+    ['{job="grafana"}', 'grafana'],
+    ['{job="grafana", foo="bar"}', 'grafana'],
+    ['{foo="bar", job="grafana"}', 'grafana'],
+    ['{job="\\"grafana\\""}', '"grafana"'],
+    ['{foo="bar"} | logfmt | job=`grafana`', 'grafana'],
+  ])('should return true if query has a positive filter', (query: string, value: string) => {
+    expect(queryHasFilter(query, 'job', '=', value)).toBe(true);
+  });
+
+  it.each([
+    ['{job!="grafana"}', 'grafana'],
+    ['{job!="grafana", foo="bar"}', 'grafana'],
+    ['{foo="bar", job!="grafana"}', 'grafana'],
+    ['{job!="\\"grafana\\""}', '"grafana"'],
+    ['{foo="bar"} | logfmt | job!=`grafana`', 'grafana'],
+  ])('should return true if query has a negative filter', (query: string, value: string) => {
+    expect(queryHasFilter(query, 'job', '!=', value)).toBe(true);
+  });
+});
+
+describe('removeLabelFromQuery', () => {
+  it.each([
+    ['{job="grafana"}', 'grafana', '{}'],
+    ['{job="grafana", foo="bar"}', 'grafana', '{foo="bar"}'],
+    ['{foo="bar", job="grafana"}', 'grafana', '{foo="bar"}'],
+    ['{job="\\"grafana\\""}', '"grafana"', '{}'],
+    ['{foo="bar"} | logfmt | job=`grafana`', 'grafana', '{foo="bar"} | logfmt'],
+  ])('should remove a positive label matcher from the query', (query: string, value: string, expected: string) => {
+    expect(removeLabelFromQuery(query, 'job', '=', value)).toBe(expected);
+  });
+
+  it.each([
+    ['{job!="grafana"}', 'grafana', '{}'],
+    ['{job!="grafana", foo="bar"}', 'grafana', '{foo="bar"}'],
+    ['{foo="bar", job!="grafana"}', 'grafana', '{foo="bar"}'],
+    ['{job!="\\"grafana\\""}', '"grafana"', '{}'],
+    ['{foo="bar"} | logfmt | job!=`grafana`', 'grafana', '{foo="bar"} | logfmt'],
+  ])('should remove a negative label matcher from the query', (query: string, value: string, expected: string) => {
+    expect(removeLabelFromQuery(query, 'job', '!=', value)).toBe(expected);
+  });
+});
+
+describe.each(['|=', '!='])('addLineFilter type %s', (op: string) => {
+  it('Adds a line filter to a log query', () => {
+    expect(addLineFilter('{place="earth"}', undefined, op)).toBe(`{place="earth"} ${op} \`\``);
+  });
+  it('Adds a line filter with a value to a log query', () => {
+    expect(addLineFilter('{place="earth"}', 'content', op)).toBe(`{place="earth"} ${op} \`content\``);
+  });
+  it('Adds a line filter to a metric query', () => {
+    expect(addLineFilter('avg_over_time({place="earth"} [1m])', undefined, op)).toBe(
+      `avg_over_time({place="earth"} ${op} \`\` [1m])`
+    );
+  });
+  it('Adds a line filter with a value to a metric query', () => {
+    expect(addLineFilter('avg_over_time({place="earth"} [1m])', 'content', op)).toBe(
+      `avg_over_time({place="earth"} ${op} \`content\` [1m])`
+    );
   });
 });

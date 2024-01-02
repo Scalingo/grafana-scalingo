@@ -62,7 +62,7 @@ export const GrafanaRules = ({ namespaces, expandAll }: Props) => {
         />
       ))}
       {hasResult && namespacesFormat?.length === 0 && <p>No rules found.</p>}
-      {!hasResult && loading && <Spinner size={24} className={styles.spinner} />}
+      {!hasResult && loading && <Spinner size="xl" className={styles.spinner} />}
       <Pagination
         className={styles.pagination}
         currentPage={page}
@@ -81,6 +81,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   sectionHeader: css`
     display: flex;
     justify-content: space-between;
+    margin-bottom: ${theme.spacing(1)};
   `,
   wrapper: css`
     margin-bottom: ${theme.spacing(4)};

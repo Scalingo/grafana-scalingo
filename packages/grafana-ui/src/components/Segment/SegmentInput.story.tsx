@@ -1,25 +1,25 @@
 import { action } from '@storybook/addon-actions';
-import { ComponentMeta, ComponentStory } from '@storybook/react';
+import { Meta, StoryFn } from '@storybook/react';
 import React, { useState } from 'react';
 
 import { SegmentInput, Icon, SegmentSection } from '@grafana/ui';
 
 import { SegmentInputProps } from './SegmentInput';
 
-const SegmentFrame = ({ children }: any) => (
+const SegmentFrame = ({ children }: React.PropsWithChildren) => (
   <>
-    <SegmentSection label="Segment Name">{children}</SegmentSection>
+    <SegmentSection label="Segment">{children}</SegmentSection>
   </>
 );
 
 export const BasicInput = () => {
-  const [value, setValue] = useState('some text');
+  const [value, setValue] = useState<string | number>('some text');
   return (
     <SegmentFrame>
       <SegmentInput
         value={value}
         onChange={(text) => {
-          setValue(text as string);
+          setValue(text);
           action('Segment value changed')(text);
         }}
       />
@@ -27,20 +27,20 @@ export const BasicInput = () => {
   );
 };
 
-const meta: ComponentMeta<typeof SegmentInput> = {
+const meta: Meta<typeof SegmentInput> = {
   title: 'Data Source/Segment/SegmentInput',
   component: SegmentInput,
 };
 
 export const BasicInputWithPlaceholder = () => {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState<string | number>('');
   return (
     <SegmentFrame>
       <SegmentInput
         placeholder="add text"
         value={value}
         onChange={(text) => {
-          setValue(text as string);
+          setValue(text);
           action('Segment value changed')(text);
         }}
       />
@@ -49,7 +49,7 @@ export const BasicInputWithPlaceholder = () => {
 };
 
 export const BasicInputWithHtmlAttributes = () => {
-  const [value, setValue] = useState('some text');
+  const [value, setValue] = useState<string | number>('some text');
   return (
     <SegmentFrame>
       <SegmentInput
@@ -57,7 +57,7 @@ export const BasicInputWithHtmlAttributes = () => {
         id="segment-input"
         value={value}
         onChange={(text) => {
-          setValue(text as string);
+          setValue(text);
           action('Segment value changed')(text);
         }}
       />
@@ -65,7 +65,11 @@ export const BasicInputWithHtmlAttributes = () => {
   );
 };
 
-const InputComponent = ({ initialValue }: any) => {
+interface InputComponentProps {
+  initialValue: string | number;
+}
+
+const InputComponent = ({ initialValue }: InputComponentProps) => {
   const [value, setValue] = useState(initialValue);
   return (
     <SegmentInput
@@ -73,7 +77,7 @@ const InputComponent = ({ initialValue }: any) => {
       autofocus
       value={value}
       onChange={(text) => {
-        setValue(text as string);
+        setValue(text);
         action('Segment value changed')(text);
       }}
     />
@@ -81,10 +85,10 @@ const InputComponent = ({ initialValue }: any) => {
 };
 
 export const InputWithAutoFocus = () => {
-  const [inputComponents, setInputComponents] = useState<any>([]);
+  const [inputComponents, setInputComponents] = useState<Array<(props: InputComponentProps) => JSX.Element>>([]);
   return (
     <SegmentFrame>
-      {inputComponents.map((InputComponent: any, i: number) => (
+      {inputComponents.map((InputComponent, i) => (
         <InputComponent initialValue="test" key={i} />
       ))}
       <button
@@ -100,12 +104,10 @@ export const InputWithAutoFocus = () => {
   );
 };
 
-export const Basic: ComponentStory<React.ComponentType<SegmentInputProps<string | number>>> = (
-  args: SegmentInputProps<string | number>
-) => {
+export const Basic: StoryFn<React.ComponentType<SegmentInputProps>> = (args: SegmentInputProps) => {
   const [value, setValue] = useState(args.value);
 
-  const props: SegmentInputProps<string | number> = {
+  const props: SegmentInputProps = {
     ...args,
     value,
     onChange: (value) => {
@@ -117,7 +119,7 @@ export const Basic: ComponentStory<React.ComponentType<SegmentInputProps<string 
 
   return (
     <SegmentSection label="Segment:">
-      <SegmentInput<string | number> {...props} />
+      <SegmentInput {...props} />
     </SegmentSection>
   );
 };

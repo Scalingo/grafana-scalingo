@@ -18,22 +18,19 @@ import React, { RefObject } from 'react';
 import { GrafanaTheme2, LinkModel, TimeZone } from '@grafana/data';
 import { config, reportInteraction } from '@grafana/runtime';
 import { stylesFactory, withTheme2 } from '@grafana/ui';
+import { TraceToProfilesOptions } from 'app/core/components/TraceToProfiles/TraceToProfilesSettings';
 
-import { Accessors } from '../ScrollManager';
 import { autoColor } from '../Theme';
 import { merge as mergeShortcuts } from '../keyboard-shortcuts';
 import { SpanBarOptions } from '../settings/SpanBarSettings';
-import { SpanLinkFunc, TNil } from '../types';
+import { CriticalPathSection, SpanLinkFunc, TNil } from '../types';
 import TTraceTimeline from '../types/TTraceTimeline';
 import { TraceSpan, Trace, TraceLog, TraceKeyValuePair, TraceLink, TraceSpanReference } from '../types/trace';
 
+import { TraceFlameGraphs } from './SpanDetail';
 import TimelineHeaderRow from './TimelineHeaderRow';
-import VirtualizedTraceView, { TopOfViewRefType } from './VirtualizedTraceView';
+import VirtualizedTraceView from './VirtualizedTraceView';
 import { TUpdateViewRangeTimeFunction, ViewRange, ViewRangeTimeUpdate } from './types';
-
-type TExtractUiFindFromStateReturn = {
-  uiFind: string | undefined;
-};
 
 const getStyles = stylesFactory((theme: GrafanaTheme2) => {
   return {
@@ -71,12 +68,11 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
   };
 });
 
-export type TProps = TExtractUiFindFromStateReturn & {
-  registerAccessors: (accessors: Accessors) => void;
+export type TProps = {
   findMatchesIDs: Set<string> | TNil;
-  scrollToFirstVisibleSpan: () => void;
   traceTimeline: TTraceTimeline;
   trace: Trace;
+  traceToProfilesOptions?: TraceToProfilesOptions;
   datasourceType: string;
   spanBarOptions: SpanBarOptions | undefined;
   updateNextViewRangeTime: (update: ViewRangeTimeUpdate) => void;
@@ -91,7 +87,6 @@ export type TProps = TExtractUiFindFromStateReturn & {
   expandOne: (spans: TraceSpan[]) => void;
 
   childrenToggle: (spanID: string) => void;
-  clearShouldScrollToFirstUiFindMatch: () => void;
   detailLogItemToggle: (spanID: string, log: TraceLog) => void;
   detailLogsToggle: (spanID: string) => void;
   detailWarningsToggle: (spanID: string) => void;
@@ -101,7 +96,6 @@ export type TProps = TExtractUiFindFromStateReturn & {
   detailProcessToggle: (spanID: string) => void;
   detailTagsToggle: (spanID: string) => void;
   detailToggle: (spanID: string) => void;
-  setTrace: (trace: Trace | TNil, uiFind: string | TNil) => void;
   addHoverIndentGuideId: (spanID: string) => void;
   removeHoverIndentGuideId: (spanID: string) => void;
   linksGetter: (span: TraceSpan, items: TraceKeyValuePair[], itemIndex: number) => TraceLink[];
@@ -110,9 +104,16 @@ export type TProps = TExtractUiFindFromStateReturn & {
   scrollElement?: Element;
   focusedSpanId?: string;
   focusedSpanIdForSearch: string;
+  showSpanFilterMatchesOnly: boolean;
+  showCriticalPathSpansOnly: boolean;
   createFocusSpanLink: (traceId: string, spanId: string) => LinkModel;
   topOfViewRef?: RefObject<HTMLDivElement>;
-  topOfViewRefType?: TopOfViewRefType;
+  headerHeight: number;
+  criticalPath: CriticalPathSection[];
+  traceFlameGraphs: TraceFlameGraphs;
+  setTraceFlameGraphs: (flameGraphs: TraceFlameGraphs) => void;
+  redrawListView: {};
+  setRedrawListView: (redraw: {}) => void;
 };
 
 type State = {

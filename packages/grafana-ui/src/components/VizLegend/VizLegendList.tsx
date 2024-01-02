@@ -56,26 +56,25 @@ export const VizLegendList = <T extends unknown>({
     }
     case 'bottom':
     default: {
+      const leftItems = items.filter((item) => item.yAxis === 1);
+      const rightItems = items.filter((item) => item.yAxis !== 1);
+
       const renderItem = (item: VizLegendItem<T>, index: number) => {
         return <span className={styles.itemBottom}>{itemRenderer!(item, index)}</span>;
       };
 
       return (
         <div className={cx(styles.bottomWrapper, className)}>
-          <div className={styles.section}>
-            <InlineList
-              items={items.filter((item) => item.yAxis === 1)}
-              renderItem={renderItem}
-              getItemKey={getItemKey}
-            />
-          </div>
-          <div className={cx(styles.section, styles.sectionRight)}>
-            <InlineList
-              items={items.filter((item) => item.yAxis !== 1)}
-              renderItem={renderItem}
-              getItemKey={getItemKey}
-            />
-          </div>
+          {leftItems.length > 0 && (
+            <div className={styles.section}>
+              <InlineList items={leftItems} renderItem={renderItem} getItemKey={getItemKey} />
+            </div>
+          )}
+          {rightItems.length > 0 && (
+            <div className={cx(styles.section, styles.sectionRight)}>
+              <InlineList items={rightItems} renderItem={renderItem} getItemKey={getItemKey} />
+            </div>
+          )}
         </div>
       );
     }
@@ -85,37 +84,39 @@ export const VizLegendList = <T extends unknown>({
 VizLegendList.displayName = 'VizLegendList';
 
 const getStyles = (theme: GrafanaTheme2) => {
-  const itemStyles = css`
-    padding-right: 10px;
-    display: flex;
-    font-size: ${theme.typography.bodySmall.fontSize};
-    white-space: nowrap;
-  `;
+  const itemStyles = css({
+    paddingRight: '10px',
+    display: 'flex',
+    fontSize: theme.typography.bodySmall.fontSize,
+    whiteSpace: 'nowrap',
+  });
 
   return {
     itemBottom: itemStyles,
     itemRight: cx(
       itemStyles,
-      css`
-        margin-bottom: ${theme.spacing(0.5)};
-      `
+      css({
+        marginBottom: theme.spacing(0.5),
+      })
     ),
-    rightWrapper: css`
-      padding-left: ${theme.spacing(0.5)};
-    `,
-    bottomWrapper: css`
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      width: 100%;
-      padding-left: ${theme.spacing(0.5)};
-    `,
-    section: css`
-      display: flex;
-    `,
-    sectionRight: css`
-      justify-content: flex-end;
-      flex-grow: 1;
-    `,
+    rightWrapper: css({
+      paddingLeft: theme.spacing(0.5),
+    }),
+    bottomWrapper: css({
+      display: 'flex',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      width: '100%',
+      paddingLeft: theme.spacing(0.5),
+      gap: '15px 25px',
+    }),
+    section: css({
+      display: 'flex',
+    }),
+    sectionRight: css({
+      justifyContent: 'flex-end',
+      flexGrow: 1,
+      flexBasis: '50%',
+    }),
   };
 };

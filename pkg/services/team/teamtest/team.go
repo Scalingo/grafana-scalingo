@@ -3,7 +3,7 @@ package teamtest
 import (
 	"context"
 
-	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/dashboards/dashboardaccess"
 	"github.com/grafana/grafana/pkg/services/team"
 )
 
@@ -45,7 +45,7 @@ func (s *FakeService) GetTeamsByUser(ctx context.Context, query *team.GetTeamsBy
 	return s.ExpectedTeamsByUser, s.ExpectedError
 }
 
-func (s *FakeService) AddTeamMember(userID, orgID, teamID int64, isExternal bool, permission dashboards.PermissionType) error {
+func (s *FakeService) AddTeamMember(userID, orgID, teamID int64, isExternal bool, permission dashboardaccess.PermissionType) error {
 	return s.ExpectedError
 }
 
@@ -61,6 +61,10 @@ func (s *FakeService) RemoveTeamMember(ctx context.Context, cmd *team.RemoveTeam
 	return s.ExpectedError
 }
 
+func (s *FakeService) RemoveUsersMemberships(ctx context.Context, userID int64) error {
+	return s.ExpectedError
+}
+
 func (s *FakeService) GetUserTeamMemberships(ctx context.Context, orgID, userID int64, external bool) ([]*team.TeamMemberDTO, error) {
 	return s.ExpectedMembers, s.ExpectedError
 }
@@ -69,6 +73,14 @@ func (s *FakeService) GetTeamMembers(ctx context.Context, query *team.GetTeamMem
 	return s.ExpectedMembers, s.ExpectedError
 }
 
-func (s *FakeService) IsAdminOfTeams(ctx context.Context, query *team.IsAdminOfTeamsQuery) (bool, error) {
-	return s.ExpectedIsAdmin, s.ExpectedError
+func (s *FakeService) RegisterDelete(query string) {
+}
+
+func (s *FakeService) GetTeamIDsByUser(ctx context.Context, query *team.GetTeamIDsByUserQuery) ([]int64, error) {
+	result := make([]int64, 0)
+	for _, team := range s.ExpectedTeamsByUser {
+		result = append(result, team.ID)
+	}
+
+	return result, s.ExpectedError
 }

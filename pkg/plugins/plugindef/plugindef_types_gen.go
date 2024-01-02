@@ -98,7 +98,7 @@ type BuildInfo struct {
 type Dependencies struct {
 	// Required Grafana version for this plugin. Validated using
 	// https://github.com/npm/node-semver.
-	GrafanaDependency string `json:"grafanaDependency"`
+	GrafanaDependency *string `json:"grafanaDependency,omitempty"`
 
 	// (Deprecated) Required Grafana version for this plugin, e.g.
 	// `6.x.x 7.x.x` to denote plugin requires Grafana v6.x.x or
@@ -127,6 +127,27 @@ type DependencyType string
 type Header struct {
 	Content string `json:"content"`
 	Name    string `json:"name"`
+}
+
+// IAM allows the plugin to get a service account with tailored permissions and a token
+// (or to use the client_credentials grant if the token provider is the OAuth2 Server)
+type IAM struct {
+	Impersonation *Impersonation `json:"impersonation,omitempty"`
+
+	// Permissions are the permissions that the external service needs its associated service account to have.
+	Permissions []Permission `json:"permissions,omitempty"`
+}
+
+// Impersonation defines model for Impersonation.
+type Impersonation struct {
+	// Groups allows the service to list the impersonated user's teams.
+	// Defaults to true.
+	Groups *bool `json:"groups,omitempty"`
+
+	// Permissions are the permissions that the external service needs when impersonating a user.
+	// The intersection of this set with the impersonated user's permission guarantees that the client will not
+	// gain more privileges than the impersonated user has.
+	Permissions []Permission `json:"permissions,omitempty"`
 }
 
 // A resource to be included in a plugin.
@@ -256,6 +277,10 @@ type PluginDef struct {
 	// For data source plugins, if the plugin supports alerting. Requires `backend` to be set to `true`.
 	Alerting *bool `json:"alerting,omitempty"`
 
+	// An alias is useful when migrating from one plugin id to another (rebranding etc)
+	// This should be used sparingly, and is currently only supported though a hardcoded checklist
+	AliasIDs []string `json:"aliasIDs,omitempty"`
+
 	// For data source plugins, if the plugin supports annotation
 	// queries.
 	Annotations *bool `json:"annotations,omitempty"`
@@ -293,6 +318,10 @@ type PluginDef struct {
 	// [internal only] Excludes the plugin from listings in Grafana's UI. Only
 	// allowed for `builtIn` plugins.
 	HideFromList bool `json:"hideFromList"`
+
+	// IAM allows the plugin to get a service account with tailored permissions and a token
+	// (or to use the client_credentials grant if the token provider is the OAuth2 Server)
+	Iam IAM `json:"iam"`
 
 	// Unique name of the plugin. If the plugin is published on
 	// grafana.com, then the plugin `id` has to follow the naming
@@ -411,11 +440,11 @@ type RoleRegistration struct {
 // A proxy route used in datasource plugins for plugin authentication
 // and adding headers to HTTP requests made by the plugin.
 // For more information, refer to [Authentication for data source
-// plugins](https://grafana.com/docs/grafana/latest/developers/plugins/authentication/).
+// plugins](https://grafana.com/developers/plugin-tools/create-a-plugin/extend-a-plugin/add-authentication-for-data-source-plugins).
 type Route struct {
 	// For data source plugins. Route headers set the body content and
 	// length to the proxied request.
-	Body map[string]interface{} `json:"body,omitempty"`
+	Body map[string]any `json:"body,omitempty"`
 
 	// For data source plugins. Route headers adds HTTP headers to the
 	// proxied request.

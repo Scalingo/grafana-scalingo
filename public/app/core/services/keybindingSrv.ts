@@ -3,7 +3,7 @@ import Mousetrap from 'mousetrap';
 import 'mousetrap-global-bind';
 import 'mousetrap/plugins/global-bind/mousetrap-global-bind';
 import { LegacyGraphHoverClearEvent, locationUtil } from '@grafana/data';
-import { config, LocationService } from '@grafana/runtime';
+import { LocationService } from '@grafana/runtime';
 import appEvents from 'app/core/app_events';
 import { getExploreUrl } from 'app/core/utils/explore';
 import { SaveDashboardDrawer } from 'app/features/dashboard/components/SaveDashboard/SaveDashboardDrawer';
@@ -11,7 +11,6 @@ import { ShareModal } from 'app/features/dashboard/components/ShareModal';
 import { DashboardModel } from 'app/features/dashboard/state';
 
 import { getTimeSrv } from '../../features/dashboard/services/TimeSrv';
-import { getDatasourceSrv } from '../../features/plugins/datasource_srv';
 import {
   RemovePanelEvent,
   ShiftTimeEvent,
@@ -29,7 +28,10 @@ import { toggleTheme } from './theme';
 import { withFocusedPanel } from './withFocusedPanelId';
 
 export class KeybindingSrv {
-  constructor(private locationService: LocationService, private chromeService: AppChromeService) {}
+  constructor(
+    private locationService: LocationService,
+    private chromeService: AppChromeService
+  ) {}
 
   clearAndInitGlobalBindings(route: RouteDescriptor) {
     Mousetrap.reset();
@@ -38,24 +40,16 @@ export class KeybindingSrv {
     if (!route.chromeless) {
       this.bind(['?', 'h'], this.showHelpModal);
       this.bind('g h', this.goToHome);
+      this.bind('g d', this.goToDashboards);
+      this.bind('g e', this.goToExplore);
       this.bind('g a', this.openAlerting);
       this.bind('g p', this.goToProfile);
-      this.bind('g e', this.goToExplore);
-      if (!config.featureToggles.topnav) {
-        this.bind('s o', this.openSearch);
-        this.bind('f', this.openSearch);
-      }
-      this.bind('t a', this.makeAbsoluteTime);
       this.bind('esc', this.exit);
       this.bindGlobalEsc();
     }
 
     this.bind('c t', () => toggleTheme(false));
     this.bind('c r', () => toggleTheme(true));
-
-    if (process.env.NODE_ENV === 'development') {
-      this.bind('t n', () => this.toggleNav());
-    }
   }
 
   bindGlobalEsc() {
@@ -88,24 +82,16 @@ export class KeybindingSrv {
     this.exit();
   }
 
-  toggleNav() {
-    window.location.href =
-      config.appSubUrl +
-      locationUtil.getUrlForPartial(this.locationService.getLocation(), {
-        '__feature.topnav': (!config.featureToggles.topnav).toString(),
-      });
-  }
-
-  private openSearch() {
-    this.locationService.partial({ search: 'open' });
-  }
-
   private closeSearch() {
     this.locationService.partial({ search: null });
   }
 
   private openAlerting() {
     this.locationService.push('/alerting');
+  }
+
+  private goToDashboards() {
+    this.locationService.push('/dashboards');
   }
 
   private goToHome() {
@@ -118,10 +104,6 @@ export class KeybindingSrv {
 
   private goToExplore() {
     this.locationService.push('/explore');
-  }
-
-  private makeAbsoluteTime() {
-    appEvents.publish(new AbsoluteTimeEvent());
   }
 
   private showHelpModal() {
@@ -202,6 +184,10 @@ export class KeybindingSrv {
   }
 
   setupTimeRangeBindings(updateUrl = true) {
+    this.bind('t a', () => {
+      appEvents.publish(new AbsoluteTimeEvent({ updateUrl }));
+    });
+
     this.bind('t z', () => {
       appEvents.publish(new ZoomOutEvent({ scale: 2, updateUrl }));
     });
@@ -271,12 +257,13 @@ export class KeybindingSrv {
 
     // jump to explore if permissions allow
     if (contextSrv.hasAccessToExplore()) {
-      this.bindWithPanelId('x', async (panelId) => {
+      this.bindWithPanelId('p x', async (panelId) => {
         const panel = dashboard.getPanelById(panelId)!;
         const url = await getExploreUrl({
-          panel,
-          datasourceSrv: getDatasourceSrv(),
-          timeSrv: getTimeSrv(),
+          queries: panel.targets,
+          dsRef: panel.datasource,
+          scopedVars: panel.scopedVars,
+          timeRange: getTimeSrv().timeRange(),
         });
 
         if (url) {
@@ -323,6 +310,11 @@ export class KeybindingSrv {
     // toggle all panel legends
     this.bind('d l', () => {
       dashboard.toggleLegendsForAll();
+    });
+
+    // toggle all exemplars
+    this.bind('d x', () => {
+      dashboard.toggleExemplarsForAll();
     });
 
     // collapse all rows

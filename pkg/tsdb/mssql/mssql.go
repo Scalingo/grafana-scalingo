@@ -10,17 +10,21 @@ import (
 	"strconv"
 	"strings"
 
-	mssql "github.com/grafana/go-mssqldb"
+	"github.com/grafana/grafana-azure-sdk-go/azcredentials"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	sdkproxy "github.com/grafana/grafana-plugin-sdk-go/backend/proxy"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 	"github.com/grafana/grafana-plugin-sdk-go/data/sqlutil"
+	mssql "github.com/microsoft/go-mssqldb"
+	_ "github.com/microsoft/go-mssqldb/azuread"
 
 	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/tsdb/mssql/utils"
 	"github.com/grafana/grafana/pkg/tsdb/sqleng"
+	"github.com/grafana/grafana/pkg/tsdb/sqleng/proxyutil"
 	"github.com/grafana/grafana/pkg/util"
 )
 
@@ -30,14 +34,20 @@ type Service struct {
 	im instancemgmt.InstanceManager
 }
 
+const (
+	azureAuthentication     = "Azure AD Authentication"
+	windowsAuthentication   = "Windows Authentication"
+	sqlServerAuthentication = "SQL Server Authentication"
+)
+
 func ProvideService(cfg *setting.Cfg) *Service {
 	return &Service{
 		im: datasource.NewInstanceManager(newInstanceSettings(cfg)),
 	}
 }
 
-func (s *Service) getDataSourceHandler(pluginCtx backend.PluginContext) (*sqleng.DataSourceHandler, error) {
-	i, err := s.im.Get(pluginCtx)
+func (s *Service) getDataSourceHandler(ctx context.Context, pluginCtx backend.PluginContext) (*sqleng.DataSourceHandler, error) {
+	i, err := s.im.Get(ctx, pluginCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +56,7 @@ func (s *Service) getDataSourceHandler(pluginCtx backend.PluginContext) (*sqleng
 }
 
 func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-	dsHandler, err := s.getDataSourceHandler(req.PluginContext)
+	dsHandler, err := s.getDataSourceHandler(ctx, req.PluginContext)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +64,7 @@ func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) 
 }
 
 func newInstanceSettings(cfg *setting.Cfg) datasource.InstanceFactoryFunc {
-	return func(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	return func(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 		jsonData := sqleng.JsonData{
 			MaxOpenConns:      cfg.SqlDatasourceMaxOpenConnsDefault,
 			MaxIdleConns:      cfg.SqlDatasourceMaxIdleConnsDefault,
@@ -63,8 +73,11 @@ func newInstanceSettings(cfg *setting.Cfg) datasource.InstanceFactoryFunc {
 			ConnectionTimeout: 0,
 			SecureDSProxy:     false,
 		}
-
-		err := json.Unmarshal(settings.JSONData, &jsonData)
+		azureCredentials, err := utils.GetAzureCredentials(settings)
+		if err != nil {
+			return nil, fmt.Errorf("error reading azure credentials")
+		}
+		err = json.Unmarshal(settings.JSONData, &jsonData)
 		if err != nil {
 			return nil, fmt.Errorf("error reading settings: %w", err)
 		}
@@ -84,7 +97,7 @@ func newInstanceSettings(cfg *setting.Cfg) datasource.InstanceFactoryFunc {
 			UID:                     settings.UID,
 			DecryptedSecureJSONData: settings.DecryptedSecureJSONData,
 		}
-		cnnstr, err := generateConnectionString(dsInfo)
+		cnnstr, err := generateConnectionString(dsInfo, cfg, azureCredentials)
 		if err != nil {
 			return nil, err
 		}
@@ -92,11 +105,19 @@ func newInstanceSettings(cfg *setting.Cfg) datasource.InstanceFactoryFunc {
 		if cfg.Env == setting.Dev {
 			logger.Debug("GetEngine", "connection", cnnstr)
 		}
-
 		driverName := "mssql"
+		if jsonData.AuthenticationType == azureAuthentication {
+			driverName = "azuresql"
+		}
+
 		// register a new proxy driver if the secure socks proxy is enabled
-		if cfg.IsFeatureToggleEnabled(featuremgmt.FlagSecureSocksDatasourceProxy) && cfg.SecureSocksDSProxy.Enabled && jsonData.SecureDSProxy {
-			driverName, err = createMSSQLProxyDriver(&cfg.SecureSocksDSProxy, cnnstr)
+		proxyOpts := proxyutil.GetSQLProxyOptions(cfg.SecureSocksDSProxy, dsInfo)
+		if sdkproxy.New(proxyOpts).SecureSocksProxyEnabled() {
+			URL, err := ParseURL(dsInfo.URL)
+			if err != nil {
+				return nil, err
+			}
+			driverName, err = createMSSQLProxyDriver(cnnstr, URL.Hostname(), proxyOpts)
 			if err != nil {
 				return nil, err
 			}
@@ -110,9 +131,11 @@ func newInstanceSettings(cfg *setting.Cfg) datasource.InstanceFactoryFunc {
 			RowLimit:          cfg.DataProxyRowLimit,
 		}
 
-		queryResultTransformer := mssqlQueryResultTransformer{}
+		queryResultTransformer := mssqlQueryResultTransformer{
+			userError: cfg.UserFacingDefaultError,
+		}
 
-		return sqleng.NewQueryDataHandler(config, &queryResultTransformer, newMssqlMacroEngine(), logger)
+		return sqleng.NewQueryDataHandler(cfg, config, &queryResultTransformer, newMssqlMacroEngine(), logger)
 	}
 }
 
@@ -137,7 +160,7 @@ func ParseURL(u string) (*url.URL, error) {
 	}, nil
 }
 
-func generateConnectionString(dsInfo sqleng.DataSourceInfo) (string, error) {
+func generateConnectionString(dsInfo sqleng.DataSourceInfo, cfg *setting.Cfg, azureCredentials azcredentials.AzureCredentials) (string, error) {
 	const dfltPort = "0"
 	var addr util.NetworkAddress
 	if dsInfo.URL != "" {
@@ -156,7 +179,7 @@ func generateConnectionString(dsInfo sqleng.DataSourceInfo) (string, error) {
 		}
 	}
 
-	args := []interface{}{
+	args := []any{
 		"url", dsInfo.URL, "host", addr.Host,
 	}
 	if addr.Port != "0" {
@@ -168,12 +191,24 @@ func generateConnectionString(dsInfo sqleng.DataSourceInfo) (string, error) {
 	tlsSkipVerify := dsInfo.JsonData.TlsSkipVerify
 	hostNameInCertificate := dsInfo.JsonData.Servername
 	certificate := dsInfo.JsonData.RootCertFile
-	connStr := fmt.Sprintf("server=%s;database=%s;user id=%s;password=%s;",
+	connStr := fmt.Sprintf("server=%s;database=%s;",
 		addr.Host,
 		dsInfo.Database,
-		dsInfo.User,
-		dsInfo.DecryptedSecureJSONData["password"],
 	)
+
+	switch dsInfo.JsonData.AuthenticationType {
+	case azureAuthentication:
+		azureCredentialDSNFragment, err := getAzureCredentialDSNFragment(azureCredentials, cfg)
+		if err != nil {
+			return "", err
+		}
+		connStr += azureCredentialDSNFragment
+	case windowsAuthentication:
+		// No user id or password. We're using windows single sign on.
+	default:
+		connStr += fmt.Sprintf("user id=%s;password=%s;", dsInfo.User, dsInfo.DecryptedSecureJSONData["password"])
+	}
+
 	// Port number 0 means to determine the port automatically, so we can let the driver choose
 	if addr.Port != "0" {
 		connStr += fmt.Sprintf("port=%s;", addr.Port)
@@ -198,14 +233,38 @@ func generateConnectionString(dsInfo sqleng.DataSourceInfo) (string, error) {
 	return connStr, nil
 }
 
-type mssqlQueryResultTransformer struct{}
+func getAzureCredentialDSNFragment(azureCredentials azcredentials.AzureCredentials, cfg *setting.Cfg) (string, error) {
+	connStr := ""
+	switch c := azureCredentials.(type) {
+	case *azcredentials.AzureManagedIdentityCredentials:
+		if cfg.Azure.ManagedIdentityClientId != "" {
+			connStr += fmt.Sprintf("user id=%s;", cfg.Azure.ManagedIdentityClientId)
+		}
+		connStr += fmt.Sprintf("fedauth=%s;",
+			"ActiveDirectoryManagedIdentity")
+	case *azcredentials.AzureClientSecretCredentials:
+		connStr += fmt.Sprintf("user id=%s@%s;password=%s;fedauth=%s;",
+			c.ClientId,
+			c.TenantId,
+			c.ClientSecret,
+			"ActiveDirectoryApplication",
+		)
+	default:
+		return "", fmt.Errorf("unsupported azure authentication type")
+	}
+	return connStr, nil
+}
+
+type mssqlQueryResultTransformer struct {
+	userError string
+}
 
 func (t *mssqlQueryResultTransformer) TransformQueryError(logger log.Logger, err error) error {
 	// go-mssql overrides source error, so we currently match on string
 	// ref https://github.com/denisenkom/go-mssqldb/blob/045585d74f9069afe2e115b6235eb043c8047043/tds.go#L904
 	if strings.HasPrefix(strings.ToLower(err.Error()), "unable to open tcp connection with host") {
 		logger.Error("Query error", "error", err)
-		return sqleng.ErrConnectionFailed
+		return sqleng.ErrConnectionFailed.Errorf("failed to connect to server - %s", t.userError)
 	}
 
 	return err
@@ -213,7 +272,7 @@ func (t *mssqlQueryResultTransformer) TransformQueryError(logger log.Logger, err
 
 // CheckHealth pings the connected SQL database
 func (s *Service) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	dsHandler, err := s.getDataSourceHandler(req.PluginContext)
+	dsHandler, err := s.getDataSourceHandler(ctx, req.PluginContext)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +295,7 @@ func (t *mssqlQueryResultTransformer) GetConverterList() []sqlutil.StringConvert
 			ConversionFunc: func(in *string) (*string, error) { return in, nil },
 			Replacer: &sqlutil.StringFieldReplacer{
 				OutputFieldType: data.FieldTypeNullableFloat64,
-				ReplaceFunc: func(in *string) (interface{}, error) {
+				ReplaceFunc: func(in *string) (any, error) {
 					if in == nil {
 						return nil, nil
 					}
@@ -255,7 +314,7 @@ func (t *mssqlQueryResultTransformer) GetConverterList() []sqlutil.StringConvert
 			ConversionFunc: func(in *string) (*string, error) { return in, nil },
 			Replacer: &sqlutil.StringFieldReplacer{
 				OutputFieldType: data.FieldTypeNullableFloat64,
-				ReplaceFunc: func(in *string) (interface{}, error) {
+				ReplaceFunc: func(in *string) (any, error) {
 					if in == nil {
 						return nil, nil
 					}
@@ -274,7 +333,7 @@ func (t *mssqlQueryResultTransformer) GetConverterList() []sqlutil.StringConvert
 			ConversionFunc: func(in *string) (*string, error) { return in, nil },
 			Replacer: &sqlutil.StringFieldReplacer{
 				OutputFieldType: data.FieldTypeNullableFloat64,
-				ReplaceFunc: func(in *string) (interface{}, error) {
+				ReplaceFunc: func(in *string) (any, error) {
 					if in == nil {
 						return nil, nil
 					}
@@ -293,7 +352,7 @@ func (t *mssqlQueryResultTransformer) GetConverterList() []sqlutil.StringConvert
 			ConversionFunc: func(in *string) (*string, error) { return in, nil },
 			Replacer: &sqlutil.StringFieldReplacer{
 				OutputFieldType: data.FieldTypeNullableString,
-				ReplaceFunc: func(in *string) (interface{}, error) {
+				ReplaceFunc: func(in *string) (any, error) {
 					if in == nil {
 						return nil, nil
 					}

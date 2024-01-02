@@ -3,9 +3,7 @@ package notifier
 import (
 	"context"
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -14,6 +12,7 @@ import (
 	alertingNotify "github.com/grafana/alerting/notify"
 	"github.com/grafana/alerting/receivers"
 	alertingTemplates "github.com/grafana/alerting/templates"
+	"github.com/prometheus/alertmanager/config"
 
 	amv2 "github.com/prometheus/alertmanager/api/v2/models"
 
@@ -28,8 +27,8 @@ import (
 )
 
 const (
-	notificationLogFilename = "notifications"
-	silencesFilename        = "silences"
+	NotificationLogFilename = "notifications"
+	SilencesFilename        = "silences"
 
 	workingDir = "alerting"
 	// maintenanceNotificationAndSilences how often should we flush and garbage collect notifications
@@ -45,16 +44,17 @@ type AlertingStore interface {
 	store.ImageStore
 }
 
-type Alertmanager struct {
+type alertmanager struct {
 	Base   *alertingNotify.GrafanaAlertmanager
 	logger log.Logger
 
+	ConfigMetrics       *metrics.AlertmanagerConfigMetrics
 	Settings            *setting.Cfg
 	Store               AlertingStore
 	fileStore           *FileStore
 	NotificationService notifications.Service
 
-	decryptFn receivers.GetDecryptedValueFn
+	decryptFn alertingNotify.GetDecryptedValueFn
 	orgID     int64
 }
 
@@ -84,27 +84,27 @@ func (m maintenanceOptions) MaintenanceFunc(state alertingNotify.State) (int64, 
 }
 
 func newAlertmanager(ctx context.Context, orgID int64, cfg *setting.Cfg, store AlertingStore, kvStore kvstore.KVStore,
-	peer alertingNotify.ClusterPeer, decryptFn receivers.GetDecryptedValueFn, ns notifications.Service,
-	m *metrics.Alertmanager) (*Alertmanager, error) {
+	peer alertingNotify.ClusterPeer, decryptFn alertingNotify.GetDecryptedValueFn, ns notifications.Service,
+	m *metrics.Alertmanager) (*alertmanager, error) {
 	workingPath := filepath.Join(cfg.DataPath, workingDir, strconv.Itoa(int(orgID)))
 	fileStore := NewFileStore(orgID, kvStore, workingPath)
 
-	nflogFilepath, err := fileStore.FilepathFor(ctx, notificationLogFilename)
+	nflogFilepath, err := fileStore.FilepathFor(ctx, NotificationLogFilename)
 	if err != nil {
 		return nil, err
 	}
-	silencesFilePath, err := fileStore.FilepathFor(ctx, silencesFilename)
+	silencesFilepath, err := fileStore.FilepathFor(ctx, SilencesFilename)
 	if err != nil {
 		return nil, err
 	}
 
 	silencesOptions := maintenanceOptions{
-		filepath:             silencesFilePath,
+		filepath:             silencesFilepath,
 		retention:            retentionNotificationsAndSilences,
 		maintenanceFrequency: silenceMaintenanceInterval,
 		maintenanceFunc: func(state alertingNotify.State) (int64, error) {
 			// Detached context here is to make sure that when the service is shut down the persist operation is executed.
-			return fileStore.Persist(context.Background(), silencesFilename, state)
+			return fileStore.Persist(context.Background(), SilencesFilename, state)
 		},
 	}
 
@@ -114,26 +114,28 @@ func newAlertmanager(ctx context.Context, orgID int64, cfg *setting.Cfg, store A
 		maintenanceFrequency: notificationLogMaintenanceInterval,
 		maintenanceFunc: func(state alertingNotify.State) (int64, error) {
 			// Detached context here is to make sure that when the service is shut down the persist operation is executed.
-			return fileStore.Persist(context.Background(), notificationLogFilename, state)
+			return fileStore.Persist(context.Background(), NotificationLogFilename, state)
 		},
 	}
 
 	amcfg := &alertingNotify.GrafanaAlertmanagerConfig{
-		WorkingDirectory:   workingDir,
+		WorkingDirectory:   filepath.Join(cfg.DataPath, workingDir, strconv.Itoa(int(orgID))),
+		ExternalURL:        cfg.AppURL,
 		AlertStoreCallback: nil,
 		PeerTimeout:        cfg.UnifiedAlerting.HAPeerTimeout,
 		Silences:           silencesOptions,
 		Nflog:              nflogOptions,
 	}
 
-	l := log.New("alertmanager", "org", orgID)
+	l := log.New("ngalert.notifier.alertmanager", orgID)
 	gam, err := alertingNotify.NewGrafanaAlertmanager("orgID", orgID, amcfg, peer, l, alertingNotify.NewGrafanaAlertmanagerMetrics(m.Registerer))
 	if err != nil {
 		return nil, err
 	}
 
-	am := &Alertmanager{
+	am := &alertmanager{
 		Base:                gam,
+		ConfigMetrics:       m.AlertmanagerConfigMetrics,
 		Settings:            cfg,
 		Store:               store,
 		NotificationService: ns,
@@ -146,20 +148,20 @@ func newAlertmanager(ctx context.Context, orgID int64, cfg *setting.Cfg, store A
 	return am, nil
 }
 
-func (am *Alertmanager) Ready() bool {
+func (am *alertmanager) Ready() bool {
 	// We consider AM as ready only when the config has been
 	// applied at least once successfully. Until then, some objects
 	// can still be nil.
 	return am.Base.Ready()
 }
 
-func (am *Alertmanager) StopAndWait() {
+func (am *alertmanager) StopAndWait() {
 	am.Base.StopAndWait()
 }
 
 // SaveAndApplyDefaultConfig saves the default configuration to the database and applies it to the Alertmanager.
 // It rolls back the save if we fail to apply the configuration.
-func (am *Alertmanager) SaveAndApplyDefaultConfig(ctx context.Context) error {
+func (am *alertmanager) SaveAndApplyDefaultConfig(ctx context.Context) error {
 	var outerErr error
 	am.Base.WithLock(func() {
 		cmd := &ngmodels.SaveAlertmanagerConfigurationCmd{
@@ -191,7 +193,7 @@ func (am *Alertmanager) SaveAndApplyDefaultConfig(ctx context.Context) error {
 
 // SaveAndApplyConfig saves the configuration the database and applies the configuration to the Alertmanager.
 // It rollbacks the save if we fail to apply the configuration.
-func (am *Alertmanager) SaveAndApplyConfig(ctx context.Context, cfg *apimodels.PostableUserConfig) error {
+func (am *alertmanager) SaveAndApplyConfig(ctx context.Context, cfg *apimodels.PostableUserConfig) error {
 	rawConfig, err := json.Marshal(&cfg)
 	if err != nil {
 		return fmt.Errorf("failed to serialize to the Alertmanager configuration: %w", err)
@@ -220,7 +222,7 @@ func (am *Alertmanager) SaveAndApplyConfig(ctx context.Context, cfg *apimodels.P
 }
 
 // ApplyConfig applies the configuration to the Alertmanager.
-func (am *Alertmanager) ApplyConfig(ctx context.Context, dbCfg *ngmodels.AlertConfiguration) error {
+func (am *alertmanager) ApplyConfig(ctx context.Context, dbCfg *ngmodels.AlertConfiguration) error {
 	var err error
 	cfg, err := Load([]byte(dbCfg.AlertmanagerConfiguration))
 	if err != nil {
@@ -238,10 +240,48 @@ func (am *Alertmanager) ApplyConfig(ctx context.Context, dbCfg *ngmodels.AlertCo
 	return outerErr
 }
 
+type AggregateMatchersUsage struct {
+	Matchers       int
+	MatchRE        int
+	Match          int
+	ObjectMatchers int
+}
+
+func (am *alertmanager) updateConfigMetrics(cfg *apimodels.PostableUserConfig) {
+	var amu AggregateMatchersUsage
+	am.aggregateRouteMatchers(cfg.AlertmanagerConfig.Route, &amu)
+	am.aggregateInhibitMatchers(cfg.AlertmanagerConfig.InhibitRules, &amu)
+	am.ConfigMetrics.Matchers.Set(float64(amu.Matchers))
+	am.ConfigMetrics.MatchRE.Set(float64(amu.MatchRE))
+	am.ConfigMetrics.Match.Set(float64(amu.Match))
+	am.ConfigMetrics.ObjectMatchers.Set(float64(amu.ObjectMatchers))
+}
+
+func (am *alertmanager) aggregateRouteMatchers(r *apimodels.Route, amu *AggregateMatchersUsage) {
+	amu.Matchers += len(r.Matchers)
+	amu.MatchRE += len(r.MatchRE)
+	amu.Match += len(r.Match)
+	amu.ObjectMatchers += len(r.ObjectMatchers)
+	for _, next := range r.Routes {
+		am.aggregateRouteMatchers(next, amu)
+	}
+}
+
+func (am *alertmanager) aggregateInhibitMatchers(rules []config.InhibitRule, amu *AggregateMatchersUsage) {
+	for _, r := range rules {
+		amu.Matchers += len(r.SourceMatchers)
+		amu.Matchers += len(r.TargetMatchers)
+		amu.MatchRE += len(r.SourceMatchRE)
+		amu.MatchRE += len(r.TargetMatchRE)
+		amu.Match += len(r.SourceMatch)
+		amu.Match += len(r.TargetMatch)
+	}
+}
+
 // applyConfig applies a new configuration by re-initializing all components using the configuration provided.
 // It returns a boolean indicating whether the user config was changed and an error.
 // It is not safe to call concurrently.
-func (am *Alertmanager) applyConfig(cfg *apimodels.PostableUserConfig, rawConfig []byte) (bool, error) {
+func (am *alertmanager) applyConfig(cfg *apimodels.PostableUserConfig, rawConfig []byte) (bool, error) {
 	// First, let's make sure this config is not already loaded
 	var amConfigChanged bool
 	if rawConfig == nil {
@@ -263,29 +303,25 @@ func (am *Alertmanager) applyConfig(cfg *apimodels.PostableUserConfig, rawConfig
 	cfg.TemplateFiles["__default__.tmpl"] = alertingTemplates.DefaultTemplateString
 
 	// next, we need to make sure we persist the templates to disk.
-	paths, templatesChanged, err := PersistTemplates(cfg, am.WorkingDirPath())
+	paths, templatesChanged, err := PersistTemplates(am.logger, cfg, am.Base.WorkingDirectory())
 	if err != nil {
 		return false, err
 	}
+	cfg.AlertmanagerConfig.Templates = paths
 
 	// If neither the configuration nor templates have changed, we've got nothing to do.
 	if !amConfigChanged && !templatesChanged {
-		am.logger.Debug("neither config nor template have changed, skipping configuration sync.")
+		am.logger.Debug("Neither config nor template have changed, skipping configuration sync.")
 		return false, nil
 	}
 
-	// With the templates persisted, create the template list using the paths.
-	tmpl, err := am.Base.TemplateFromPaths(am.Settings.AppURL, paths...)
-	if err != nil {
-		return false, err
-	}
+	am.updateConfigMetrics(cfg)
 
 	err = am.Base.ApplyConfig(AlertingConfiguration{
-		RawAlertmanagerConfig:    rawConfig,
-		AlertmanagerConfig:       cfg.AlertmanagerConfig,
-		AlertmanagerTemplates:    tmpl,
-		IntegrationsFunc:         am.buildIntegrationsMap,
-		ReceiverIntegrationsFunc: am.buildReceiverIntegration,
+		rawAlertmanagerConfig:    rawConfig,
+		alertmanagerConfig:       cfg.AlertmanagerConfig,
+		receivers:                PostableApiAlertingConfigToApiReceivers(cfg.AlertmanagerConfig),
+		receiverIntegrationsFunc: am.buildReceiverIntegrations,
 	})
 	if err != nil {
 		return false, err
@@ -295,7 +331,7 @@ func (am *Alertmanager) applyConfig(cfg *apimodels.PostableUserConfig, rawConfig
 }
 
 // applyAndMarkConfig applies a configuration and marks it as applied if no errors occur.
-func (am *Alertmanager) applyAndMarkConfig(ctx context.Context, hash string, cfg *apimodels.PostableUserConfig, rawConfig []byte) error {
+func (am *alertmanager) applyAndMarkConfig(ctx context.Context, hash string, cfg *apimodels.PostableUserConfig, rawConfig []byte) error {
 	configChanged, err := am.applyConfig(cfg, rawConfig)
 	if err != nil {
 		return err
@@ -312,89 +348,40 @@ func (am *Alertmanager) applyAndMarkConfig(ctx context.Context, hash string, cfg
 	return nil
 }
 
-func (am *Alertmanager) WorkingDirPath() string {
-	return filepath.Join(am.Settings.DataPath, workingDir, strconv.Itoa(int(am.orgID)))
-}
-
-// buildIntegrationsMap builds a map of name to the list of Grafana integration notifiers off of a list of receiver config.
-func (am *Alertmanager) buildIntegrationsMap(receivers []*apimodels.PostableApiReceiver, templates *alertingNotify.Template) (map[string][]*alertingNotify.Integration, error) {
-	integrationsMap := make(map[string][]*alertingNotify.Integration, len(receivers))
-	for _, receiver := range receivers {
-		integrations, err := am.buildReceiverIntegrations(receiver, templates)
-		if err != nil {
-			return nil, err
-		}
-		integrationsMap[receiver.Name] = integrations
-	}
-
-	return integrationsMap, nil
+func (am *alertmanager) AppURL() string {
+	return am.Settings.AppURL
 }
 
 // buildReceiverIntegrations builds a list of integration notifiers off of a receiver config.
-func (am *Alertmanager) buildReceiverIntegrations(receiver *apimodels.PostableApiReceiver, tmpl *alertingNotify.Template) ([]*alertingNotify.Integration, error) {
-	integrations := make([]*alertingNotify.Integration, 0, len(receiver.GrafanaManagedReceivers))
-	for i, r := range receiver.GrafanaManagedReceivers {
-		n, err := am.buildReceiverIntegration(r, tmpl)
-		if err != nil {
-			return nil, err
-		}
-		integrations = append(integrations, alertingNotify.NewIntegration(n, n, r.Type, i))
+func (am *alertmanager) buildReceiverIntegrations(receiver *alertingNotify.APIReceiver, tmpl *alertingTemplates.Template) ([]*alertingNotify.Integration, error) {
+	receiverCfg, err := alertingNotify.BuildReceiverConfiguration(context.Background(), receiver, am.decryptFn)
+	if err != nil {
+		return nil, err
+	}
+	s := &sender{am.NotificationService}
+	img := newImageProvider(am.Store, log.New("ngalert.notifier.image-provider"))
+	integrations, err := alertingNotify.BuildReceiverIntegrations(
+		receiverCfg,
+		tmpl,
+		img,
+		LoggerFactory,
+		func(n receivers.Metadata) (receivers.WebhookSender, error) {
+			return s, nil
+		},
+		func(n receivers.Metadata) (receivers.EmailSender, error) {
+			return s, nil
+		},
+		am.orgID,
+		setting.BuildVersion,
+	)
+	if err != nil {
+		return nil, err
 	}
 	return integrations, nil
 }
 
-func (am *Alertmanager) buildReceiverIntegration(r *apimodels.PostableGrafanaReceiver, tmpl *alertingNotify.Template) (alertingNotify.NotificationChannel, error) {
-	// secure settings are already encrypted at this point
-	secureSettings := make(map[string][]byte, len(r.SecureSettings))
-
-	for k, v := range r.SecureSettings {
-		d, err := base64.StdEncoding.DecodeString(v)
-		if err != nil {
-			return nil, InvalidReceiverError{
-				Receiver: r,
-				Err:      errors.New("failed to decode secure setting"),
-			}
-		}
-		secureSettings[k] = d
-	}
-
-	var (
-		cfg = &receivers.NotificationChannelConfig{
-			UID:                   r.UID,
-			OrgID:                 am.orgID,
-			Name:                  r.Name,
-			Type:                  r.Type,
-			DisableResolveMessage: r.DisableResolveMessage,
-			Settings:              json.RawMessage(r.Settings),
-			SecureSettings:        secureSettings,
-		}
-	)
-	factoryConfig, err := receivers.NewFactoryConfig(cfg, NewNotificationSender(am.NotificationService), am.decryptFn, tmpl, newImageStore(am.Store), LoggerFactory, setting.BuildVersion)
-	if err != nil {
-		return nil, InvalidReceiverError{
-			Receiver: r,
-			Err:      err,
-		}
-	}
-	receiverFactory, exists := alertingNotify.Factory(r.Type)
-	if !exists {
-		return nil, InvalidReceiverError{
-			Receiver: r,
-			Err:      fmt.Errorf("notifier %s is not supported", r.Type),
-		}
-	}
-	n, err := receiverFactory(factoryConfig)
-	if err != nil {
-		return nil, InvalidReceiverError{
-			Receiver: r,
-			Err:      err,
-		}
-	}
-	return n, nil
-}
-
 // PutAlerts receives the alerts and then sends them through the corresponding route based on whenever the alert has a receiver embedded or not
-func (am *Alertmanager) PutAlerts(postableAlerts apimodels.PostableAlerts) error {
+func (am *alertmanager) PutAlerts(_ context.Context, postableAlerts apimodels.PostableAlerts) error {
 	alerts := make(alertingNotify.PostableAlerts, 0, len(postableAlerts.PostableAlerts))
 	for _, pa := range postableAlerts.PostableAlerts {
 		alerts = append(alerts, &alertingNotify.PostableAlert{
@@ -406,6 +393,11 @@ func (am *Alertmanager) PutAlerts(postableAlerts apimodels.PostableAlerts) error
 	}
 
 	return am.Base.PutAlerts(alerts)
+}
+
+// CleanUp removes the directory containing the alertmanager files from disk.
+func (am *alertmanager) CleanUp() {
+	am.fileStore.CleanUp()
 }
 
 // AlertValidationError is the error capturing the validation errors

@@ -1,8 +1,7 @@
 import { groupBy } from 'lodash';
 import React, { FC, useCallback, useMemo, useState } from 'react';
 
-import { Stack } from '@grafana/experimental';
-import { Button, Icon, Modal, ModalProps, Spinner } from '@grafana/ui';
+import { Button, Icon, Modal, ModalProps, Spinner, Stack } from '@grafana/ui';
 import {
   AlertmanagerGroup,
   AlertState,
@@ -62,10 +61,10 @@ const useAddPolicyModal = (
             onSubmit={(newRoute) => parentRoute && handleAdd(newRoute, parentRoute)}
             actionButtons={
               <Modal.ButtonRow>
-                <Button type="submit">Add policy</Button>
-                <Button type="button" variant="secondary" onClick={handleDismiss}>
+                <Button type="button" variant="secondary" onClick={handleDismiss} fill="outline">
                   Cancel
                 </Button>
+                <Button type="submit">Save policy</Button>
               </Modal.ButtonRow>
             }
           />
@@ -121,10 +120,10 @@ const useEditPolicyModal = (
               route={route}
               actionButtons={
                 <Modal.ButtonRow>
-                  <Button type="submit">Update default policy</Button>
-                  <Button type="button" variant="secondary" onClick={handleDismiss}>
+                  <Button type="button" variant="secondary" onClick={handleDismiss} fill="outline">
                     Cancel
                   </Button>
+                  <Button type="submit">Update default policy</Button>
                 </Modal.ButtonRow>
               }
             />
@@ -136,10 +135,10 @@ const useEditPolicyModal = (
               onSubmit={handleSave}
               actionButtons={
                 <Modal.ButtonRow>
-                  <Button type="submit">Update policy</Button>
-                  <Button type="button" variant="secondary" onClick={handleDismiss}>
+                  <Button type="button" variant="secondary" onClick={handleDismiss} fill="outline">
                     Cancel
                   </Button>
+                  <Button type="submit">Update policy</Button>
                 </Modal.ButtonRow>
               }
             />
@@ -206,7 +205,7 @@ const useDeletePolicyModal = (handleDelete: (route: RouteWithID) => void, loadin
 const useAlertGroupsModal = (): [
   JSX.Element,
   (alertGroups: AlertmanagerGroup[], matchers?: ObjectMatcher[]) => void,
-  () => void
+  () => void,
 ] => {
   const [showModal, setShowModal] = useState(false);
   const [alertGroups, setAlertGroups] = useState<AlertmanagerGroup[]>([]);
@@ -218,9 +217,11 @@ const useAlertGroupsModal = (): [
     setMatchers([]);
   }, []);
 
-  const handleShow = useCallback((alertGroups, matchers) => {
+  const handleShow = useCallback((alertGroups: AlertmanagerGroup[], matchers?: ObjectMatcher[]) => {
     setAlertGroups(alertGroups);
-    setMatchers(matchers);
+    if (matchers) {
+      setMatchers(matchers);
+    }
     setShowModal(true);
   }, []);
 
@@ -237,7 +238,7 @@ const useAlertGroupsModal = (): [
         closeOnBackdropClick={true}
         closeOnEscape={true}
         title={
-          <Stack direction="row" alignItems="center" gap={1} flexGrow={1}>
+          <Stack direction="row" alignItems="center" gap={1} wrap={'wrap'}>
             <Stack direction="row" alignItems="center" gap={0.5}>
               <Icon name="x" /> Matchers
             </Stack>

@@ -7,11 +7,11 @@ import uPlot from 'uplot';
 import { Field, getDisplayProcessor, getLinksSupplier, PanelProps } from '@grafana/data';
 import { PanelDataErrorView } from '@grafana/runtime';
 import { TooltipDisplayMode } from '@grafana/schema';
-import { TimeSeries, TooltipPlugin, UPlotConfigBuilder, usePanelContext, useTheme2, ZoomPlugin } from '@grafana/ui';
+import { TooltipPlugin, UPlotConfigBuilder, usePanelContext, useTheme2, ZoomPlugin } from '@grafana/ui';
 import { AxisProps } from '@grafana/ui/src/components/uPlot/config/UPlotAxisBuilder';
 import { ScaleProps } from '@grafana/ui/src/components/uPlot/config/UPlotScaleBuilder';
+import { TimeSeries } from 'app/core/components/TimeSeries/TimeSeries';
 import { config } from 'app/core/config';
-import { getFieldLinksForExplore } from 'app/features/explore/utils/links';
 
 import { AnnotationEditorPlugin } from '../timeseries/plugins/AnnotationEditorPlugin';
 import { AnnotationsPlugin } from '../timeseries/plugins/AnnotationsPlugin';
@@ -21,10 +21,10 @@ import { OutsideRangePlugin } from '../timeseries/plugins/OutsideRangePlugin';
 import { ThresholdControlsPlugin } from '../timeseries/plugins/ThresholdControlsPlugin';
 
 import { prepareCandlestickFields } from './fields';
-import { CandlestickOptions, defaultColors, VizDisplayMode } from './models.gen';
+import { Options, defaultCandlestickColors, VizDisplayMode } from './types';
 import { drawMarkers, FieldIndices } from './utils';
 
-interface CandlestickPanelProps extends PanelProps<CandlestickOptions> {}
+interface CandlestickPanelProps extends PanelProps<Options> {}
 
 export const CandlestickPanel = ({
   data,
@@ -38,18 +38,13 @@ export const CandlestickPanel = ({
   onChangeTimeRange,
   replaceVariables,
 }: CandlestickPanelProps) => {
-  const { sync, canAddAnnotations, onThresholdsChange, canEditThresholds, showThresholds, onSplitOpen } =
-    usePanelContext();
-
-  const getFieldLinks = (field: Field, rowIndex: number) => {
-    return getFieldLinksForExplore({ field, rowIndex, splitOpenFn: onSplitOpen, range: timeRange });
-  };
+  const { sync, canAddAnnotations, onThresholdsChange, canEditThresholds, showThresholds } = usePanelContext();
 
   const theme = useTheme2();
 
   const info = useMemo(() => {
     return prepareCandlestickFields(data.series, options, theme, timeRange);
-  }, [data, options, theme, timeRange]);
+  }, [data.series, options, theme, timeRange]);
 
   const { renderers, tweakScale, tweakAxis, shouldRenderPrice } = useMemo(() => {
     let tweakScale = (opts: ScaleProps, forField: Field) => opts;
@@ -76,7 +71,7 @@ export const CandlestickPanel = ({
     }
 
     const { mode, candleStyle, colorStrategy } = options;
-    const colors = { ...defaultColors, ...options.colors };
+    const colors = { ...defaultCandlestickColors, ...options.colors };
     let { open, high, low, close, volume } = fieldMap; // names from matched fields
 
     if (open == null || close == null) {
@@ -116,12 +111,12 @@ export const CandlestickPanel = ({
             if (forField.name === info.volume?.name) {
               let filter = (u: uPlot, splits: number[]) => {
                 let _splits = [];
-                let max = u.series[volumeIdx].max as number;
+                let max = u.series[volumeIdx].max;
 
                 for (let i = 0; i < splits.length; i++) {
                   _splits.push(splits[i]);
 
-                  if (splits[i] > max) {
+                  if (max && splits[i] > max) {
                     break;
                   }
                 }
@@ -220,7 +215,7 @@ export const CandlestickPanel = ({
   if (shouldRenderPrice) {
     // hide series from legend that are rendered as composite markers
     for (let key in renderers[0].fieldMap) {
-      let field = (info as any)[key] as Field;
+      let field: Field = (info as any)[key];
       field.config = {
         ...field.config,
         custom: {
@@ -260,7 +255,7 @@ export const CandlestickPanel = ({
 
         return (
           <>
-            <ZoomPlugin config={config} onZoom={onChangeTimeRange} />
+            <ZoomPlugin config={config} onZoom={onChangeTimeRange} withZoomY={true} />
             <TooltipPlugin
               data={alignedDataFrame}
               config={config}
@@ -316,14 +311,7 @@ export const CandlestickPanel = ({
                 defaultItems={[]}
               />
             )}
-            {data.annotations && (
-              <ExemplarsPlugin
-                config={config}
-                exemplars={data.annotations}
-                timeZone={timeZone}
-                getFieldLinks={getFieldLinks}
-              />
-            )}
+            {data.annotations && <ExemplarsPlugin config={config} exemplars={data.annotations} timeZone={timeZone} />}
 
             {((canEditThresholds && onThresholdsChange) || showThresholds) && (
               <ThresholdControlsPlugin

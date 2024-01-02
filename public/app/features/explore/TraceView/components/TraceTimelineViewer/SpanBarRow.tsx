@@ -21,8 +21,7 @@ import { Icon, stylesFactory, withTheme2 } from '@grafana/ui';
 
 import { autoColor } from '../Theme';
 import { DURATION, NONE, TAG } from '../settings/SpanBarSettings';
-import { SpanBarOptions, SpanLinkFunc, TraceSpan, TNil } from '../types';
-import { SpanLinks } from '../types/links';
+import { SpanBarOptions, SpanLinkFunc, TraceSpan, TNil, CriticalPathSection } from '../types';
 
 import SpanBar from './SpanBar';
 import { SpanLinksMenu } from './SpanLinks';
@@ -38,7 +37,7 @@ const nameWrapperMatchingFilterClassName = 'nameWrapperMatchingFilter';
 const viewClassName = 'jaegerView';
 const nameColumnClassName = 'nameColumn';
 
-const getStyles = stylesFactory((theme: GrafanaTheme2) => {
+const getStyles = stylesFactory((theme: GrafanaTheme2, showSpanFilterMatchesOnly: boolean) => {
   const animations = {
     label: 'flash',
     flash: keyframes`
@@ -50,6 +49,7 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
     }
   `,
   };
+  const backgroundColor = showSpanFilterMatchesOnly ? '' : autoColor(theme, '#fffce4');
 
   return {
     nameWrapper: css`
@@ -60,7 +60,7 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
     `,
     nameWrapperMatchingFilter: css`
       label: nameWrapperMatchingFilter;
-      background-color: ${autoColor(theme, '#fffce4')};
+      background-color: ${backgroundColor};
     `,
     nameColumn: css`
       label: nameColumn;
@@ -73,7 +73,8 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
     `,
     endpointName: css`
       label: endpointName;
-      color: ${autoColor(theme, '#808080')};
+      color: ${autoColor(theme, '#484848')};
+      font-size: 0.9em;
     `,
     view: css`
       label: view;
@@ -91,6 +92,7 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
     `,
     row: css`
       label: row;
+      font-size: 0.9em;
       &:hover .${spanBarClassName} {
         opacity: 1;
       }
@@ -164,7 +166,7 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
     `,
     rowMatchingFilter: css`
       label: rowMatchingFilter;
-      background-color: ${autoColor(theme, '#fffbde')};
+      // background-color: ${autoColor(theme, '#fffbde')};
       &:hover .${nameWrapperClassName} {
         background: linear-gradient(
           90deg,
@@ -213,7 +215,6 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
       outline: none;
       overflow-y: hidden;
       overflow-x: auto;
-      margin-right: 8px;
       padding-left: 4px;
       padding-right: 0.25em;
       position: relative;
@@ -222,24 +223,17 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
       &::-webkit-scrollbar {
         display: none;
       }
-      &::before {
-        content: ' ';
-        position: absolute;
-        top: 4px;
-        bottom: 4px;
-        left: 0;
-        border-left: 4px solid;
-        border-left-color: inherit;
-      }
       &:focus {
         text-decoration: none;
       }
-      &:hover > small {
+      &:hover > span {
         color: ${autoColor(theme, '#000')};
       }
       text-align: left;
       background: transparent;
       border: none;
+      border-bottom-width: 1px;
+      border-bottom-style: solid;
     `,
     nameDetailExpanded: css`
       label: nameDetailExpanded;
@@ -249,8 +243,9 @@ const getStyles = stylesFactory((theme: GrafanaTheme2) => {
     `,
     svcName: css`
       label: svcName;
-      padding: 0 0.25rem 0 0.5rem;
-      font-size: 1.05em;
+      font-size: 0.9em;
+      font-weight: bold;
+      margin-right: 0.25rem;
     `,
     svcNameChildrenCollapsed: css`
       label: svcNameChildrenCollapsed;
@@ -297,9 +292,11 @@ export type SpanBarRowProps = {
   isDetailExpanded: boolean;
   isMatchingFilter: boolean;
   isFocused: boolean;
+  showSpanFilterMatchesOnly: boolean;
   onDetailToggled: (spanID: string) => void;
   onChildrenToggled: (spanID: string) => void;
   numTicks: number;
+  showServiceName: boolean;
   rpc?:
     | {
         viewStart: number;
@@ -326,6 +323,8 @@ export type SpanBarRowProps = {
   clippingRight?: boolean;
   createSpanLink?: SpanLinkFunc;
   datasourceType: string;
+  visibleSpanIds: string[];
+  criticalPath: CriticalPathSection[];
 };
 
 /**
@@ -360,6 +359,7 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
       isChildrenExpanded,
       isDetailExpanded,
       isMatchingFilter,
+      showSpanFilterMatchesOnly,
       isFocused,
       numTicks,
       rpc,
@@ -376,6 +376,9 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
       theme,
       createSpanLink,
       datasourceType,
+      showServiceName,
+      visibleSpanIds,
+      criticalPath,
     } = this.props;
     const {
       duration,
@@ -388,7 +391,7 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
     const viewBounds = getViewedBounds(span.startTime, span.startTime + span.duration);
     const viewStart = viewBounds.start;
     const viewEnd = viewBounds.end;
-    const styles = getStyles(theme);
+    const styles = getStyles(theme, showSpanFilterMatchesOnly);
 
     const labelDetail = `${serviceName}::${operationName}`;
     let longLabel;
@@ -400,14 +403,6 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
       longLabel = `${label} | ${labelDetail}`;
       hintClassName = styles.labelRight;
     }
-
-    const countLinks = (links?: SpanLinks): number => {
-      if (!links) {
-        return 0;
-      }
-
-      return Object.values(links).reduce((count, arr) => count + arr.length, 0);
-    };
 
     return (
       <TimelineRow
@@ -438,6 +433,7 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
               hoverIndentGuideIds={hoverIndentGuideIds}
               addHoverIndentGuideId={addHoverIndentGuideId}
               removeHoverIndentGuideId={removeHoverIndentGuideId}
+              visibleSpanIds={visibleSpanIds}
             />
             <button
               type="button"
@@ -446,77 +442,78 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
               title={labelDetail}
               onClick={this._detailToggle}
               role="switch"
-              style={{ borderColor: color }}
+              style={{ background: `${color}10`, borderBottomColor: `${color}CF` }}
               tabIndex={0}
             >
-              <span
-                className={cx(styles.svcName, {
-                  [styles.svcNameChildrenCollapsed]: isParent && !isChildrenExpanded,
-                })}
-              >
-                {showErrorIcon && (
-                  <Icon
-                    name={'exclamation-circle'}
-                    style={{
-                      backgroundColor: span.errorIconColor
-                        ? autoColor(theme, span.errorIconColor)
-                        : autoColor(theme, '#db2828'),
-                    }}
-                    className={styles.errorIcon}
-                  />
-                )}
-                {serviceName}{' '}
-                {rpc && (
-                  <span>
-                    <Icon name={'arrow-right'} />{' '}
-                    <i className={styles.rpcColorMarker} style={{ background: rpc.color }} />
-                    {rpc.serviceName}
-                  </span>
-                )}
-                {noInstrumentedServer && (
-                  <span>
-                    <Icon name={'arrow-right'} />{' '}
-                    <i className={styles.rpcColorMarker} style={{ background: noInstrumentedServer.color }} />
-                    {noInstrumentedServer.serviceName}
-                  </span>
-                )}
-              </span>
-              <small className={styles.endpointName}>{rpc ? rpc.operationName : operationName}</small>
-              <small className={styles.endpointName}> {this.getSpanBarLabel(span, spanBarOptions, label)}</small>
+              {showErrorIcon && (
+                <Icon
+                  name={'exclamation-circle'}
+                  style={{
+                    backgroundColor: span.errorIconColor
+                      ? autoColor(theme, span.errorIconColor)
+                      : autoColor(theme, '#db2828'),
+                  }}
+                  className={styles.errorIcon}
+                />
+              )}
+              {showServiceName && (
+                <span
+                  className={cx(styles.svcName, {
+                    [styles.svcNameChildrenCollapsed]: isParent && !isChildrenExpanded,
+                  })}
+                >
+                  {`${serviceName} `}
+                </span>
+              )}
+              {rpc && (
+                <span>
+                  <Icon name={'arrow-right'} />{' '}
+                  <i className={styles.rpcColorMarker} style={{ background: rpc.color }} />
+                  {rpc.serviceName}
+                </span>
+              )}
+              {noInstrumentedServer && (
+                <span>
+                  <Icon name={'arrow-right'} />{' '}
+                  <i className={styles.rpcColorMarker} style={{ background: noInstrumentedServer.color }} />
+                  {noInstrumentedServer.serviceName}
+                </span>
+              )}
+              <span className={styles.endpointName}>{rpc ? rpc.operationName : operationName}</span>
+              <span className={styles.endpointName}> {this.getSpanBarLabel(span, spanBarOptions, label)}</span>
             </button>
             {createSpanLink &&
               (() => {
                 const links = createSpanLink(span);
-                const count = countLinks(links);
+                const count = links?.length || 0;
                 if (links && count === 1) {
-                  const link = links.logLinks?.[0] ?? links.metricLinks?.[0] ?? links.traceLinks?.[0] ?? undefined;
-                  if (!link) {
+                  if (!links[0]) {
                     return null;
                   }
 
                   return (
                     <a
-                      href={link.href}
+                      href={links[0].href}
                       // Needs to have target otherwise preventDefault would not work due to angularRouter.
                       target={'_blank'}
-                      style={{ marginRight: '5px' }}
+                      style={{ background: `${color}10`, borderBottom: `1px solid ${color}CF`, paddingRight: '4px' }}
                       rel="noopener noreferrer"
                       onClick={
-                        link.onClick
+                        links[0].onClick
                           ? (event) => {
-                              if (!(event.ctrlKey || event.metaKey || event.shiftKey) && link.onClick) {
+                              if (!(event.ctrlKey || event.metaKey || event.shiftKey) && links[0].onClick) {
                                 event.preventDefault();
-                                link.onClick(event);
+                                links[0].onClick(event);
                               }
                             }
                           : undefined
                       }
                     >
-                      {link.content}
+                      {links[0].content}
                     </a>
                   );
                 } else if (links && count > 1) {
-                  return <SpanLinksMenu links={links} datasourceType={datasourceType} />;
+                  return <SpanLinksMenu links={links} datasourceType={datasourceType} color={color} />;
                 } else {
                   return null;
                 }
@@ -535,6 +532,7 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
         >
           <Ticks numTicks={numTicks} />
           <SpanBar
+            criticalPath={criticalPath}
             rpc={rpc}
             viewStart={viewStart}
             viewEnd={viewEnd}
@@ -565,13 +563,13 @@ export class UnthemedSpanBarRow extends React.PureComponent<SpanBarRowProps> {
         const tag = span.tags?.find((tag: TraceKeyValuePair) => {
           return tag.key === tagKey;
         });
-        const process = span.process?.tags?.find((process: TraceKeyValuePair) => {
-          return process.key === tagKey;
-        });
-
         if (tag) {
           return `(${tag.value})`;
         }
+
+        const process = span.process?.tags?.find((process: TraceKeyValuePair) => {
+          return process.key === tagKey;
+        });
         if (process) {
           return `(${process.value})`;
         }

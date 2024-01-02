@@ -24,11 +24,11 @@ export const DataLinksContextMenu = ({ children, links, style }: DataLinksContex
   const itemsGroup: MenuItemsGroup[] = [{ items: linkModelToContextMenuItems(links), label: 'Data links' }];
   const linksCounter = itemsGroup[0].items.length;
   const renderMenuGroupItems = () => {
-    return itemsGroup.map((group, index) => (
-      <MenuGroup key={`${group.label}${index}`} label={group.label}>
-        {(group.items || []).map((item) => (
+    return itemsGroup.map((group, groupIdx) => (
+      <MenuGroup key={`${group.label}${groupIdx}`} label={group.label}>
+        {(group.items || []).map((item, itemIdx) => (
           <MenuItem
-            key={item.label}
+            key={`${group.label}-${groupIdx}-${itemIdx}}`}
             url={item.url}
             label={item.label}
             target={item.target}
@@ -42,9 +42,9 @@ export const DataLinksContextMenu = ({ children, links, style }: DataLinksContex
   };
 
   // Use this class name (exposed via render prop) to add context menu indicator to the click target of the visualization
-  const targetClassName = css`
-    cursor: context-menu;
-  `;
+  const targetClassName = css({
+    cursor: 'context-menu',
+  });
 
   if (linksCounter > 1) {
     return (

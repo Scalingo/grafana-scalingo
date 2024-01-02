@@ -5,14 +5,14 @@ import { LibraryElementDTO } from 'app/features/library-panels/types';
 import { getPanelPluginNotFound } from 'app/features/panel/components/PanelPluginError';
 import { loadPanelPlugin } from 'app/features/plugins/admin/state/actions';
 import { ThunkResult } from 'app/types';
-import { PanelOptionsChangedEvent, PanelQueriesChangedEvent } from 'app/types/events';
+import { DashboardPanelsChangedEvent, PanelOptionsChangedEvent, PanelQueriesChangedEvent } from 'app/types/events';
 
 import { changePanelKey, panelModelAndPluginReady, removePanel } from './reducers';
 
-export function initPanelState(panel: PanelModel): ThunkResult<void> {
+export function initPanelState(panel: PanelModel): ThunkResult<Promise<void>> {
   return async (dispatch, getStore) => {
     if (panel.libraryPanel?.uid && !('model' in panel.libraryPanel)) {
-      // this will call init with a loaded libary panel if it loads succesfully
+      // this will call init with a loaded library panel if it loads succesfully
       dispatch(loadLibraryPanelAndUpdate(panel));
       return;
     }
@@ -30,7 +30,7 @@ export function initPanelState(panel: PanelModel): ThunkResult<void> {
     }
 
     if (!panel.plugin) {
-      panel.pluginLoaded(plugin);
+      await panel.pluginLoaded(plugin);
     }
 
     dispatch(panelModelAndPluginReady({ key: panel.key, plugin }));
@@ -46,7 +46,7 @@ export function cleanUpPanelState(panelKey: string): ThunkResult<void> {
 export interface ChangePanelPluginAndOptionsArgs {
   panel: PanelModel;
   pluginId: string;
-  options?: any;
+  options?: Record<string, unknown>;
   fieldConfig?: FieldConfigSource;
   transformations?: DataTransformerConfig[];
 }
@@ -56,10 +56,11 @@ export function changePanelPlugin({
   pluginId,
   options,
   fieldConfig,
+  transformations,
 }: ChangePanelPluginAndOptionsArgs): ThunkResult<void> {
   return async (dispatch, getStore) => {
     // ignore action is no change
-    if (panel.type === pluginId && !options && !fieldConfig) {
+    if (panel.type === pluginId && !options && !fieldConfig && !transformations) {
       return;
     }
 
@@ -74,7 +75,7 @@ export function changePanelPlugin({
       panel.changePlugin(plugin);
     }
 
-    if (options || fieldConfig) {
+    if (options || fieldConfig || transformations) {
       const newOptions = getPanelOptionsWithDefaults({
         plugin,
         currentOptions: options || panel.options,
@@ -84,6 +85,7 @@ export function changePanelPlugin({
 
       panel.options = newOptions.options;
       panel.fieldConfig = newOptions.fieldConfig;
+      panel.transformations = transformations || panel.transformations;
       panel.configRev++;
     }
 
@@ -118,7 +120,7 @@ export function changeToLibraryPanel(panel: PanelModel, libraryPanel: LibraryEle
         plugin = await dispatch(loadPanelPlugin(newPluginId));
       }
 
-      panel.pluginLoaded(plugin);
+      await panel.pluginLoaded(plugin);
       panel.generateNewKey();
 
       await dispatch(panelModelAndPluginReady({ key: panel.key, plugin }));
@@ -140,12 +142,20 @@ export function changeToLibraryPanel(panel: PanelModel, libraryPanel: LibraryEle
 }
 
 export function loadLibraryPanelAndUpdate(panel: PanelModel): ThunkResult<void> {
-  return async (dispatch) => {
+  return async (dispatch, getStore) => {
     const uid = panel.libraryPanel!.uid!;
     try {
       const libPanel = await getLibraryPanel(uid, true);
       panel.initLibraryPanel(libPanel);
-      dispatch(initPanelState(panel));
+      await dispatch(initPanelState(panel));
+      const dashboard = getStore().dashboard.getModel();
+
+      if (panel.repeat && dashboard) {
+        const panelIndex = dashboard.panels.findIndex((p) => p.id === panel.id);
+        dashboard.repeatPanel(panel, panelIndex);
+        dashboard.sortPanelsByGridPos();
+        dashboard.events.publish(new DashboardPanelsChangedEvent());
+      }
     } catch (ex) {
       console.log('ERROR: ', ex);
       dispatch(

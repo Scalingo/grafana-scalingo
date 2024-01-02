@@ -2,8 +2,9 @@ import { css } from '@emotion/css';
 import React from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
+import { ScalarDimensionConfig } from '@grafana/schema';
 import { useStyles2 } from '@grafana/ui';
-import { DimensionContext, ScalarDimensionConfig } from 'app/features/dimensions';
+import { DimensionContext } from 'app/features/dimensions';
 import { ScalarDimensionEditor } from 'app/features/dimensions/editors';
 
 import { CanvasElementItem, CanvasElementProps, defaultBgColor } from '../element';
@@ -63,7 +64,7 @@ const WindTurbineDisplay = ({ data }: CanvasElementProps<WindTurbineConfig, Wind
   );
 };
 
-export const windTurbineItem: CanvasElementItem<any, any> = {
+export const windTurbineItem: CanvasElementItem = {
   id: 'windTurbine',
   name: 'Wind Turbine',
   description: 'Spinny spinny',
@@ -112,17 +113,16 @@ export const windTurbineItem: CanvasElementItem<any, any> = {
 };
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  blade: css`
-    @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    transform-origin: 94.663px 94.663px;
-    transform: rotate(15deg);
-  `,
+  blade: css({
+    transformOrigin: '94.663px 94.663px',
+    transform: 'rotate(15deg)',
+    '@keyframes spin': {
+      from: {
+        transform: 'rotate(0deg)',
+      },
+      to: {
+        transform: 'rotate(360deg)',
+      },
+    },
+  }),
 });

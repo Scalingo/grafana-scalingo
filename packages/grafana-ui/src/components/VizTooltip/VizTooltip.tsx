@@ -5,10 +5,18 @@ import { Dimensions, TimeZone } from '@grafana/data';
 import { TooltipDisplayMode } from '@grafana/schema';
 
 import { useStyles2 } from '../../themes';
-import { FlotPosition } from '../Graph/types';
 import { Portal } from '../Portal/Portal';
 
 import { VizTooltipContainer } from './VizTooltipContainer';
+
+export interface FlotPosition {
+  pageX: number;
+  pageY: number;
+  x: number;
+  x1: number;
+  y: number;
+  y1: number;
+}
 
 // Describes active dimensions user interacts with
 // It's a key-value pair where:
@@ -69,13 +77,13 @@ VizTooltip.displayName = 'VizTooltip';
 
 const getStyles = () => {
   return {
-    portal: css`
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: none;
-      width: 100%;
-      height: 100%;
-    `,
+    portal: css({
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      pointerEvents: 'none',
+      width: '100%',
+      height: '100%',
+    }),
   };
 };

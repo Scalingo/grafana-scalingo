@@ -10,14 +10,18 @@
 
 import * as common from '@grafana/schema';
 
-export const PanelCfgModelVersion = Object.freeze([0, 0]);
-
-export interface PanelOptions extends common.SingleStatBaseOptions {
+export interface Options extends common.SingleStatBaseOptions {
+  minVizHeight: number;
+  minVizWidth: number;
   showThresholdLabels: boolean;
   showThresholdMarkers: boolean;
+  sizing: common.BarGaugeSizing;
 }
 
-export const defaultPanelOptions: Partial<PanelOptions> = {
+export const defaultOptions: Partial<Options> = {
+  minVizHeight: 200,
+  minVizWidth: 200,
   showThresholdLabels: false,
   showThresholdMarkers: true,
+  sizing: common.BarGaugeSizing.Auto,
 };

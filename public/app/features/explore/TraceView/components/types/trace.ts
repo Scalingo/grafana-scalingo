@@ -57,12 +57,19 @@ export type TraceSpanData = {
   duration: number;
   logs: TraceLog[];
   tags?: TraceKeyValuePair[];
+  kind?: string;
+  statusCode?: number;
+  statusMessage?: string;
+  instrumentationLibraryName?: string;
+  instrumentationLibraryVersion?: string;
+  traceState?: string;
   references?: TraceSpanReference[];
   warnings?: string[] | null;
   stackTraces?: string[];
   flags: number;
   errorIconColor?: string;
   dataFrameRowIndex?: number;
+  childSpanIds?: string[];
 };
 
 export type TraceSpan = TraceSpanData & {
@@ -74,6 +81,7 @@ export type TraceSpan = TraceSpanData & {
   tags: NonNullable<TraceSpanData['tags']>;
   references: NonNullable<TraceSpanData['references']>;
   warnings: NonNullable<TraceSpanData['warnings']>;
+  childSpanIds: NonNullable<TraceSpanData['childSpanIds']>;
   subsidiarilyReferencedBy: TraceSpanReference[];
 };
 
@@ -94,4 +102,11 @@ export type Trace = TraceData & {
   startTime: number;
   traceName: string;
   services: Array<{ name: string; numberOfSpans: number }>;
+};
+
+// It is a section of span that lies on critical path
+export type CriticalPathSection = {
+  spanId: string;
+  section_start: number;
+  section_end: number;
 };

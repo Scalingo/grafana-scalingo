@@ -7,9 +7,10 @@ import (
 )
 
 type FakeService struct {
-	ExpectedFolders []*folder.Folder
-	ExpectedFolder  *folder.Folder
-	ExpectedError   error
+	ExpectedFolders          []*folder.Folder
+	ExpectedFolder           *folder.Folder
+	ExpectedError            error
+	ExpectedDescendantCounts map[string]int64
 }
 
 func NewFakeService() *FakeService {
@@ -38,10 +39,15 @@ func (s *FakeService) Update(ctx context.Context, cmd *folder.UpdateFolderComman
 func (s *FakeService) Delete(ctx context.Context, cmd *folder.DeleteFolderCommand) error {
 	return s.ExpectedError
 }
-func (s *FakeService) MakeUserAdmin(ctx context.Context, orgID int64, userID, folderID int64, setViewAndEditPermissions bool) error {
-	return s.ExpectedError
-}
 
 func (s *FakeService) Move(ctx context.Context, cmd *folder.MoveFolderCommand) (*folder.Folder, error) {
 	return s.ExpectedFolder, s.ExpectedError
+}
+
+func (s *FakeService) RegisterService(service folder.RegistryService) error {
+	return s.ExpectedError
+}
+
+func (s *FakeService) GetDescendantCounts(ctx context.Context, cmd *folder.GetDescendantCountsQuery) (folder.DescendantCounts, error) {
+	return s.ExpectedDescendantCounts, s.ExpectedError
 }

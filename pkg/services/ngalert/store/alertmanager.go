@@ -84,7 +84,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
 			[]string{"org_id"},
 			[]string{"alertmanager_configuration", "configuration_version", "created_at", "default", "org_id", "configuration_hash"},
 		)
-		params := append(make([]interface{}, 0), cmd.AlertmanagerConfiguration, cmd.ConfigurationVersion, config.CreatedAt, config.Default, config.OrgID, config.ConfigurationHash)
+		params := append(make([]any, 0), cmd.AlertmanagerConfiguration, cmd.ConfigurationVersion, config.CreatedAt, config.Default, config.OrgID, config.ConfigurationHash)
 		if _, err := sess.SQL(upsertSQL, params...).Query(); err != nil {
 			return err
 		}
@@ -96,7 +96,7 @@ func (st DBstore) SaveAlertmanagerConfigurationWithCallback(ctx context.Context,
 		}
 
 		if _, err := st.deleteOldConfigurations(ctx, cmd.OrgID, ConfigRecordsLimit); err != nil {
-			st.Logger.Warn("failed to delete old am configs", "org", cmd.OrgID, "error", err)
+			st.Logger.Warn("Failed to delete old am configs", "org", cmd.OrgID, "error", err)
 		}
 
 		if err := callback(); err != nil {
@@ -133,7 +133,7 @@ func (st *DBstore) UpdateAlertmanagerConfiguration(ctx context.Context, cmd *mod
 			return err
 		}
 		if _, err := st.deleteOldConfigurations(ctx, cmd.OrgID, ConfigRecordsLimit); err != nil {
-			st.Logger.Warn("failed to delete old am configs", "org", cmd.OrgID, "error", err)
+			st.Logger.Warn("Failed to delete old am configs", "org", cmd.OrgID, "error", err)
 		}
 		return nil
 	})
@@ -142,7 +142,7 @@ func (st *DBstore) UpdateAlertmanagerConfiguration(ctx context.Context, cmd *mod
 // MarkConfigurationAsApplied sets the `last_applied` field of the last config with the given hash to the current UNIX timestamp.
 func (st *DBstore) MarkConfigurationAsApplied(ctx context.Context, cmd *models.MarkConfigurationAsAppliedCmd) error {
 	return st.SQLStore.WithTransactionalDbSession(ctx, func(sess *db.Session) error {
-		update := map[string]interface{}{"last_applied": time.Now().UTC().Unix()}
+		update := map[string]any{"last_applied": time.Now().UTC().Unix()}
 		rowsAffected, err := sess.Table("alert_configuration_history").
 			Desc("id").
 			Limit(1).
@@ -189,6 +189,26 @@ func (st *DBstore) GetAppliedConfigurations(ctx context.Context, orgID int64, li
 	return configs, nil
 }
 
+// GetHistoricalConfiguration returns a single historical configuration based on provided org and id.
+func (st *DBstore) GetHistoricalConfiguration(ctx context.Context, orgID int64, id int64) (*models.HistoricAlertConfiguration, error) {
+	var config models.HistoricAlertConfiguration
+	if err := st.SQLStore.WithDbSession(ctx, func(sess *db.Session) error {
+		ok, err := sess.Table("alert_configuration_history").
+			Where("id = ? AND org_id = ?", id, orgID).
+			Get(&config)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNoAlertmanagerConfiguration
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
 func (st *DBstore) deleteOldConfigurations(ctx context.Context, orgID int64, limit int) (int64, error) {
 	if limit < 1 {
 		return 0, fmt.Errorf("failed to delete old configurations: limit is set to '%d' but needs to be > 0", limit)
@@ -219,11 +239,11 @@ func (st *DBstore) deleteOldConfigurations(ctx context.Context, orgID int64, lim
 		}
 
 		res, err := sess.Exec(`
-			DELETE FROM 
+			DELETE FROM
 				alert_configuration_history
 			WHERE
 				org_id = ?
-			AND 
+			AND
 				id < ?
 		`, orgID, threshold)
 		if err != nil {
@@ -235,7 +255,7 @@ func (st *DBstore) deleteOldConfigurations(ctx context.Context, orgID int64, lim
 		}
 		affectedRows = rows
 		if affectedRows > 0 {
-			st.Logger.Info("deleted old alert_configuration(s)", "org", orgID, "limit", limit, "delete_count", affectedRows)
+			st.Logger.Info("Deleted old alert_configuration(s)", "org", orgID, "limit", limit, "delete_count", affectedRows)
 		}
 		return nil
 	})

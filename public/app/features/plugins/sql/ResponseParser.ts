@@ -1,7 +1,8 @@
 import { uniqBy } from 'lodash';
 
 import { DataFrame, MetricFindValue } from '@grafana/data';
-import { ResponseParser as ResponseParserType } from 'app/features/plugins/sql/types';
+
+import type { ResponseParser as ResponseParserType } from './types';
 
 export class ResponseParser implements ResponseParserType {
   transformMetricFindResponse(frame: DataFrame): MetricFindValue[] {
@@ -11,11 +12,11 @@ export class ResponseParser implements ResponseParserType {
 
     if (textField && valueField) {
       for (let i = 0; i < textField.values.length; i++) {
-        values.push({ text: '' + textField.values.get(i), value: '' + valueField.values.get(i) });
+        values.push({ text: '' + textField.values[i], value: '' + valueField.values[i] });
       }
     } else {
       for (const field of frame.fields) {
-        for (const value of field.values.toArray()) {
+        for (const value of field.values) {
           values.push({ text: value });
         }
       }

@@ -3,6 +3,7 @@ import { ContextSrvStub } from 'test/specs/helpers';
 
 import { dateTime, isDateTime } from '@grafana/data';
 import { config, HistoryWrapper, locationService, setLocationService } from '@grafana/runtime';
+import { EmbeddedScene, SceneCanvasText, SceneTimeRange } from '@grafana/scenes';
 
 import { TimeModel } from '../state/TimeModel';
 
@@ -82,7 +83,7 @@ describe('timeSrv', () => {
       timeSrv = new TimeSrv(new ContextSrvStub());
 
       // dashboard saved with refresh on
-      _dashboard.refresh = true;
+      _dashboard.refresh = '10s';
       timeSrv.init(_dashboard);
 
       expect(timeSrv.refresh).toBe(false);
@@ -99,7 +100,7 @@ describe('timeSrv', () => {
         };
 
         locationService.push('/d/id?from=now-24h&to=now');
-        config.isPublicDashboardView = true;
+        config.publicDashboardAccessToken = 'abc123';
         timeSrv = new TimeSrv(new ContextSrvStub());
       });
 
@@ -287,19 +288,21 @@ describe('timeSrv', () => {
     });
   });
 
-  describe('pauseAutoRefresh', () => {
-    it('should set autoRefreshPaused to true', () => {
-      _dashboard.refresh = '10s';
-      timeSrv.pauseAutoRefresh();
-      expect(timeSrv.autoRefreshPaused).toBe(true);
-    });
-  });
-
   describe('resumeAutoRefresh', () => {
-    it('should set refresh to empty value', () => {
-      timeSrv.autoRefreshPaused = true;
+    it('should set auto-refresh interval', () => {
+      timeSrv.setAutoRefresh('10s');
+      expect(timeSrv.refreshTimer).not.toBeUndefined();
+
+      timeSrv.stopAutoRefresh();
+      expect(timeSrv.refreshTimer).toBeUndefined();
+
       timeSrv.resumeAutoRefresh();
-      expect(timeSrv.autoRefreshPaused).toBe(false);
+      expect(timeSrv.refreshTimer).not.toBeUndefined();
+    });
+
+    it('should allow an auto refresh value', () => {
+      timeSrv.setAutoRefresh('auto');
+      expect(timeSrv.refreshTimer).not.toBeUndefined();
     });
   });
 
@@ -338,6 +341,26 @@ describe('timeSrv', () => {
           expect(timeSrv.isRefreshOutsideThreshold(57000, 0.05)).toBe(true);
         });
       });
+    });
+  });
+
+  describe('Scenes compatibility', () => {
+    it('should use scene provided range if active', () => {
+      timeSrv.setTime({ from: 'now-6h', to: 'now' });
+
+      window.__grafanaSceneContext = new EmbeddedScene({
+        $timeRange: new SceneTimeRange({ from: 'now-1h', to: 'now' }),
+        body: new SceneCanvasText({ text: 'hello' }),
+      });
+
+      let time = timeSrv.timeRange();
+      expect(time.raw.from).toBe('now-6h');
+      expect(time.raw.to).toBe('now');
+
+      window.__grafanaSceneContext.activate();
+      time = timeSrv.timeRange();
+      expect(time.raw.from).toBe('now-1h');
+      expect(time.raw.to).toBe('now');
     });
   });
 });

@@ -1,4 +1,4 @@
-import { QueryBuilderOperationDef } from '../../prometheus/querybuilder/shared/types';
+import { QueryBuilderOperation, QueryBuilderOperationDef } from '../../prometheus/querybuilder/shared/types';
 
 import {
   createRangeOperation,
@@ -6,8 +6,10 @@ import {
   getLineFilterRenderer,
   isConflictingFilter,
   labelFilterRenderer,
+  pipelineRenderer,
 } from './operationUtils';
-import { LokiVisualQueryOperationCategory } from './types';
+import { getOperationDefinitions } from './operations';
+import { LokiOperationId, LokiVisualQueryOperationCategory } from './types';
 
 describe('createRangeOperation', () => {
   it('should create basic range operation without possible grouping', () => {
@@ -15,7 +17,7 @@ describe('createRangeOperation', () => {
       id: 'test_range_operation',
       name: 'Test range operation',
       params: [{ name: 'Range', type: 'string' }],
-      defaultParams: ['$__interval'],
+      defaultParams: ['$__auto'],
       alternativesKey: 'range function',
       category: LokiVisualQueryOperationCategory.RangeFunctions,
     });
@@ -34,7 +36,7 @@ describe('createRangeOperation', () => {
           optional: true,
         },
       ],
-      defaultParams: ['$__interval'],
+      defaultParams: ['$__auto'],
       alternativesKey: 'range function',
       category: LokiVisualQueryOperationCategory.RangeFunctions,
     });
@@ -49,7 +51,7 @@ describe('createRangeOperation', () => {
         { name: 'Quantile', type: 'number' },
         { name: 'By label', type: 'string', restParam: true, optional: true },
       ],
-      defaultParams: ['$__interval', '0.95'],
+      defaultParams: ['$__auto', '0.95'],
       alternativesKey: 'range function',
       category: LokiVisualQueryOperationCategory.RangeFunctions,
     });
@@ -68,7 +70,7 @@ describe('createRangeOperationWithGrouping', () => {
         { name: 'Quantile', type: 'number' },
         { name: 'By label', type: 'string', restParam: true, optional: true },
       ],
-      defaultParams: ['$__interval', '0.95'],
+      defaultParams: ['$__auto', '0.95'],
       alternativesKey: 'range function',
       category: LokiVisualQueryOperationCategory.RangeFunctions,
     });
@@ -81,7 +83,7 @@ describe('createRangeOperationWithGrouping', () => {
         { name: 'Quantile', type: 'number' },
         { name: 'Label', type: 'string', restParam: true, optional: true },
       ],
-      defaultParams: ['$__interval', '0.95', ''],
+      defaultParams: ['$__auto', '0.95', ''],
       alternativesKey: 'range function with grouping',
       category: LokiVisualQueryOperationCategory.RangeFunctions,
     });
@@ -94,7 +96,7 @@ describe('createRangeOperationWithGrouping', () => {
         { name: 'Quantile', type: 'number' },
         { name: 'Label', type: 'string', restParam: true, optional: true },
       ],
-      defaultParams: ['$__interval', '0.95', ''],
+      defaultParams: ['$__auto', '0.95', ''],
       alternativesKey: 'range function with grouping',
       category: LokiVisualQueryOperationCategory.RangeFunctions,
     });
@@ -203,5 +205,120 @@ describe('isConflictingFilter', () => {
       { id: '__label_filter', params: ['abc', '=', '123'] },
     ];
     expect(isConflictingFilter(operation, queryOperations)).toBe(false);
+  });
+});
+
+describe('pipelineRenderer', () => {
+  let definitions: QueryBuilderOperationDef[];
+  beforeEach(() => {
+    definitions = getOperationDefinitions();
+  });
+
+  it('correctly renders unpack expressions', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Unpack,
+      params: [],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Unpack);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | unpack');
+  });
+
+  it('correctly renders unpack expressions', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Unpack,
+      params: [],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Unpack);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | unpack');
+  });
+
+  it('correctly renders empty logfmt expression', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Logfmt,
+      params: [],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Logfmt);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | logfmt');
+  });
+
+  it('correctly renders logfmt expression', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Logfmt,
+      params: [true, false, 'foo', ''],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Logfmt);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | logfmt --strict foo');
+  });
+
+  it('correctly renders logfmt expression with multiple params', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Logfmt,
+      params: [true, false, 'foo', 'bar', 'baz'],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Logfmt);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | logfmt --strict foo, bar, baz');
+  });
+
+  it('correctly renders empty json expression', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Json,
+      params: [],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Json);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | json');
+  });
+
+  it('correctly renders json expression', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Json,
+      params: ['foo', ''],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Json);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | json foo');
+  });
+
+  it('correctly renders json expression with multiple params', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Json,
+      params: ['foo', 'bar', 'baz'],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Json);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | json foo, bar, baz');
+  });
+
+  it('correctly renders keep expression', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Keep,
+      params: ['foo', ''],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Keep);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | keep foo');
+  });
+
+  it('correctly renders keep expression with multiple params', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Keep,
+      params: ['foo', 'bar', 'baz'],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Keep);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | keep foo, bar, baz');
+  });
+
+  it('correctly renders drop expression', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Drop,
+      params: ['foo', ''],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Drop);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | drop foo');
+  });
+
+  it('correctly renders drop expression with multiple params', () => {
+    const model: QueryBuilderOperation = {
+      id: LokiOperationId.Drop,
+      params: ['foo', 'bar', 'baz'],
+    };
+    const definition = definitions.find((def) => def.id === LokiOperationId.Drop);
+    expect(pipelineRenderer(model, definition!, '{}')).toBe('{} | drop foo, bar, baz');
   });
 });

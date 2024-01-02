@@ -2,10 +2,9 @@ import { DecoratorFn } from '@storybook/react';
 import React from 'react';
 import { useDarkMode } from 'storybook-dark-mode';
 
-import { createTheme, GrafanaTheme2 } from '@grafana/data';
+import { createTheme, GrafanaTheme2, ThemeContext } from '@grafana/data';
 
 import { GlobalStyles } from '../../themes/GlobalStyles/GlobalStyles';
-import { ThemeContext } from '../../themes/ThemeContext';
 
 type SassThemeChangeHandler = (theme: GrafanaTheme2) => void;
 const ThemeableStory = ({
@@ -16,18 +15,20 @@ const ThemeableStory = ({
 
   handleSassThemeChange(theme);
 
-  const css = `#root {
-    width: 100%;
-    padding: 20px;
-    display: flex;
-    height: 100%;
-    min-height: 100%;
+  const css = `
+  #storybook-root {
+    padding: ${theme.spacing(2)};
+  }
+
+  body {
     background: ${theme.colors.background.primary};
-  }`;
+  }
+  `;
 
   return (
     <ThemeContext.Provider value={theme}>
       <GlobalStyles />
+
       <style>{css}</style>
       {children}
     </ThemeContext.Provider>
@@ -52,5 +53,4 @@ export const renderComponentWithTheme = (component: React.ComponentType<any>, pr
 export const withTheme =
   (handleSassThemeChange: SassThemeChangeHandler): DecoratorFn =>
   // eslint-disable-next-line react/display-name
-  (story) =>
-    <ThemeableStory handleSassThemeChange={handleSassThemeChange}>{story()}</ThemeableStory>;
+  (story) => <ThemeableStory handleSassThemeChange={handleSassThemeChange}>{story()}</ThemeableStory>;

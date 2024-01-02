@@ -3,8 +3,12 @@ aliases:
   - ../../installation/debian/
   - ../../installation/installation/debian/
 description: Install guide for Grafana on Debian or Ubuntu
-title: Install Grafana on Debian or Ubuntu
+labels:
+  products:
+    - enterprise
+    - oss
 menuTitle: Debian or Ubuntu
+title: Install Grafana on Debian or Ubuntu
 weight: 100
 ---
 
@@ -14,7 +18,9 @@ This topic explains how to install Grafana dependencies, install Grafana on Linu
 
 There are multiple ways to install Grafana: using the Grafana Labs APT repository, by downloading a `.deb` package, or by downloading a binary `.tar.gz` file. Choose only one of the methods below that best suits your needs.
 
-> **Note:** If you install via the `.deb` package or `.tar.gz` file, then you must manually update Grafana for each new version.
+{{% admonition type="note" %}}
+If you install via the `.deb` package or `.tar.gz` file, then you must manually update Grafana for each new version.
+{{% /admonition %}}
 
 ## Install from APT repository
 
@@ -27,28 +33,35 @@ If you install from the APT repository, Grafana automatically updates when you r
 | Grafana OSS               | grafana            | `https://apt.grafana.com stable main` |
 | Grafana OSS (Beta)        | grafana            | `https://apt.grafana.com beta main`   |
 
-> **Note:** Grafana Enterprise is the recommended and default edition. It is available for free and includes all the features of the OSS edition. You can also upgrade to the [full Enterprise feature set](https://grafana.com/products/enterprise/?utm_source=grafana-install-page), which has support for [Enterprise plugins](https://grafana.com/grafana/plugins/?enterprise=1&utcm_source=grafana-install-page).
+{{% admonition type="note" %}}
+Grafana Enterprise is the recommended and default edition. It is available for free and includes all the features of the OSS edition. You can also upgrade to the [full Enterprise feature set](/products/enterprise/?utm_source=grafana-install-page), which has support for [Enterprise plugins](/grafana/plugins/?enterprise=1&utcm_source=grafana-install-page).
+{{% /admonition %}}
 
 Complete the following steps to install Grafana from the APT repository:
 
-1. To install required packages and download the Grafana repository signing key, run the following commands:
+1. Install the prerequisite packages:
 
    ```bash
-   sudo apt-get install -y apt-transport-https
-   sudo apt-get install -y software-properties-common wget
-   sudo wget -q -O /usr/share/keyrings/grafana.key https://apt.grafana.com/gpg.key
+   sudo apt-get install -y apt-transport-https software-properties-common wget
+   ```
+
+1. Import the GPG key:
+
+   ```bash
+   sudo mkdir -p /etc/apt/keyrings/
+   wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
    ```
 
 1. To add a repository for stable releases, run the following command:
 
    ```bash
-   echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+   echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
    ```
 
 1. To add a repository for beta releases, run the following command:
 
    ```bash
-   echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://apt.grafana.com beta main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+   echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com beta main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
    ```
 
 1. Run the following command to update the list of available packages:
@@ -78,7 +91,7 @@ If you choose not to install Grafana using APT, you can download and install Gra
 
 Complete the following steps to install Grafana using DEB or the standalone binaries:
 
-1. Navigate to the [Grafana download page](https://grafana.com/grafana/download).
+1. Navigate to the [Grafana download page](/grafana/download).
 1. Select the Grafana version you want to install.
    - The most recent Grafana version is selected by default.
    - The **Version** field displays only tagged releases. If you want to install a nightly build, click **Nightly Builds** and then select a version.
@@ -126,4 +139,4 @@ To uninstall Grafana, run the following commands in a terminal window:
 
 ## Next steps
 
-- [Start the Grafana server]({{< relref "../../start-restart-grafana/" >}})
+- [Start the Grafana server]({{< relref "../../start-restart-grafana" >}})

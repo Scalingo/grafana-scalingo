@@ -8,7 +8,6 @@ import { contextSrv } from 'app/core/core';
 import { AccessControlAction } from 'app/types';
 
 import { getExternalManageLink } from '../../helpers';
-import { isGrafanaAdmin } from '../../permissions';
 import { useIsRemotePluginsAvailable } from '../../state/hooks';
 import { CatalogPlugin, PluginStatus, Version } from '../../types';
 
@@ -21,7 +20,7 @@ interface Props {
 export const InstallControlsWarning = ({ plugin, pluginStatus, latestCompatibleVersion }: Props) => {
   const styles = useStyles2(getStyles);
   const isExternallyManaged = config.pluginAdminExternalManageEnabled;
-  const hasPermission = contextSrv.hasAccess(AccessControlAction.PluginsInstall, isGrafanaAdmin());
+  const hasPermission = contextSrv.hasPermission(AccessControlAction.PluginsInstall);
   const isRemotePluginsAvailable = useIsRemotePluginsAvailable();
   const isCompatible = Boolean(latestCompatibleVersion);
 
@@ -58,8 +57,7 @@ export const InstallControlsWarning = ({ plugin, pluginStatus, latestCompatibleV
   }
 
   if (!hasPermission && !isExternallyManaged) {
-    const message = `You do not have permission to ${pluginStatus} this plugin.`;
-    return <div className={styles.message}>{message}</div>;
+    return <div className={styles.message}>{statusToMessage(pluginStatus)}</div>;
   }
 
   if (!plugin.isPublished) {
@@ -101,3 +99,17 @@ export const getStyles = (theme: GrafanaTheme2) => {
     `,
   };
 };
+
+function statusToMessage(status: PluginStatus): string {
+  switch (status) {
+    case PluginStatus.INSTALL:
+    case PluginStatus.REINSTALL:
+      return `You do not have permission to install this plugin.`;
+    case PluginStatus.UNINSTALL:
+      return `You do not have permission to uninstall this plugin.`;
+    case PluginStatus.UPDATE:
+      return `You do not have permission to update this plugin.`;
+    default:
+      return `You do not have permission to manage this plugin.`;
+  }
+}

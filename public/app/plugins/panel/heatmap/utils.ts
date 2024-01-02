@@ -23,7 +23,7 @@ import { isHeatmapCellsDense, readHeatmapRowsCustomMeta } from 'app/features/tra
 import { pointWithin, Quadtree, Rect } from '../barchart/quadtree';
 
 import { HeatmapData } from './fields';
-import { PanelFieldConfig, YAxisConfig } from './types';
+import { FieldConfig, YAxisConfig } from './types';
 
 interface PathbuilderOpts {
   each: (u: uPlot, seriesIdx: number, dataIdx: number, lft: number, top: number, wid: number, hgt: number) => void;
@@ -64,10 +64,9 @@ interface PrepConfigOpts {
   onhover?: null | ((evt?: HeatmapHoverEvent | null) => void);
   onclick?: null | ((evt?: Object) => void);
   onzoom?: null | ((evt: HeatmapZoomEvent) => void);
-  isToolTipOpen: MutableRefObject<boolean>;
+  isToolTipOpen?: MutableRefObject<boolean>;
   timeZone: string;
   getTimeRange: () => TimeRange;
-  palette: string[];
   exemplarColor: string;
   cellGap?: number | null; // in css pixels
   hideLE?: number;
@@ -75,6 +74,8 @@ interface PrepConfigOpts {
   yAxisConfig: YAxisConfig;
   ySizeDivisor?: number;
   sync?: () => DashboardCursorSync;
+  // Identifies the shared key for uPlot cursor sync
+  eventsScope?: string;
 }
 
 export function prepConfig(opts: PrepConfigOpts) {
@@ -84,17 +85,16 @@ export function prepConfig(opts: PrepConfigOpts) {
     eventBus,
     onhover,
     onclick,
-    onzoom,
     isToolTipOpen,
     timeZone,
     getTimeRange,
-    palette,
     cellGap,
     hideLE,
     hideGE,
     yAxisConfig,
     ySizeDivisor,
     sync,
+    eventsScope = '__global_',
   } = opts;
 
   const xScaleKey = 'x';
@@ -142,15 +142,6 @@ export function prepConfig(opts: PrepConfigOpts) {
       );
   });
 
-  onzoom &&
-    builder.addHook('setSelect', (u) => {
-      onzoom({
-        xMin: u.posToVal(u.select.left, xScaleKey),
-        xMax: u.posToVal(u.select.left + u.select.width, xScaleKey),
-      });
-      u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
-    });
-
   if (isTime) {
     // this is a tmp hack because in mode: 2, uplot does not currently call scales.x.range() for setData() calls
     // scales.x.range() typically reads back from drilled-down panelProps.timeRange via getTimeRange()
@@ -196,7 +187,7 @@ export function prepConfig(opts: PrepConfigOpts) {
             payload.point[xScaleUnit] = u.posToVal(left!, xScaleKey);
             eventBus.publish(hoverEvent);
 
-            if (!isToolTipOpen.current) {
+            if (!isToolTipOpen?.current) {
               if (pendingOnleave) {
                 clearTimeout(pendingOnleave);
                 pendingOnleave = 0;
@@ -213,7 +204,7 @@ export function prepConfig(opts: PrepConfigOpts) {
         }
       }
 
-      if (!isToolTipOpen.current) {
+      if (!isToolTipOpen?.current) {
         // if tiles have gaps, reduce flashing / re-render (debounce onleave by 100ms)
         if (!pendingOnleave) {
           pendingOnleave = setTimeout(() => {
@@ -289,8 +280,7 @@ export function prepConfig(opts: PrepConfigOpts) {
     return builder; // early abort (avoids error)
   }
 
-  // eslint-ignore @typescript-eslint/no-explicit-any
-  const yFieldConfig = yField.config?.custom as PanelFieldConfig | undefined;
+  const yFieldConfig: FieldConfig | undefined = yField.config?.custom;
   const yScale = yFieldConfig?.scaleDistribution ?? { type: ScaleDistribution.Linear };
   const yAxisReverse = Boolean(yAxisConfig.reverse);
   const isSparseHeatmap = heatmapType === DataFrameType.HeatmapCells && !isHeatmapCellsDense(dataRef.current?.heatmap!);
@@ -314,6 +304,12 @@ export function prepConfig(opts: PrepConfigOpts) {
       // sparse already accounts for le/ge by explicit yMin & yMax cell bounds, so no need to expand y range
       isSparseHeatmap
         ? (u, dataMin, dataMax) => {
+            // ...but uPlot currently only auto-ranges from the yMin facet data, so we have to grow by 1 extra factor
+            // @ts-ignore
+            let bucketFactor = u.data[1][2][0] / u.data[1][1][0];
+
+            dataMax *= bucketFactor;
+
             let scaleMin: number | null, scaleMax: number | null;
 
             [scaleMin, scaleMax] = shouldUseLogScale
@@ -526,16 +522,8 @@ export function prepConfig(opts: PrepConfigOpts) {
       ySizeDivisor,
       disp: {
         fill: {
-          values: (u, seriesIdx) => {
-            let countFacetIdx = !isSparseHeatmap ? 2 : 3;
-            return valuesToFills(
-              u.data[seriesIdx][countFacetIdx] as unknown as number[],
-              palette,
-              dataRef.current?.minValue!,
-              dataRef.current?.maxValue!
-            );
-          },
-          index: palette,
+          values: (u, seriesIdx) => dataRef.current?.heatmapColors?.values!,
+          index: dataRef.current?.heatmapColors?.palette!,
         },
       },
     }),
@@ -614,7 +602,7 @@ export function prepConfig(opts: PrepConfigOpts) {
 
   if (sync && sync() !== DashboardCursorSync.Off) {
     cursor.sync = {
-      key: '__global_',
+      key: eventsScope,
       scales: [xScaleKey, yScaleKey],
       filters: {
         pub: (type: string, src: uPlot, x: number, y: number, w: number, h: number, dataIdx: number) => {
@@ -786,10 +774,19 @@ export function heatmapPathsPoints(opts: PointsBuilderOpts, exemplarColor: strin
 
         for (let i = 0; i < dataX.length; i++) {
           let yVal = dataY[i]!;
-          yVal -= 0.5; // center vertically in bucket (when tiles are le)
-          // y-randomize vertically to distribute exemplars in same bucket at same time
-          let randSign = Math.round(Math.random()) * 2 - 1;
-          yVal += randSign * 0.5 * Math.random();
+
+          // this is a hacky by-proxy check
+          // works okay since we have no exemplars in calculated heatmaps and...
+          //  - heatmap-rows has ordinal y
+          //  - heatmap-cells has log2 y
+          let isSparseHeatmap = scaleY.distr === 3 && scaleY.log === 2;
+
+          if (!isSparseHeatmap) {
+            yVal -= 0.5; // center vertically in bucket (when tiles are le)
+            // y-randomize vertically to distribute exemplars in same bucket at same time
+            let randSign = Math.round(Math.random()) * 2 - 1;
+            yVal += randSign * 0.5 * Math.random();
+          }
 
           let x = valToPosX(dataX[i], scaleX, xDim, xOff);
           let y = valToPosY(yVal, scaleY, yDim, yOff);
@@ -908,8 +905,8 @@ export function heatmapPathsSparse(opts: PathbuilderOpts) {
           xSize = Math.max(1, xSize - cellGap);
           ySize = Math.max(1, ySize - cellGap);
 
-          let x = xMaxPx;
-          let y = yMinPx;
+          let x = xMaxPx - cellGap / 2 - xSize;
+          let y = yMaxPx + cellGap / 2;
 
           let fillPath = fillPaths[fills[i]];
 
@@ -966,7 +963,7 @@ export const boundedMinMax = (
   return [minValue, maxValue];
 };
 
-export const valuesToFills = (values: number[], palette: string[], minValue: number, maxValue: number) => {
+export const valuesToFills = (values: number[], palette: string[], minValue: number, maxValue: number): number[] => {
   let range = maxValue - minValue || 1;
 
   let paletteSize = palette.length;

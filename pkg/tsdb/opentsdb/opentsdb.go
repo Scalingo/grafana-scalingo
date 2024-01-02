@@ -43,8 +43,8 @@ type datasourceInfo struct {
 type DsAccess string
 
 func newInstanceSettings(httpClientProvider httpclient.Provider) datasource.InstanceFactoryFunc {
-	return func(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-		opts, err := settings.HTTPClientOptions()
+	return func(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+		opts, err := settings.HTTPClientOptions(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -70,6 +70,8 @@ func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) 
 
 	q := req.Queries[0]
 
+	myRefID := q.RefID
+
 	tsdbQuery.Start = q.TimeRange.From.UnixNano() / int64(time.Millisecond)
 	tsdbQuery.End = q.TimeRange.To.UnixNano() / int64(time.Millisecond)
 
@@ -83,7 +85,7 @@ func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) 
 		logger.Debug("OpenTsdb request", "params", tsdbQuery)
 	}
 
-	dsInfo, err := s.getDSInfo(req.PluginContext)
+	dsInfo, err := s.getDSInfo(ctx, req.PluginContext)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +107,7 @@ func (s *Service) QueryData(ctx context.Context, req *backend.QueryDataRequest) 
 		}
 	}()
 
-	result, err := s.parseResponse(logger, res)
+	result, err := s.parseResponse(logger, res, myRefID)
 	if err != nil {
 		return &backend.QueryDataResponse{}, err
 	}
@@ -136,7 +138,7 @@ func (s *Service) createRequest(ctx context.Context, logger log.Logger, dsInfo *
 	return req, nil
 }
 
-func (s *Service) parseResponse(logger log.Logger, res *http.Response) (*backend.QueryDataResponse, error) {
+func (s *Service) parseResponse(logger log.Logger, res *http.Response, myRefID string) (*backend.QueryDataResponse, error) {
 	resp := backend.NewQueryDataResponse()
 
 	body, err := io.ReadAll(res.Body)
@@ -181,14 +183,14 @@ func (s *Service) parseResponse(logger log.Logger, res *http.Response) (*backend
 			data.NewField("time", nil, timeVector),
 			data.NewField("value", tags, values)))
 	}
-	result := resp.Responses["A"]
+	result := resp.Responses[myRefID]
 	result.Frames = frames
-	resp.Responses["A"] = result
+	resp.Responses[myRefID] = result
 	return resp, nil
 }
 
-func (s *Service) buildMetric(query backend.DataQuery) map[string]interface{} {
-	metric := make(map[string]interface{})
+func (s *Service) buildMetric(query backend.DataQuery) map[string]any {
+	metric := make(map[string]any)
 
 	model, err := simplejson.NewJson(query.JSON)
 	if err != nil {
@@ -217,7 +219,7 @@ func (s *Service) buildMetric(query backend.DataQuery) map[string]interface{} {
 	// Setting rate options
 	if model.Get("shouldComputeRate").MustBool() {
 		metric["rate"] = true
-		rateOptions := make(map[string]interface{})
+		rateOptions := make(map[string]any)
 		rateOptions["counter"] = model.Get("isCounter").MustBool()
 
 		counterMax, counterMaxCheck := model.CheckGet("counterMax")
@@ -252,8 +254,8 @@ func (s *Service) buildMetric(query backend.DataQuery) map[string]interface{} {
 	return metric
 }
 
-func (s *Service) getDSInfo(pluginCtx backend.PluginContext) (*datasourceInfo, error) {
-	i, err := s.im.Get(pluginCtx)
+func (s *Service) getDSInfo(ctx context.Context, pluginCtx backend.PluginContext) (*datasourceInfo, error) {
+	i, err := s.im.Get(ctx, pluginCtx)
 	if err != nil {
 		return nil, err
 	}

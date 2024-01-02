@@ -72,7 +72,6 @@ func TestRemoteLokiBackend(t *testing.T) {
 				"folderUID":          rule.NamespaceUID,
 				"group":              rule.Group,
 				"orgID":              fmt.Sprint(rule.OrgID),
-				"ruleUID":            rule.UID,
 			}
 			require.Equal(t, exp, res.Stream)
 		})
@@ -88,6 +87,20 @@ func TestRemoteLokiBackend(t *testing.T) {
 			res := statesToStream(rule, states, nil, l)
 
 			require.NotContains(t, res.Stream, "__private__")
+		})
+
+		t.Run("includes ruleUID in log line", func(t *testing.T) {
+			rule := createTestRule()
+			l := log.NewNopLogger()
+			states := singleFromNormal(&state.State{
+				State:  eval.Alerting,
+				Labels: data.Labels{"a": "b"},
+			})
+
+			res := statesToStream(rule, states, nil, l)
+
+			entry := requireSingleEntry(t, res)
+			require.Equal(t, rule.UID, entry.RuleUID)
 		})
 
 		t.Run("includes instance labels in log line", func(t *testing.T) {
@@ -139,6 +152,40 @@ func TestRemoteLokiBackend(t *testing.T) {
 			require.InDelta(t, 2.0, entry.Values.Get("A").MustFloat64(), 1e-4)
 			require.InDelta(t, 5.5, entry.Values.Get("B").MustFloat64(), 1e-4)
 		})
+
+		t.Run("captures condition from rule", func(t *testing.T) {
+			rule := createTestRule()
+			rule.Condition = "some-condition"
+			l := log.NewNopLogger()
+			states := singleFromNormal(&state.State{
+				State:  eval.Alerting,
+				Labels: data.Labels{"a": "b"},
+			})
+
+			res := statesToStream(rule, states, nil, l)
+
+			entry := requireSingleEntry(t, res)
+			require.Equal(t, rule.Condition, entry.Condition)
+		})
+
+		t.Run("stores fingerprint of instance labels", func(t *testing.T) {
+			rule := createTestRule()
+			l := log.NewNopLogger()
+			states := singleFromNormal(&state.State{
+				State: eval.Alerting,
+				Labels: data.Labels{
+					"statelabel": "labelvalue",
+					"labeltwo":   "labelvalue",
+					"labelthree": "labelvalue",
+				},
+			})
+
+			res := statesToStream(rule, states, nil, l)
+
+			entry := requireSingleEntry(t, res)
+			exp := labelFingerprint(states[0].Labels)
+			require.Equal(t, exp, entry.Fingerprint)
+		})
 	})
 
 	t.Run("selector string", func(t *testing.T) {
@@ -176,12 +223,35 @@ func TestRemoteLokiBackend(t *testing.T) {
 				exp:   `{orgID="0",from="state-history"}`,
 			},
 			{
-				name: "adds stream label filter for ruleUID and orgID",
+				name: "adds stream label filter for orgID",
 				query: models.HistoryQuery{
-					RuleUID: "rule-uid",
-					OrgID:   123,
+					OrgID: 123,
 				},
-				exp: `{orgID="123",from="state-history",ruleUID="rule-uid"}`,
+				exp: `{orgID="123",from="state-history"}`,
+			},
+			{
+				name: "filters ruleUID in log line",
+				query: models.HistoryQuery{
+					OrgID:   123,
+					RuleUID: "rule-uid",
+				},
+				exp: `{orgID="123",from="state-history"} | json | ruleUID="rule-uid"`,
+			},
+			{
+				name: "filters dashboardUID in log line",
+				query: models.HistoryQuery{
+					OrgID:        123,
+					DashboardUID: "dash-uid",
+				},
+				exp: `{orgID="123",from="state-history"} | json | dashboardUID="dash-uid"`,
+			},
+			{
+				name: "filters panelID in log line",
+				query: models.HistoryQuery{
+					OrgID:   123,
+					PanelID: 456,
+				},
+				exp: `{orgID="123",from="state-history"} | json | panelID=456`,
 			},
 			{
 				name: "filters instance labels in log line",
@@ -193,6 +263,17 @@ func TestRemoteLokiBackend(t *testing.T) {
 					},
 				},
 				exp: `{orgID="123",from="state-history"} | json | labels_customlabel="customvalue" | labels_labeltwo="labelvaluetwo"`,
+			},
+			{
+				name: "filters both instance labels + ruleUID",
+				query: models.HistoryQuery{
+					OrgID:   123,
+					RuleUID: "rule-uid",
+					Labels: map[string]string{
+						"customlabel": "customvalue",
+					},
+				},
+				exp: `{orgID="123",from="state-history"} | json | ruleUID="rule-uid" | labels_customlabel="customvalue"`,
 			},
 		}
 
@@ -209,20 +290,20 @@ func TestRemoteLokiBackend(t *testing.T) {
 func TestMerge(t *testing.T) {
 	testCases := []struct {
 		name         string
-		res          queryRes
+		res          QueryRes
 		ruleID       string
 		expectedTime []time.Time
 	}{
 		{
 			name: "Should return values from multiple streams in right order",
-			res: queryRes{
-				Data: queryData{
-					Result: []stream{
+			res: QueryRes{
+				Data: QueryData{
+					Result: []Stream{
 						{
 							Stream: map[string]string{
 								"current": "pending",
 							},
-							Values: []sample{
+							Values: []Sample{
 								{time.Unix(0, 1), `{"schemaVersion": 1, "previous": "normal", "current": "pending", "values":{"a": "b"}}`},
 							},
 						},
@@ -230,7 +311,7 @@ func TestMerge(t *testing.T) {
 							Stream: map[string]string{
 								"current": "firing",
 							},
-							Values: []sample{
+							Values: []Sample{
 								{time.Unix(0, 2), `{"schemaVersion": 1, "previous": "pending", "current": "firing", "values":{"a": "b"}}`},
 							},
 						},
@@ -245,14 +326,14 @@ func TestMerge(t *testing.T) {
 		},
 		{
 			name: "Should handle empty values",
-			res: queryRes{
-				Data: queryData{
-					Result: []stream{
+			res: QueryRes{
+				Data: QueryData{
+					Result: []Stream{
 						{
 							Stream: map[string]string{
 								"current": "normal",
 							},
-							Values: []sample{},
+							Values: []Sample{},
 						},
 					},
 				},
@@ -262,14 +343,14 @@ func TestMerge(t *testing.T) {
 		},
 		{
 			name: "Should handle multiple values in one stream",
-			res: queryRes{
-				Data: queryData{
-					Result: []stream{
+			res: QueryRes{
+				Data: QueryData{
+					Result: []Stream{
 						{
 							Stream: map[string]string{
 								"current": "normal",
 							},
-							Values: []sample{
+							Values: []Sample{
 								{time.Unix(0, 1), `{"schemaVersion": 1, "previous": "firing", "current": "normal", "values":{"a": "b"}}`},
 								{time.Unix(0, 2), `{"schemaVersion": 1, "previous": "firing", "current": "normal", "values":{"a": "b"}}`},
 							},
@@ -278,7 +359,7 @@ func TestMerge(t *testing.T) {
 							Stream: map[string]string{
 								"current": "firing",
 							},
-							Values: []sample{
+							Values: []Sample{
 								{time.Unix(0, 3), `{"schemaVersion": 1, "previous": "pending", "current": "firing", "values":{"a": "b"}}`},
 							},
 						},
@@ -318,7 +399,7 @@ func TestMerge(t *testing.T) {
 func TestRecordStates(t *testing.T) {
 	t.Run("writes state transitions to loki", func(t *testing.T) {
 		req := NewFakeRequester()
-		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry()))
+		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry(), metrics.Subsystem))
 		rule := createTestRule()
 		states := singleFromNormal(&state.State{
 			State:  eval.Alerting,
@@ -333,7 +414,7 @@ func TestRecordStates(t *testing.T) {
 
 	t.Run("emits expected write metrics", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		met := metrics.NewHistorianMetrics(reg)
+		met := metrics.NewHistorianMetrics(reg, metrics.Subsystem)
 		loki := createTestLokiBackend(NewFakeRequester(), met)
 		errLoki := createTestLokiBackend(NewFakeRequester().WithResponse(badResponse()), met) //nolint:bodyclose
 		rule := createTestRule()
@@ -370,7 +451,7 @@ grafana_alerting_state_history_writes_total{backend="loki",org="1"} 2
 
 	t.Run("elides request if nothing to send", func(t *testing.T) {
 		req := NewFakeRequester()
-		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry()))
+		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry(), metrics.Subsystem))
 		rule := createTestRule()
 		states := []state.StateTransition{}
 
@@ -382,7 +463,7 @@ grafana_alerting_state_history_writes_total{backend="loki",org="1"} 2
 
 	t.Run("succeeds with special chars in labels", func(t *testing.T) {
 		req := NewFakeRequester()
-		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry()))
+		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry(), metrics.Subsystem))
 		rule := createTestRule()
 		states := singleFromNormal(&state.State{
 			State: eval.Alerting,
@@ -405,7 +486,7 @@ grafana_alerting_state_history_writes_total{backend="loki",org="1"} 2
 
 	t.Run("adds external labels to log lines", func(t *testing.T) {
 		req := NewFakeRequester()
-		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry()))
+		loki := createTestLokiBackend(req, metrics.NewHistorianMetrics(prometheus.NewRegistry(), metrics.Subsystem))
 		rule := createTestRule()
 		states := singleFromNormal(&state.State{
 			State: eval.Alerting,
@@ -452,12 +533,12 @@ func createTestRule() history_model.RuleMeta {
 	}
 }
 
-func requireSingleEntry(t *testing.T, res stream) lokiEntry {
+func requireSingleEntry(t *testing.T, res Stream) lokiEntry {
 	require.Len(t, res.Values, 1)
 	return requireEntry(t, res.Values[0])
 }
 
-func requireEntry(t *testing.T, row sample) lokiEntry {
+func requireEntry(t *testing.T, row Sample) lokiEntry {
 	t.Helper()
 
 	var entry lokiEntry

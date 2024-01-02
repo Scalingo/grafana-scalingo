@@ -9,7 +9,7 @@ import { TemplateSrv } from 'app/features/templating/template_srv';
 import { createMockDatasource } from '../__mocks__/cloudMonitoringDatasource';
 import { createMockMetricDescriptor } from '../__mocks__/cloudMonitoringMetricDescriptor';
 import { createMockTimeSeriesList } from '../__mocks__/cloudMonitoringQuery';
-import { MetricKind, PreprocessorType } from '../types';
+import { PreprocessorType, MetricKind } from '../types/query';
 
 import { defaultTimeSeriesList } from './MetricQueryEditor';
 import { VisualMetricQueryEditor } from './VisualMetricQueryEditor';
@@ -138,7 +138,9 @@ describe('VisualMetricQueryEditor', () => {
     expect(screen.getByText('metric.test_label')).toBeInTheDocument();
     const service = await screen.findByLabelText('Service');
     openMenu(service);
-    await select(service, 'Srv 2', { container: document.body });
+    await act(async () => {
+      await select(service, 'Srv 2', { container: document.body });
+    });
     expect(onChange).toBeCalledWith(expect.objectContaining({ filters: ['metric.type', '=', 'type2'] }));
     expect(query).toEqual(defaultQuery);
     expect(screen.queryByText('metric.test_label')).not.toBeInTheDocument();

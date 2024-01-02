@@ -20,6 +20,11 @@ import (
 //
 // Will return auth keys.
 //
+// Deprecated: true.
+//
+// Deprecated. Please use GET /api/serviceaccounts and GET /api/serviceaccounts/{id}/tokens instead
+// see https://grafana.com/docs/grafana/next/administration/api-keys/#migrate-api-keys-to-grafana-service-accounts-using-the-api.
+//
 // Responses:
 // 200: getAPIkeyResponse
 // 401: unauthorisedError
@@ -27,11 +32,11 @@ import (
 // 404: notFoundError
 // 500: internalServerError
 func (hs *HTTPServer) GetAPIKeys(c *contextmodel.ReqContext) response.Response {
-	query := apikey.GetApiKeysQuery{OrgID: c.OrgID, User: c.SignedInUser, IncludeExpired: c.QueryBool("includeExpired")}
+	query := apikey.GetApiKeysQuery{OrgID: c.SignedInUser.GetOrgID(), User: c.SignedInUser, IncludeExpired: c.QueryBool("includeExpired")}
 
 	keys, err := hs.apiKeyService.GetAPIKeys(c.Req.Context(), &query)
 	if err != nil {
-		return response.Error(500, "Failed to list api keys", err)
+		return response.Error(http.StatusInternalServerError, "Failed to list api keys", err)
 	}
 
 	ids := map[string]bool{}
@@ -52,7 +57,7 @@ func (hs *HTTPServer) GetAPIKeys(c *contextmodel.ReqContext) response.Response {
 		}
 	}
 
-	metadata := hs.getMultiAccessControlMetadata(c, c.OrgID, "apikeys:id", ids)
+	metadata := hs.getMultiAccessControlMetadata(c, "apikeys:id", ids)
 	if len(metadata) > 0 {
 		for _, key := range result {
 			key.AccessControl = metadata[strconv.FormatInt(key.ID, 10)]
@@ -66,6 +71,10 @@ func (hs *HTTPServer) GetAPIKeys(c *contextmodel.ReqContext) response.Response {
 //
 // Delete API key.
 //
+// Deletes an API key.
+// Deprecated. See: https://grafana.com/docs/grafana/next/administration/api-keys/#migrate-api-keys-to-grafana-service-accounts-using-the-api.
+//
+// Deprecated: true
 // Responses:
 // 200: okResponse
 // 401: unauthorisedError
@@ -78,7 +87,7 @@ func (hs *HTTPServer) DeleteAPIKey(c *contextmodel.ReqContext) response.Response
 		return response.Error(http.StatusBadRequest, "id is invalid", err)
 	}
 
-	cmd := &apikey.DeleteCommand{ID: id, OrgID: c.OrgID}
+	cmd := &apikey.DeleteCommand{ID: id, OrgID: c.SignedInUser.GetOrgID()}
 	err = hs.apiKeyService.DeleteApiKey(c.Req.Context(), cmd)
 	if err != nil {
 		var status int
@@ -99,6 +108,11 @@ func (hs *HTTPServer) DeleteAPIKey(c *contextmodel.ReqContext) response.Response
 //
 // Will return details of the created API key.
 //
+// Deprecated: true
+// Deprecated. Please use POST /api/serviceaccounts and POST /api/serviceaccounts/{id}/tokens
+//
+// see: https://grafana.com/docs/grafana/next/administration/api-keys/#migrate-api-keys-to-grafana-service-accounts-using-the-api.
+//
 // Responses:
 // 200: postAPIkeyResponse
 // 400: badRequestError
@@ -112,38 +126,38 @@ func (hs *HTTPServer) AddAPIKey(c *contextmodel.ReqContext) response.Response {
 		return response.Error(http.StatusBadRequest, "bad request data", err)
 	}
 	if !cmd.Role.IsValid() {
-		return response.Error(400, "Invalid role specified", nil)
+		return response.Error(http.StatusBadRequest, "Invalid role specified", nil)
 	}
-	if !c.OrgRole.Includes(cmd.Role) {
+	if !c.SignedInUser.GetOrgRole().Includes(cmd.Role) {
 		return response.Error(http.StatusForbidden, "Cannot assign a role higher than user's role", nil)
 	}
 
 	if hs.Cfg.ApiKeyMaxSecondsToLive != -1 {
 		if cmd.SecondsToLive == 0 {
-			return response.Error(400, "Number of seconds before expiration should be set", nil)
+			return response.Error(http.StatusBadRequest, "Number of seconds before expiration should be set", nil)
 		}
 		if cmd.SecondsToLive > hs.Cfg.ApiKeyMaxSecondsToLive {
-			return response.Error(400, "Number of seconds before expiration is greater than the global limit", nil)
+			return response.Error(http.StatusBadRequest, "Number of seconds before expiration is greater than the global limit", nil)
 		}
 	}
 
-	cmd.OrgID = c.OrgID
+	cmd.OrgID = c.SignedInUser.GetOrgID()
 
 	newKeyInfo, err := apikeygen.New(cmd.OrgID, cmd.Name)
 	if err != nil {
-		return response.Error(500, "Generating API key failed", err)
+		return response.Error(http.StatusInternalServerError, "Generating API key failed", err)
 	}
 
 	cmd.Key = newKeyInfo.HashedKey
 	key, err := hs.apiKeyService.AddAPIKey(c.Req.Context(), &cmd)
 	if err != nil {
 		if errors.Is(err, apikey.ErrInvalidExpiration) {
-			return response.Error(400, err.Error(), nil)
+			return response.Error(http.StatusBadRequest, err.Error(), nil)
 		}
 		if errors.Is(err, apikey.ErrDuplicate) {
-			return response.Error(409, err.Error(), nil)
+			return response.Error(http.StatusConflict, err.Error(), nil)
 		}
-		return response.Error(500, "Failed to add API Key", err)
+		return response.Error(http.StatusInternalServerError, "Failed to add API Key", err)
 	}
 
 	result := &dtos.NewApiKeyResult{

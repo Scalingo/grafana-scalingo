@@ -13,20 +13,25 @@
 // limitations under the License.
 
 import { css } from '@emotion/css';
+import { SpanStatusCode } from '@opentelemetry/api';
 import cx from 'classnames';
 import React from 'react';
 
-import { dateTimeFormat, GrafanaTheme2, LinkModel, TimeZone } from '@grafana/data';
-import { config, reportInteraction } from '@grafana/runtime';
-import { Button, DataLinkButton, Icon, TextArea, useStyles2 } from '@grafana/ui';
+import { DataFrame, dateTimeFormat, GrafanaTheme2, IconName, LinkModel, TimeZone } from '@grafana/data';
+import { config, locationService, reportInteraction } from '@grafana/runtime';
+import { DataLinkButton, Icon, TextArea, useStyles2 } from '@grafana/ui';
+import { TraceToProfilesOptions } from 'app/core/components/TraceToProfiles/TraceToProfilesSettings';
+import { RelatedProfilesTitle } from 'app/plugins/datasource/tempo/resultTransformer';
 
+import { pyroscopeProfileIdTagKey } from '../../../createSpanLink';
 import { autoColor } from '../../Theme';
 import { Divider } from '../../common/Divider';
 import LabeledList from '../../common/LabeledList';
+import { KIND, LIBRARY_NAME, LIBRARY_VERSION, STATUS, STATUS_MESSAGE, TRACE_STATE } from '../../constants/span';
 import { SpanLinkFunc, TNil } from '../../types';
+import { SpanLinkDef, SpanLinkType } from '../../types/links';
 import { TraceKeyValuePair, TraceLink, TraceLog, TraceSpan, TraceSpanReference } from '../../types/trace';
 import { uAlignIcon, ubM0, ubMb1, ubMy1, ubTxRightAlign } from '../../uberUtilityStyles';
-import { TopOfViewRefType } from '../VirtualizedTraceView';
 import { formatDuration } from '../utils';
 
 import AccordianKeyValues from './AccordianKeyValues';
@@ -34,6 +39,7 @@ import AccordianLogs from './AccordianLogs';
 import AccordianReferences from './AccordianReferences';
 import AccordianText from './AccordianText';
 import DetailState from './DetailState';
+import SpanFlameGraph from './SpanFlameGraph';
 
 const getStyles = (theme: GrafanaTheme2) => {
   return {
@@ -103,6 +109,10 @@ const getStyles = (theme: GrafanaTheme2) => {
   };
 };
 
+export type TraceFlameGraphs = {
+  [spanID: string]: DataFrame;
+};
+
 export type SpanDetailProps = {
   detailState: DetailState;
   linksGetter: ((links: TraceKeyValuePair[], index: number) => TraceLink[]) | TNil;
@@ -110,6 +120,7 @@ export type SpanDetailProps = {
   logsToggle: (spanID: string) => void;
   processToggle: (spanID: string) => void;
   span: TraceSpan;
+  traceToProfilesOptions?: TraceToProfilesOptions;
   timeZone: TimeZone;
   tagsToggle: (spanID: string) => void;
   traceStartTime: number;
@@ -120,8 +131,10 @@ export type SpanDetailProps = {
   createSpanLink?: SpanLinkFunc;
   focusedSpanId?: string;
   createFocusSpanLink: (traceId: string, spanId: string) => LinkModel;
-  topOfViewRefType?: TopOfViewRefType;
   datasourceType: string;
+  traceFlameGraphs: TraceFlameGraphs;
+  setTraceFlameGraphs: (flameGraphs: TraceFlameGraphs) => void;
+  setRedrawListView: (redraw: {}) => void;
 };
 
 export default function SpanDetail(props: SpanDetailProps) {
@@ -140,8 +153,11 @@ export default function SpanDetail(props: SpanDetailProps) {
     referenceItemToggle,
     createSpanLink,
     createFocusSpanLink,
-    topOfViewRefType,
     datasourceType,
+    traceFlameGraphs,
+    setTraceFlameGraphs,
+    traceToProfilesOptions,
+    setRedrawListView,
   } = props;
   const {
     isTagsOpen,
@@ -166,7 +182,7 @@ export default function SpanDetail(props: SpanDetailProps) {
     stackTraces,
   } = span;
   const { timeZone } = props;
-  const overviewItems = [
+  let overviewItems = [
     {
       key: 'svc',
       label: 'Service:',
@@ -192,46 +208,96 @@ export default function SpanDetail(props: SpanDetailProps) {
         ]
       : []),
   ];
+
   const styles = useStyles2(getStyles);
 
-  let logLinkButton: JSX.Element | undefined = undefined;
+  if (span.kind) {
+    overviewItems.push({
+      key: KIND,
+      label: 'Kind:',
+      value: span.kind,
+    });
+  }
+  if (span.statusCode !== undefined) {
+    overviewItems.push({
+      key: STATUS,
+      label: 'Status:',
+      value: SpanStatusCode[span.statusCode].toLowerCase(),
+    });
+  }
+  if (span.statusMessage) {
+    overviewItems.push({
+      key: STATUS_MESSAGE,
+      label: 'Status Message:',
+      value: span.statusMessage,
+    });
+  }
+  if (span.instrumentationLibraryName) {
+    overviewItems.push({
+      key: LIBRARY_NAME,
+      label: 'Library Name:',
+      value: span.instrumentationLibraryName,
+    });
+  }
+  if (span.instrumentationLibraryVersion) {
+    overviewItems.push({
+      key: LIBRARY_VERSION,
+      label: 'Library Version:',
+      value: span.instrumentationLibraryVersion,
+    });
+  }
+  if (span.traceState) {
+    overviewItems.push({
+      key: TRACE_STATE,
+      label: 'Trace State:',
+      value: span.traceState,
+    });
+  }
+
+  const createLinkButton = (link: SpanLinkDef, type: SpanLinkType, title: string, icon: IconName) => {
+    return (
+      <DataLinkButton
+        link={{
+          ...link,
+          title: title,
+          target: '_blank',
+          origin: link.field,
+          onClick: (event: React.MouseEvent) => {
+            // DataLinkButton assumes if you provide an onClick event you would want to prevent default behavior like navigation
+            // In this case, if an onClick is not defined, restore navigation to the provided href while keeping the tracking
+            // this interaction will not be tracked with link right clicks
+            reportInteraction('grafana_traces_trace_view_span_link_clicked', {
+              datasourceType: datasourceType,
+              grafana_version: config.buildInfo.version,
+              type,
+              location: 'spanDetails',
+            });
+
+            if (link.onClick) {
+              link.onClick?.(event);
+            } else {
+              locationService.push(link.href);
+            }
+          },
+        }}
+        buttonProps={{ icon }}
+      />
+    );
+  };
+
+  let logLinkButton: JSX.Element | null = null;
+  let profileLinkButton: JSX.Element | null = null;
   if (createSpanLink) {
     const links = createSpanLink(span);
-    if (links?.logLinks) {
-      logLinkButton = (
-        <DataLinkButton
-          link={{
-            ...links.logLinks[0],
-            title: 'Logs for this span',
-            target: '_blank',
-            origin: links.logLinks[0].field,
-            onClick: (event: React.MouseEvent) => {
-              reportInteraction('grafana_traces_trace_view_span_link_clicked', {
-                datasourceType: datasourceType,
-                grafana_version: config.buildInfo.version,
-                type: 'log',
-                location: 'spanDetails',
-              });
-              links?.logLinks?.[0].onClick?.(event);
-            },
-          }}
-          buttonProps={{ icon: 'gf-logs' }}
-        />
-      );
-    } else {
-      logLinkButton = (
-        <Button
-          variant="primary"
-          size="sm"
-          icon={'gf-logs'}
-          disabled
-          tooltip={
-            'We did not match any variables between the link and this span. Check your configuration or this span attributes.'
-          }
-        >
-          Logs for this span
-        </Button>
-      );
+    const logsLink = links?.filter((link) => link.type === SpanLinkType.Logs);
+    if (links && logsLink && logsLink.length > 0) {
+      logLinkButton = createLinkButton(logsLink[0], SpanLinkType.Logs, 'Logs for this span', 'gf-logs');
+    }
+    const profilesLink = links?.filter(
+      (link) => link.type === SpanLinkType.Profiles && link.title === RelatedProfilesTitle
+    );
+    if (links && profilesLink && profilesLink.length > 0) {
+      profileLinkButton = createLinkButton(profilesLink[0], SpanLinkType.Profiles, 'Profiles for this span', 'link');
     }
   }
 
@@ -244,13 +310,14 @@ export default function SpanDetail(props: SpanDetailProps) {
           <LabeledList className={ubTxRightAlign} divider={true} items={overviewItems} />
         </div>
       </div>
-      {logLinkButton}
+      <span style={{ marginRight: '10px' }}>{logLinkButton}</span>
+      {profileLinkButton}
       <Divider className={ubMy1} type={'horizontal'} />
       <div>
         <div>
           <AccordianKeyValues
             data={tags}
-            label="Attributes"
+            label="Span Attributes"
             linksGetter={linksGetter}
             isOpen={isTagsOpen}
             onToggle={() => tagsToggle(spanID)}
@@ -259,7 +326,7 @@ export default function SpanDetail(props: SpanDetailProps) {
             <AccordianKeyValues
               className={ubMb1}
               data={process.tags}
-              label="Resource"
+              label="Resource Attributes"
               linksGetter={linksGetter}
               isOpen={isProcessOpen}
               onToggle={() => processToggle(spanID)}
@@ -287,7 +354,7 @@ export default function SpanDetail(props: SpanDetailProps) {
             onToggle={() => warningsToggle(spanID)}
           />
         )}
-        {stackTraces && stackTraces.length && (
+        {stackTraces?.length ? (
           <AccordianText
             label="Stack trace"
             data={stackTraces}
@@ -314,7 +381,7 @@ export default function SpanDetail(props: SpanDetailProps) {
             }}
             onToggle={() => stackTracesToggle(spanID)}
           />
-        )}
+        ) : null}
         {references && references.length > 0 && (references.length > 1 || references[0].refType !== 'CHILD_OF') && (
           <AccordianReferences
             data={references}
@@ -325,29 +392,40 @@ export default function SpanDetail(props: SpanDetailProps) {
             createFocusSpanLink={createFocusSpanLink}
           />
         )}
-        {topOfViewRefType === TopOfViewRefType.Explore && (
-          <small className={styles.debugInfo}>
-            <a
-              {...focusSpanLink}
-              onClick={(e) => {
-                // click handling logic copied from react router:
-                // https://github.com/remix-run/react-router/blob/997b4d67e506d39ac6571cb369d6d2d6b3dda557/packages/react-router-dom/index.tsx#L392-L394s
-                if (
-                  focusSpanLink.onClick &&
-                  e.button === 0 && // Ignore everything but left clicks
-                  (!e.currentTarget.target || e.currentTarget.target === '_self') && // Let browser handle "target=_blank" etc.
-                  !(e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) // Ignore clicks with modifier keys
-                ) {
-                  e.preventDefault();
-                  focusSpanLink.onClick(e);
-                }
-              }}
-            >
-              <Icon name={'link'} className={cx(uAlignIcon, styles.LinkIcon)}></Icon>
-            </a>
-            <span className={styles.debugLabel} data-label="SpanID:" /> {spanID}
-          </small>
-        )}
+        {config.featureToggles.tracesEmbeddedFlameGraph &&
+          span.tags.some((tag) => tag.key === pyroscopeProfileIdTagKey) && (
+            <SpanFlameGraph
+              span={span}
+              timeZone={timeZone}
+              traceFlameGraphs={traceFlameGraphs}
+              setTraceFlameGraphs={setTraceFlameGraphs}
+              traceToProfilesOptions={traceToProfilesOptions}
+              setRedrawListView={setRedrawListView}
+            />
+          )}
+        <small className={styles.debugInfo}>
+          {/* TODO: fix keyboard a11y */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+          <a
+            {...focusSpanLink}
+            onClick={(e) => {
+              // click handling logic copied from react router:
+              // https://github.com/remix-run/react-router/blob/997b4d67e506d39ac6571cb369d6d2d6b3dda557/packages/react-router-dom/index.tsx#L392-L394s
+              if (
+                focusSpanLink.onClick &&
+                e.button === 0 && // Ignore everything but left clicks
+                (!e.currentTarget.target || e.currentTarget.target === '_self') && // Let browser handle "target=_blank" etc.
+                !(e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) // Ignore clicks with modifier keys
+              ) {
+                e.preventDefault();
+                focusSpanLink.onClick(e);
+              }
+            }}
+          >
+            <Icon name={'link'} className={cx(uAlignIcon, styles.LinkIcon)}></Icon>
+          </a>
+          <span className={styles.debugLabel} data-label="SpanID:" /> {spanID}
+        </small>
       </div>
     </div>
   );

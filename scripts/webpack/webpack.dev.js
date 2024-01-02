@@ -4,19 +4,24 @@ const browserslist = require('browserslist');
 const { resolveToEsbuildTarget } = require('esbuild-plugin-browserslist');
 const ESLintPlugin = require('eslint-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const path = require('path');
 const { DefinePlugin } = require('webpack');
+const WebpackAssetsManifest = require('webpack-assets-manifest');
 const { merge } = require('webpack-merge');
 
-const HTMLWebpackCSSChunks = require('./plugins/HTMLWebpackCSSChunks');
 const common = require('./webpack.common.js');
 const esbuildTargets = resolveToEsbuildTarget(browserslist(), { printUnknownTargets: false });
+// esbuild-loader 3.0.0+ requires format to be set to prevent it
+// from defaulting to 'iife' which breaks monaco/loader once minified.
+const esbuildOptions = {
+  target: esbuildTargets,
+  format: undefined,
+};
 
-module.exports = (env = {}) =>
-  merge(common, {
-    devtool: 'inline-source-map',
+module.exports = (env = {}) => {
+  return merge(common, {
+    devtool: 'source-map',
     mode: 'development',
 
     entry: {
@@ -35,14 +40,11 @@ module.exports = (env = {}) =>
       rules: [
         {
           test: /\.tsx?$/,
+          exclude: /node_modules/,
           use: {
             loader: 'esbuild-loader',
-            options: {
-              loader: 'tsx',
-              target: esbuildTargets,
-            },
+            options: esbuildOptions,
           },
-          exclude: /node_modules/,
         },
         require('./sass.rule.js')({
           sourceMap: false,
@@ -88,33 +90,26 @@ module.exports = (env = {}) =>
               },
             },
           }),
-      new ESLintPlugin({
-        cache: true,
-        lintDirtyModulesOnly: true, // don't lint on start, only lint changed files
-        extensions: ['.ts', '.tsx'],
-      }),
+      parseInt(env.noLint, 10)
+        ? new DefinePlugin({}) // bogus plugin to satisfy webpack API
+        : new ESLintPlugin({
+            cache: true,
+            lintDirtyModulesOnly: true, // don't lint on start, only lint changed files
+            extensions: ['.ts', '.tsx'],
+          }),
       new MiniCssExtractPlugin({
         filename: 'grafana.[name].[contenthash].css',
       }),
-      new HtmlWebpackPlugin({
-        filename: path.resolve(__dirname, '../../public/views/error.html'),
-        template: path.resolve(__dirname, '../../public/views/error-template.html'),
-        inject: false,
-        chunksSortMode: 'none',
-        excludeChunks: ['dark', 'light'],
-      }),
-      new HtmlWebpackPlugin({
-        filename: path.resolve(__dirname, '../../public/views/index.html'),
-        template: path.resolve(__dirname, '../../public/views/index-template.html'),
-        inject: false,
-        chunksSortMode: 'none',
-        excludeChunks: ['dark', 'light'],
-      }),
-      new HTMLWebpackCSSChunks(),
       new DefinePlugin({
         'process.env': {
           NODE_ENV: JSON.stringify('development'),
         },
       }),
+      new WebpackAssetsManifest({
+        entrypoints: true,
+        integrity: true,
+        publicPath: true,
+      }),
     ],
   });
+};

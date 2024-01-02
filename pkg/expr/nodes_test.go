@@ -12,8 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/grafana/pkg/expr/mathexp"
+	"github.com/grafana/grafana/pkg/infra/log/logtest"
+	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/services/datasources"
-	datasources2 "github.com/grafana/grafana/pkg/services/datasources/fakes"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
@@ -24,28 +26,19 @@ func (e expectedError) Error() string {
 }
 
 func TestQueryError_Error(t *testing.T) {
-	e := QueryError{
-		RefID: "A",
-		Err:   errors.New("this is an error message"),
-	}
-	assert.EqualError(t, e, "failed to execute query A: this is an error message")
+	e := MakeQueryError("A", "", errors.New("this is an error message"))
+	assert.EqualError(t, e, "[sse.dataQueryError] failed to execute query [A]: this is an error message")
 }
 
 func TestQueryError_Unwrap(t *testing.T) {
 	t.Run("errors.Is", func(t *testing.T) {
 		expectedIsErr := errors.New("expected")
-		e := QueryError{
-			RefID: "A",
-			Err:   expectedIsErr,
-		}
+		e := MakeQueryError("A", "", expectedIsErr)
 		assert.True(t, errors.Is(e, expectedIsErr))
 	})
 
 	t.Run("errors.As", func(t *testing.T) {
-		e := QueryError{
-			RefID: "A",
-			Err:   expectedError{},
-		}
+		e := MakeQueryError("A", "", expectedError{})
 		var expectedAsError expectedError
 		assert.True(t, errors.As(e, &expectedAsError))
 	})
@@ -178,34 +171,13 @@ func TestCheckIfSeriesNeedToBeFixed(t *testing.T) {
 }
 
 func TestConvertDataFramesToResults(t *testing.T) {
-	execute := func(frames []*data.Frame, datasourceType string) (mathexp.Results, error) {
-		dsNode := DSNode{
-			baseNode: baseNode{
-				refID: "A",
-			},
-			datasource: &datasources.DataSource{
-				Type: datasourceType,
-			},
-			timeRange: RelativeTimeRange{
-				From: 0,
-				To:   0,
-			},
-		}
-		s := &Service{
-			cfg: setting.NewCfg(),
-			dataService: &mockEndpoint{
-				Frames: frames,
-			},
-			dataSourceService: &datasources2.FakeDataSourceService{},
-		}
-		return dsNode.Execute(context.Background(), time.Now(), nil, s)
+	s := &Service{
+		cfg:      setting.NewCfg(),
+		features: &featuremgmt.FeatureManager{},
+		tracer:   tracing.InitializeTracerForTest(),
+		metrics:  newMetrics(nil),
 	}
 
-	t.Run("should return NoData if no frames", func(t *testing.T) {
-		result, err := execute(nil, "test")
-		require.NoError(t, err)
-		require.Equal(t, mathexp.NewNoData(), result.Values[0].Value())
-	})
 	t.Run("should add name label if no labels and specific data source", func(t *testing.T) {
 		supported := []string{datasources.DS_GRAPHITE, datasources.DS_TESTDATA}
 		t.Run("when only field name is specified", func(t *testing.T) {
@@ -221,8 +193,9 @@ func TestConvertDataFramesToResults(t *testing.T) {
 
 				for _, dtype := range supported {
 					t.Run(dtype, func(t *testing.T) {
-						res, err := execute(frames, dtype)
+						resultType, res, err := convertDataFramesToResults(context.Background(), frames, dtype, s, &logtest.Fake{})
 						require.NoError(t, err)
+						assert.Equal(t, "single frame series", resultType)
 						require.Len(t, res.Values, 2)
 
 						var names []string
@@ -248,8 +221,9 @@ func TestConvertDataFramesToResults(t *testing.T) {
 
 				for _, dtype := range supported {
 					t.Run(dtype, func(t *testing.T) {
-						res, err := execute(frames, dtype)
+						resultType, res, err := convertDataFramesToResults(context.Background(), frames, dtype, s, &logtest.Fake{})
 						require.NoError(t, err)
+						assert.Equal(t, "multi frame series", resultType)
 						require.Len(t, res.Values, 2)
 
 						var names []string
@@ -280,8 +254,9 @@ func TestConvertDataFramesToResults(t *testing.T) {
 
 			for _, dtype := range supported {
 				t.Run(dtype, func(t *testing.T) {
-					res, err := execute(frames, dtype)
+					resultType, res, err := convertDataFramesToResults(context.Background(), frames, dtype, s, &logtest.Fake{})
 					require.NoError(t, err)
+					assert.Equal(t, "multi frame series", resultType)
 					require.Len(t, res.Values, 2)
 
 					var names []string

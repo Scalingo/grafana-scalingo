@@ -35,8 +35,6 @@ const mockFolder = (folderOverride: Partial<FolderState> = {}): FolderState => {
     canSave: false,
     url: '/folder-1',
     version: 1,
-    permissions: [],
-    canViewFolderPermissions: false,
     canDelete: false,
     ...folderOverride,
   };
@@ -58,6 +56,7 @@ describe('AlertsFolderView tests', () => {
             mockCombinedRule({ name: 'Test Alert 2' }),
             mockCombinedRule({ name: 'Test Alert 3' }),
           ],
+          totals: {},
         },
         {
           name: 'group2',
@@ -66,6 +65,7 @@ describe('AlertsFolderView tests', () => {
             mockCombinedRule({ name: 'Test Alert 5' }),
             mockCombinedRule({ name: 'Test Alert 6' }),
           ],
+          totals: {},
         },
       ],
     };
@@ -104,6 +104,7 @@ describe('AlertsFolderView tests', () => {
             mockCombinedRule({ name: 'Test Alert from other folder 1' }),
             mockCombinedRule({ name: 'Test Alert from other folder 2' }),
           ],
+          totals: {},
         },
       ],
     };
@@ -132,6 +133,7 @@ describe('AlertsFolderView tests', () => {
         {
           name: 'default',
           rules: [mockCombinedRule({ name: 'CPU Alert' }), mockCombinedRule({ name: 'RAM usage alert' })],
+          totals: {},
         },
       ],
     };
@@ -166,6 +168,7 @@ describe('AlertsFolderView tests', () => {
             mockCombinedRule({ name: 'CPU Alert', labels: {} }),
             mockCombinedRule({ name: 'RAM usage alert', labels: { severity: 'critical' } }),
           ],
+          totals: {},
         },
       ],
     };

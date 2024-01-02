@@ -1,21 +1,20 @@
 import { action } from '@storybook/addon-actions';
 import { useArgs } from '@storybook/client-api';
-import { ComponentMeta, ComponentStory } from '@storybook/react';
+import { Meta, StoryFn } from '@storybook/react';
 import React from 'react';
 
 import { SeriesColorPicker, ColorPicker, clearButtonStyles, useStyles2 } from '@grafana/ui';
 
-import { withCenteredStory } from '../../utils/storybook/withCenteredStory';
-import { renderComponentWithTheme } from '../../utils/storybook/withTheme';
-
 import mdx from './ColorPicker.mdx';
 import { ColorPickerInput } from './ColorPickerInput';
 
-const meta: ComponentMeta<typeof ColorPicker> = {
+const meta: Meta<typeof ColorPicker> = {
   title: 'Pickers and Editors/ColorPicker',
   component: ColorPicker,
+  // SB7 has broken subcomponent types due to dropping support for the feature
+  // https://github.com/storybookjs/storybook/issues/20782
+  // @ts-ignore
   subcomponents: { SeriesColorPicker, ColorPickerInput },
-  decorators: [withCenteredStory],
   parameters: {
     docs: {
       page: mdx,
@@ -30,19 +29,24 @@ const meta: ComponentMeta<typeof ColorPicker> = {
   },
 };
 
-export const Basic: ComponentStory<typeof ColorPicker> = ({ color, enableNamedColors }) => {
+export const Basic: StoryFn<typeof ColorPicker> = ({ color, enableNamedColors }) => {
   const [, updateArgs] = useArgs();
-  return renderComponentWithTheme(ColorPicker, {
-    enableNamedColors,
-    color,
-    onChange: (color: string) => {
-      action('Color changed')(color);
-      updateArgs({ color });
-    },
-  });
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+      <ColorPicker
+        enableNamedColors={enableNamedColors}
+        color={color}
+        onChange={(color: string) => {
+          action('Color changed')(color);
+          updateArgs({ color });
+        }}
+      />
+    </div>
+  );
 };
 
-export const SeriesPicker: ComponentStory<typeof SeriesColorPicker> = ({ color, enableNamedColors }) => {
+export const SeriesPicker: StoryFn<typeof SeriesColorPicker> = ({ color, enableNamedColors }) => {
   const [, updateArgs] = useArgs();
   const clearButton = useStyles2(clearButtonStyles);
   return (
@@ -72,16 +76,18 @@ export const SeriesPicker: ComponentStory<typeof SeriesColorPicker> = ({ color, 
   );
 };
 
-export const Input: ComponentStory<typeof ColorPickerInput> = ({ color }) => {
+export const Input: StoryFn<typeof ColorPickerInput> = ({ color }) => {
   const [, updateArgs] = useArgs();
   return (
-    <ColorPickerInput
-      value={color}
-      onChange={(color) => {
-        action('Color changed')(color);
-        updateArgs({ color });
-      }}
-    />
+    <div style={{ minHeight: '100dvh', display: 'grid', placeContent: 'center' }}>
+      <ColorPickerInput
+        value={color}
+        onChange={(color) => {
+          action('Color changed')(color);
+          updateArgs({ color });
+        }}
+      />
+    </div>
   );
 };
 

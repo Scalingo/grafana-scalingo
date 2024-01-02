@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"math"
 	"net/url"
 	"strings"
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/hashicorp/go-multierror"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/services/ngalert/eval"
@@ -33,24 +34,93 @@ func newCache() *cache {
 	}
 }
 
-func (c *cache) getOrCreate(ctx context.Context, log log.Logger, alertRule *ngModels.AlertRule, result eval.Result, extraLabels data.Labels, externalURL *url.URL) *State {
-	c.mtxStates.Lock()
-	defer c.mtxStates.Unlock()
-	var orgStates map[string]*ruleStates
-	var ok bool
-	if orgStates, ok = c.states[alertRule.OrgID]; !ok {
-		orgStates = make(map[string]*ruleStates)
-		c.states[alertRule.OrgID] = orgStates
+// RegisterMetrics registers a set of Gauges in the form of collectors for the alerts in the cache.
+func (c *cache) RegisterMetrics(r prometheus.Registerer) {
+	newAlertCountByState := func(state eval.State) prometheus.GaugeFunc {
+		return prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace:   metrics.Namespace,
+			Subsystem:   metrics.Subsystem,
+			Name:        "alerts",
+			Help:        "How many alerts by state are in the scheduler.",
+			ConstLabels: prometheus.Labels{"state": strings.ToLower(state.String())},
+		}, func() float64 {
+			return c.countAlertsBy(state)
+		})
 	}
-	var states *ruleStates
-	if states, ok = orgStates[alertRule.UID]; !ok {
-		states = &ruleStates{states: make(map[string]*State)}
-		c.states[alertRule.OrgID][alertRule.UID] = states
-	}
-	return states.getOrCreate(ctx, log, alertRule, result, extraLabels, externalURL)
+
+	r.MustRegister(newAlertCountByState(eval.Normal))
+	r.MustRegister(newAlertCountByState(eval.Alerting))
+	r.MustRegister(newAlertCountByState(eval.Pending))
+	r.MustRegister(newAlertCountByState(eval.Error))
+	r.MustRegister(newAlertCountByState(eval.NoData))
 }
 
-func (rs *ruleStates) getOrCreate(ctx context.Context, log log.Logger, alertRule *ngModels.AlertRule, result eval.Result, extraLabels data.Labels, externalURL *url.URL) *State {
+func (c *cache) countAlertsBy(state eval.State) float64 {
+	c.mtxStates.RLock()
+	defer c.mtxStates.RUnlock()
+	var count float64
+	for _, orgMap := range c.states {
+		for _, rule := range orgMap {
+			for _, st := range rule.states {
+				if st.State == state {
+					count++
+				}
+			}
+		}
+	}
+
+	return count
+}
+
+func (c *cache) getOrCreate(ctx context.Context, log log.Logger, alertRule *ngModels.AlertRule, result eval.Result, extraLabels data.Labels, externalURL *url.URL) *State {
+	// Calculation of state ID involves label and annotation expansion, which may be resource intensive operations, and doing it in the context guarded by mtxStates may create a lot of contention.
+	// Instead of just calculating ID we create an entire state - a candidate. If rule states already hold a state with this ID, this candidate will be discarded and the existing one will be returned.
+	// Otherwise, this candidate will be added to the rule states and returned.
+	stateCandidate := calculateState(ctx, log, alertRule, result, extraLabels, externalURL)
+
+	c.mtxStates.Lock()
+	defer c.mtxStates.Unlock()
+
+	var orgStates map[string]*ruleStates
+	var ok bool
+	if orgStates, ok = c.states[stateCandidate.OrgID]; !ok {
+		orgStates = make(map[string]*ruleStates)
+		c.states[stateCandidate.OrgID] = orgStates
+	}
+	var states *ruleStates
+	if states, ok = orgStates[stateCandidate.AlertRuleUID]; !ok {
+		states = &ruleStates{states: make(map[string]*State)}
+		c.states[stateCandidate.OrgID][stateCandidate.AlertRuleUID] = states
+	}
+	return states.getOrAdd(stateCandidate)
+}
+
+func (rs *ruleStates) getOrAdd(stateCandidate State) *State {
+	state, ok := rs.states[stateCandidate.CacheID]
+	// Check if the state with this ID already exists.
+	if !ok {
+		rs.states[stateCandidate.CacheID] = &stateCandidate
+		return &stateCandidate
+	}
+
+	// Annotations can change over time, however we also want to maintain
+	// certain annotations across evaluations
+	for k, v := range state.Annotations {
+		if _, ok := ngModels.InternalAnnotationNameSet[k]; ok {
+			// If the annotation is not present then it should be copied from the
+			// previous state to the next state
+			if _, ok := stateCandidate.Annotations[k]; !ok {
+				stateCandidate.Annotations[k] = v
+			}
+		}
+	}
+	state.Annotations = stateCandidate.Annotations
+	state.Values = stateCandidate.Values
+	rs.states[stateCandidate.CacheID] = state
+	return state
+}
+
+func calculateState(ctx context.Context, log log.Logger, alertRule *ngModels.AlertRule, result eval.Result, extraLabels data.Labels, externalURL *url.URL) State {
 	// Merge both the extra labels and the labels from the evaluation into a common set
 	// of labels that can be expanded in custom labels and annotations.
 	templateData := template.NewData(mergeLabels(extraLabels, result.Instance), result)
@@ -108,27 +178,9 @@ func (rs *ruleStates) getOrCreate(ctx context.Context, log log.Logger, alertRule
 		log.Error("Error getting cacheId for entry", "error", err)
 	}
 
-	if state, ok := rs.states[id]; ok {
-		// Annotations can change over time, however we also want to maintain
-		// certain annotations across evaluations
-		for k, v := range state.Annotations {
-			if _, ok := ngModels.InternalAnnotationNameSet[k]; ok {
-				// If the annotation is not present then it should be copied from the
-				// previous state to the next state
-				if _, ok := annotations[k]; !ok {
-					annotations[k] = v
-				}
-			}
-		}
-		state.Annotations = annotations
-		state.Values = values
-		rs.states[id] = state
-		return state
-	}
-
 	// For new states, we set StartsAt & EndsAt to EvaluatedAt as this is the
 	// expected value for a Normal state during state transition.
-	newState := &State{
+	newState := State{
 		AlertRuleUID:       alertRule.UID,
 		OrgID:              alertRule.OrgID,
 		CacheID:            id,
@@ -139,7 +191,6 @@ func (rs *ruleStates) getOrCreate(ctx context.Context, log log.Logger, alertRule
 		StartsAt:           result.EvaluatedAt,
 		EndsAt:             result.EvaluatedAt,
 	}
-	rs.states[id] = newState
 	return newState
 }
 
@@ -149,21 +200,21 @@ func (rs *ruleStates) getOrCreate(ctx context.Context, log log.Logger, alertRule
 // template.ExpandError errors.
 func expand(ctx context.Context, log log.Logger, name string, original map[string]string, data template.Data, externalURL *url.URL, evaluatedAt time.Time) (map[string]string, error) {
 	var (
-		errs     *multierror.Error
+		errs     error
 		expanded = make(map[string]string, len(original))
 	)
 	for k, v := range original {
 		result, err := template.Expand(ctx, name, v, data, externalURL, evaluatedAt)
 		if err != nil {
 			log.Error("Error in expanding template", "error", err)
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 			// keep the original template on error
 			expanded[k] = v
 		} else {
 			expanded[k] = result
 		}
 	}
-	return expanded, errs.ErrorOrNil()
+	return expanded, errs
 }
 
 func (rs *ruleStates) deleteStates(predicate func(s *State) bool) []*State {
@@ -276,34 +327,6 @@ func (c *cache) removeByRuleUID(orgID int64, uid string) []*State {
 		states = append(states, state)
 	}
 	return states
-}
-
-func (c *cache) recordMetrics(metrics *metrics.State) {
-	c.mtxStates.RLock()
-	defer c.mtxStates.RUnlock()
-
-	// Set default values to zero such that gauges are reset
-	// after all values from a single state disappear.
-	ct := map[eval.State]int{
-		eval.Normal:   0,
-		eval.Alerting: 0,
-		eval.Pending:  0,
-		eval.NoData:   0,
-		eval.Error:    0,
-	}
-
-	for _, orgMap := range c.states {
-		for _, rule := range orgMap {
-			for _, state := range rule.states {
-				n := ct[state.State]
-				ct[state.State] = n + 1
-			}
-		}
-	}
-
-	for k, n := range ct {
-		metrics.AlertState.WithLabelValues(strings.ToLower(k.String())).Set(float64(n))
-	}
 }
 
 // if duplicate labels exist, keep the value from the first set

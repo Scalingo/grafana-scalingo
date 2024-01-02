@@ -38,7 +38,7 @@ func logsResultsToDataframes(response *cloudwatchlogs.GetQueryResultsOutput) (*d
 
 	rowCount := len(nonEmptyRows)
 
-	fieldValues := make(map[string]interface{})
+	fieldValues := make(map[string]any)
 
 	// Maintaining a list of field names in the order returned from CloudWatch
 	// as just iterating over fieldValues would not give a consistent order
@@ -97,7 +97,7 @@ func logsResultsToDataframes(response *cloudwatchlogs.GetQueryResultsOutput) (*d
 		} else if fieldName == logStreamIdentifierInternal || fieldName == logIdentifierInternal {
 			newFields[len(newFields)-1].SetConfig(
 				&data.FieldConfig{
-					Custom: map[string]interface{}{
+					Custom: map[string]any{
 						"hidden": true,
 					},
 				},
@@ -140,7 +140,7 @@ func logsResultsToDataframes(response *cloudwatchlogs.GetQueryResultsOutput) (*d
 	}
 
 	if response.Status != nil {
-		frame.Meta.Custom = map[string]interface{}{
+		frame.Meta.Custom = map[string]any{
 			"Status": *response.Status,
 		}
 	}
@@ -163,8 +163,9 @@ func changeToStringField(lengthOfValues int, rows [][]*cloudwatchlogs.ResultFiel
 	return fieldValuesAsStrings
 }
 
-func groupResults(results *data.Frame, groupingFieldNames []string) ([]*data.Frame, error) {
+func groupResults(results *data.Frame, groupingFieldNames []string, fromSyncQuery bool) ([]*data.Frame, error) {
 	groupingFields := make([]*data.Field, 0)
+	removeFieldIndices := make([]int, 0)
 
 	for i, field := range results.Fields {
 		for _, groupingField := range groupingFieldNames {
@@ -177,6 +178,10 @@ func groupResults(results *data.Frame, groupingFieldNames []string) ([]*data.Fra
 					}
 					results.Fields[i] = newField
 					field = newField
+				}
+				// For expressions and alerts to work properly we need to remove non-time grouping fields
+				if fromSyncQuery && !field.Type().Time() {
+					removeFieldIndices = append(removeFieldIndices, i)
 				}
 
 				groupingFields = append(groupingFields, field)
@@ -192,14 +197,33 @@ func groupResults(results *data.Frame, groupingFieldNames []string) ([]*data.Fra
 	groupedDataFrames := make(map[string]*data.Frame)
 	for i := 0; i < rowLength; i++ {
 		groupKey := generateGroupKey(groupingFields, i)
+		// if group key doesn't exist create it
 		if _, exists := groupedDataFrames[groupKey]; !exists {
 			newFrame := results.EmptyCopy()
 			newFrame.Name = groupKey
 			newFrame.Meta = results.Meta
+			if fromSyncQuery {
+				// remove grouping indices
+				newFrame.Fields = removeFieldsByIndex(newFrame.Fields, removeFieldIndices)
+				groupLabels := generateLabels(groupingFields, i)
+
+				// set the group key as the display name for sync queries
+				for j := 1; j < len(newFrame.Fields); j++ {
+					valueField := newFrame.Fields[j]
+					if valueField.Config == nil {
+						valueField.Config = &data.FieldConfig{}
+					}
+					valueField.Config.DisplayNameFromDS = groupKey
+					valueField.Labels = groupLabels
+				}
+			}
+
 			groupedDataFrames[groupKey] = newFrame
 		}
 
-		groupedDataFrames[groupKey].AppendRow(results.RowCopy(i)...)
+		// add row to frame
+		row := copyRowWithoutValues(results, i, removeFieldIndices)
+		groupedDataFrames[groupKey].AppendRow(row...)
 	}
 
 	newDataFrames := make([]*data.Frame, 0, len(groupedDataFrames))
@@ -208,6 +232,40 @@ func groupResults(results *data.Frame, groupingFieldNames []string) ([]*data.Fra
 	}
 
 	return newDataFrames, nil
+}
+
+// remove fields at the listed indices
+func removeFieldsByIndex(fields []*data.Field, removeIndices []int) []*data.Field {
+	newGroupingFields := make([]*data.Field, 0)
+	removeIndicesIndex := 0
+	for i, field := range fields {
+		if removeIndicesIndex < len(removeIndices) && i == removeIndices[removeIndicesIndex] {
+			removeIndicesIndex++
+			if removeIndicesIndex > len(removeIndices) {
+				newGroupingFields = append(newGroupingFields, fields[i+1:]...)
+				break
+			}
+			continue
+		}
+		newGroupingFields = append(newGroupingFields, field)
+	}
+	return newGroupingFields
+}
+
+// copy a row without the listed values
+func copyRowWithoutValues(f *data.Frame, rowIdx int, removeIndices []int) []any {
+	vals := make([]any, len(f.Fields)-len(removeIndices))
+	valsIdx := 0
+	removeIndicesIndex := 0
+	for i := range f.Fields {
+		if removeIndicesIndex < len(removeIndices) && i == removeIndices[removeIndicesIndex] {
+			removeIndicesIndex++
+			continue
+		}
+		vals[valsIdx] = f.CopyAt(i, rowIdx)
+		valsIdx++
+	}
+	return vals
 }
 
 func generateGroupKey(fields []*data.Field, row int) string {
@@ -219,8 +277,19 @@ func generateGroupKey(fields []*data.Field, row int) string {
 			}
 		}
 	}
-
 	return groupKey
+}
+
+func generateLabels(fields []*data.Field, row int) data.Labels {
+	labels := data.Labels{}
+	for _, field := range fields {
+		if strField, ok := field.At(row).(*string); ok {
+			if strField != nil {
+				labels[field.Name] = *strField
+			}
+		}
+	}
+	return labels
 }
 
 func numericFieldToStringField(field *data.Field) (*data.Field, error) {

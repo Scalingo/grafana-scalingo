@@ -128,8 +128,12 @@ func (d *AlertsRouter) SyncAndApplyConfigFromDatabase() error {
 		redactedAMs := buildRedactedAMs(d.logger, alertmanagers, cfg.OrgID)
 		d.logger.Debug("Alertmanagers found in the configuration", "alertmanagers", redactedAMs)
 
+		var hashes []string
+		for _, cfg := range alertmanagers {
+			hashes = append(hashes, cfg.SHA256())
+		}
 		// We have a running sender, check if we need to apply a new config.
-		amHash := asSHA256(alertmanagers)
+		amHash := asSHA256(hashes)
 		if ok {
 			if d.externalAlertmanagersCfgHash[cfg.OrgID] == amHash {
 				d.logger.Debug("Sender configuration is the same as the one running, no-op", "org", cfg.OrgID, "alertmanagers", redactedAMs)
@@ -184,10 +188,10 @@ func (d *AlertsRouter) SyncAndApplyConfigFromDatabase() error {
 	return nil
 }
 
-func buildRedactedAMs(l log.Logger, alertmanagers []string, ordId int64) []string {
+func buildRedactedAMs(l log.Logger, alertmanagers []ExternalAMcfg, ordId int64) []string {
 	var redactedAMs []string
 	for _, am := range alertmanagers {
-		parsedAM, err := url.Parse(am)
+		parsedAM, err := url.Parse(am.URL)
 		if err != nil {
 			l.Error("Failed to parse alertmanager string", "org", ordId, "error", err)
 			continue
@@ -204,8 +208,10 @@ func asSHA256(strings []string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func (d *AlertsRouter) alertmanagersFromDatasources(orgID int64) ([]string, error) {
-	var alertmanagers []string
+func (d *AlertsRouter) alertmanagersFromDatasources(orgID int64) ([]ExternalAMcfg, error) {
+	var (
+		alertmanagers []ExternalAMcfg
+	)
 	// We might have alertmanager datasources that are acting as external
 	// alertmanager, let's fetch them.
 	query := &datasources.GetDataSourcesByTypeQuery{
@@ -230,7 +236,20 @@ func (d *AlertsRouter) alertmanagersFromDatasources(orgID int64) ([]string, erro
 				"error", err)
 			continue
 		}
-		alertmanagers = append(alertmanagers, amURL)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		headers, err := d.datasourceService.CustomHeaders(ctx, ds)
+		cancel()
+		if err != nil {
+			d.logger.Error("Failed to get headers for external alertmanager",
+				"org", ds.OrgID,
+				"uid", ds.UID,
+				"error", err)
+			continue
+		}
+		alertmanagers = append(alertmanagers, ExternalAMcfg{
+			URL:     amURL,
+			Headers: headers,
+		})
 	}
 	return alertmanagers, nil
 }
@@ -269,7 +288,7 @@ func (d *AlertsRouter) buildExternalURL(ds *datasources.DataSource) (string, err
 		password, parsed.Host, parsed.Path, parsed.RawQuery), nil
 }
 
-func (d *AlertsRouter) Send(key models.AlertRuleKey, alerts definitions.PostableAlerts) {
+func (d *AlertsRouter) Send(ctx context.Context, key models.AlertRuleKey, alerts definitions.PostableAlerts) {
 	logger := d.logger.New(key.LogContext()...)
 	if len(alerts.PostableAlerts) == 0 {
 		logger.Info("No alerts to notify about")
@@ -285,7 +304,7 @@ func (d *AlertsRouter) Send(key models.AlertRuleKey, alerts definitions.Postable
 		n, err := d.multiOrgNotifier.AlertmanagerFor(key.OrgID)
 		if err == nil {
 			localNotifierExist = true
-			if err := n.PutAlerts(alerts); err != nil {
+			if err := n.PutAlerts(ctx, alerts); err != nil {
 				logger.Error("Failed to put alerts in the local notifier", "count", len(alerts.PostableAlerts), "error", err)
 			}
 		} else {

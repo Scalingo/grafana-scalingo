@@ -1,9 +1,13 @@
+import { promQueryModeller } from '../querybuilder/PromQueryModeller';
+import { buildVisualQueryFromString } from '../querybuilder/parsing';
 import { PromVariableQuery, PromVariableQueryType as QueryType } from '../types';
 
-const labelNamesRegex = /^label_names\(\)\s*$/;
-const labelValuesRegex = /^label_values\((?:(.+),\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\)\s*$/;
-const metricNamesRegex = /^metrics\((.+)\)\s*$/;
-const queryResultRegex = /^query_result\((.+)\)\s*$/;
+export const PrometheusLabelNamesRegex = /^label_names\(\)\s*$/;
+// Note that this regex is different from the one in metric_find_query.ts because this is used pre-interpolation
+export const PrometheusLabelValuesRegex = /^label_values\((?:(.+),\s*)?([a-zA-Z_$][a-zA-Z0-9_]*)\)\s*$/;
+export const PrometheusMetricNamesRegex = /^metrics\((.+)\)\s*$/;
+export const PrometheusQueryResultRegex = /^query_result\((.+)\)\s*$/;
+export const PrometheusLabelNamesRegexWithMatch = /^label_names\((.+)\)\s*$/;
 
 export function migrateVariableQueryToEditor(rawQuery: string | PromVariableQuery): PromVariableQuery {
   // If not string, we assume PromVariableQuery
@@ -16,7 +20,17 @@ export function migrateVariableQueryToEditor(rawQuery: string | PromVariableQuer
     qryType: QueryType.LabelNames,
   };
 
-  const labelNames = rawQuery.match(labelNamesRegex);
+  const labelNamesMatchQuery = rawQuery.match(PrometheusLabelNamesRegexWithMatch);
+
+  if (labelNamesMatchQuery) {
+    return {
+      ...queryBase,
+      qryType: QueryType.LabelNames,
+      match: labelNamesMatchQuery[1],
+    };
+  }
+
+  const labelNames = rawQuery.match(PrometheusLabelNamesRegex);
   if (labelNames) {
     return {
       ...queryBase,
@@ -24,17 +38,20 @@ export function migrateVariableQueryToEditor(rawQuery: string | PromVariableQuer
     };
   }
 
-  const labelValues = rawQuery.match(labelValuesRegex);
+  const labelValuesCheck = rawQuery.match(/^label_values\(/);
+  if (labelValuesCheck) {
+    const labelValues = rawQuery.match(PrometheusLabelValuesRegex);
+    const label = labelValues ? labelValues[2] : '';
+    const metric = labelValues ? labelValues[1] : '';
 
-  if (labelValues) {
-    const label = labelValues[2];
-    const metric = labelValues[1];
     if (metric) {
+      const visQuery = buildVisualQueryFromString(metric);
       return {
         ...queryBase,
         qryType: QueryType.LabelValues,
         label,
-        metric,
+        metric: visQuery.query.metric,
+        labelFilters: visQuery.query.labels,
       };
     } else {
       return {
@@ -45,26 +62,30 @@ export function migrateVariableQueryToEditor(rawQuery: string | PromVariableQuer
     }
   }
 
-  const metricNames = rawQuery.match(metricNamesRegex);
-  if (metricNames) {
+  const metricNamesCheck = rawQuery.match(/^metrics\(/);
+  if (metricNamesCheck) {
+    const metricNames = rawQuery.match(PrometheusMetricNamesRegex);
+    const metric = metricNames ? metricNames[1] : '';
     return {
       ...queryBase,
       qryType: QueryType.MetricNames,
-      metric: metricNames[1],
+      metric,
     };
   }
 
-  const queryResult = rawQuery.match(queryResultRegex);
-  if (queryResult) {
+  const queryResultCheck = rawQuery.match(/^query_result\(/);
+  if (queryResultCheck) {
+    const queryResult = rawQuery.match(PrometheusQueryResultRegex);
+    const varQuery = queryResult ? queryResult[1] : '';
     return {
       ...queryBase,
       qryType: QueryType.VarQueryResult,
-      varQuery: queryResult[1],
+      varQuery,
     };
   }
 
   // seriesQuery does not have a function and no regex above
-  if (!labelNames && !labelValues && !metricNames && !queryResult) {
+  if (!labelNames && !labelValuesCheck && !metricNamesCheck && !queryResultCheck) {
     return {
       ...queryBase,
       qryType: QueryType.SeriesQuery,
@@ -79,10 +100,20 @@ export function migrateVariableQueryToEditor(rawQuery: string | PromVariableQuer
 export function migrateVariableEditorBackToVariableSupport(QueryVariable: PromVariableQuery): string {
   switch (QueryVariable.qryType) {
     case QueryType.LabelNames:
+      if (QueryVariable.match) {
+        return `label_names(${QueryVariable.match})`;
+      }
       return 'label_names()';
     case QueryType.LabelValues:
-      if (QueryVariable.metric) {
-        return `label_values(${QueryVariable.metric},${QueryVariable.label})`;
+      if (QueryVariable.metric || (QueryVariable.labelFilters && QueryVariable.labelFilters.length !== 0)) {
+        const visualQueryQuery = {
+          metric: QueryVariable.metric,
+          labels: QueryVariable.labelFilters ?? [],
+          operations: [],
+        };
+
+        const metric = promQueryModeller.renderQuery(visualQueryQuery);
+        return `label_values(${metric},${QueryVariable.label})`;
       } else {
         return `label_values(${QueryVariable.label})`;
       }
@@ -92,7 +123,9 @@ export function migrateVariableEditorBackToVariableSupport(QueryVariable: PromVa
       const varQuery = removeLineBreaks(QueryVariable.varQuery);
       return `query_result(${varQuery})`;
     case QueryType.SeriesQuery:
-      return '' + QueryVariable.seriesQuery;
+      return QueryVariable.seriesQuery ?? '';
+    case QueryType.ClassicQuery:
+      return QueryVariable.classicQuery ?? '';
   }
 
   return '';

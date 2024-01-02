@@ -65,11 +65,19 @@ export function toDataQueryResponse(
   queries?: DataQuery[]
 ): DataQueryResponse {
   const rsp: DataQueryResponse = { data: [], state: LoadingState.Done };
+
+  const traceId = 'traceId' in res ? res.traceId : undefined;
+
+  if (traceId != null) {
+    rsp.traceIds = [traceId];
+  }
+
   // If the response isn't in a correct shape we just ignore the data and pass empty DataQueryResponse.
-  if ((res as FetchResponse).data?.results) {
-    const results = (res as FetchResponse).data.results;
+  const fetchResponse = res as FetchResponse;
+  if (fetchResponse.data?.results) {
+    const results = fetchResponse.data.results;
     const refIDs = queries?.length ? queries.map((q) => q.refId) : Object.keys(results);
-    const cachedResponse = isCachedResponse(res as FetchResponse);
+    const cachedResponse = isCachedResponse(fetchResponse);
     const data: DataResponse[] = [];
 
     for (const refId of refIDs) {
@@ -83,17 +91,21 @@ export function toDataQueryResponse(
 
     for (const dr of data) {
       if (dr.error) {
+        const errorObj: DataQueryError = {
+          refId: dr.refId,
+          message: dr.error,
+          status: dr.status,
+        };
+        if (traceId != null) {
+          errorObj.traceId = traceId;
+        }
         if (!rsp.error) {
-          rsp.error = {
-            refId: dr.refId,
-            message: dr.error,
-            status: dr.status,
-          };
+          rsp.error = { ...errorObj };
         }
         if (rsp.errors) {
-          rsp.errors.push({ refId: dr.refId, message: dr.error, status: dr.status });
+          rsp.errors.push({ ...errorObj });
         } else {
-          rsp.errors = [{ refId: dr.refId, message: dr.error, status: dr.status }];
+          rsp.errors = [{ ...errorObj }];
         }
         rsp.state = LoadingState.Error;
       }
@@ -133,7 +145,7 @@ export function toDataQueryResponse(
   }
 
   // When it is not an OK response, make sure the error gets added
-  if ((res as FetchResponse).status && (res as FetchResponse).status !== 200) {
+  if (fetchResponse.status && fetchResponse.status !== 200) {
     if (rsp.state !== LoadingState.Error) {
       rsp.state = LoadingState.Error;
     }
@@ -223,7 +235,7 @@ export function frameToMetricFindValue(frame: DataFrame): MetricFindValue[] {
   }
   if (field) {
     for (let i = 0; i < field.values.length; i++) {
-      values.push({ text: '' + field.values.get(i) });
+      values.push({ text: '' + field.values[i] });
     }
   }
   return values;

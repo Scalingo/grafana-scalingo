@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/plugins"
+	"github.com/grafana/grafana/pkg/services/pluginsintegration/pluginstore"
 )
 
 func TestPluginUpdateChecker_HasUpdate(t *testing.T) {
@@ -20,8 +21,8 @@ func TestPluginUpdateChecker_HasUpdate(t *testing.T) {
 			availableUpdates: map[string]string{
 				"test-ds": "1.0.0",
 			},
-			pluginStore: plugins.FakePluginStore{
-				PluginList: []plugins.PluginDTO{
+			pluginStore: &pluginstore.FakePluginStore{
+				PluginList: []pluginstore.Plugin{
 					{
 						JSONData: plugins.JSONData{
 							ID:   "test-ds",
@@ -43,8 +44,8 @@ func TestPluginUpdateChecker_HasUpdate(t *testing.T) {
 				"test-panel": "0.9.0",
 				"test-app":   "0.0.1",
 			},
-			pluginStore: plugins.FakePluginStore{
-				PluginList: []plugins.PluginDTO{
+			pluginStore: &pluginstore.FakePluginStore{
+				PluginList: []pluginstore.Plugin{
 					{
 						JSONData: plugins.JSONData{
 							ID:   "test-ds",
@@ -85,8 +86,8 @@ func TestPluginUpdateChecker_HasUpdate(t *testing.T) {
 			availableUpdates: map[string]string{
 				"test-panel": "0.9.0",
 			},
-			pluginStore: plugins.FakePluginStore{
-				PluginList: []plugins.PluginDTO{
+			pluginStore: &pluginstore.FakePluginStore{
+				PluginList: []pluginstore.Plugin{
 					{
 						JSONData: plugins.JSONData{
 							ID:   "test-ds",
@@ -128,39 +129,39 @@ func TestPluginUpdateChecker_checkForUpdates(t *testing.T) {
 			availableUpdates: map[string]string{
 				"test-app": "1.0.0",
 			},
-			pluginStore: plugins.FakePluginStore{
-				PluginList: []plugins.PluginDTO{
+			pluginStore: &pluginstore.FakePluginStore{
+				PluginList: []pluginstore.Plugin{
 					{
 						JSONData: plugins.JSONData{
 							ID:   "test-ds",
 							Info: plugins.Info{Version: "0.9.0"},
-							Type: plugins.DataSource,
+							Type: plugins.TypeDataSource,
 						},
-						Class: plugins.External,
+						Class: plugins.ClassExternal,
 					},
 					{
 						JSONData: plugins.JSONData{
 							ID:   "test-app",
 							Info: plugins.Info{Version: "0.5.0"},
-							Type: plugins.App,
+							Type: plugins.TypeApp,
 						},
-						Class: plugins.External,
+						Class: plugins.ClassExternal,
 					},
 					{
 						JSONData: plugins.JSONData{
 							ID:   "test-panel",
 							Info: plugins.Info{Version: "2.5.7"},
-							Type: plugins.Panel,
+							Type: plugins.TypePanel,
 						},
-						Class: plugins.Bundled,
+						Class: plugins.ClassBundled,
 					},
 					{
 						JSONData: plugins.JSONData{
 							ID:   "test-core-panel",
 							Info: plugins.Info{Version: "0.0.1"},
-							Type: plugins.Panel,
+							Type: plugins.TypePanel,
 						},
-						Class: plugins.Core,
+						Class: plugins.ClassCore,
 					},
 				},
 			},

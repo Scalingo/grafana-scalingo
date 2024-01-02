@@ -2,8 +2,13 @@
 aliases:
   - ../../../auth/google/
 description: Grafana OAuthentication Guide
-title: Configure Google OAuth2 authentication
+labels:
+  products:
+    - cloud
+    - enterprise
+    - oss
 menuTitle: Google OAuth2
+title: Configure Google OAuth2 authentication
 weight: 1100
 ---
 
@@ -28,11 +33,7 @@ First, you need to create a Google OAuth Client:
 
 ## Enable Google OAuth in Grafana
 
-<<<<<<<< HEAD:docs/sources/setup-grafana/configure-security/configure-authentication/google.md
-Specify the Client ID and Secret in the [Grafana configuration file]({{< relref "../../configure-grafana/#config-file-locations" >}}). For example:
-========
-Specify the Client ID and Secret in the [Grafana configuration file]({{< relref "../../../configure-grafana/#config-file-locations" >}}). For example:
->>>>>>>> v9.3.1:docs/sources/setup-grafana/configure-security/configure-authentication/google/index.md
+Specify the Client ID and Secret in the [Grafana configuration file]({{< relref "../../../configure-grafana#configuration-file-location" >}}). For example:
 
 ```bash
 [auth.google]
@@ -41,9 +42,10 @@ allow_sign_up = true
 auto_login = false
 client_id = CLIENT_ID
 client_secret = CLIENT_SECRET
-scopes = https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email
-auth_url = https://accounts.google.com/o/oauth2/auth
-token_url = https://accounts.google.com/o/oauth2/token
+scopes = openid email profile
+auth_url = https://accounts.google.com/o/oauth2/v2/auth
+token_url = https://oauth2.googleapis.com/token
+api_url = https://openidconnect.googleapis.com/v1/userinfo
 allowed_domains = mycompany.com mycompany.org
 hosted_domain = mycompany.com
 use_pkce = true
@@ -85,6 +87,10 @@ Grafana uses a refresh token to obtain a new access token without requiring the 
 
 By default, Grafana includes the `access_type=offline` parameter in the authorization request to request a refresh token.
 
+Refresh token fetching and access token expiration check is enabled by default for the Google provider since Grafana v10.1.0 if the `accessTokenExpirationCheck` feature toggle is enabled. If you would like to disable access token expiration check then set the `use_refresh_token` configuration value to `false`.
+
+> **Note:** The `accessTokenExpirationCheck` feature toggle will be removed in Grafana v10.3.0 and the `use_refresh_token` configuration value will be used instead for configuring refresh token fetching and access token expiration check.
+
 ### Configure automatic login
 
 Set `auto_login` option to true to attempt login automatically, skipping the login screen.
@@ -94,12 +100,90 @@ This setting is ignored if multiple auth providers are configured to use auto lo
 auto_login = true
 ```
 
-## Skip organization role sync
+### Configure team sync for Google OAuth
 
-We do not currently sync roles from Google and instead set the AutoAssigned role to the user at first login. To manage your user's organization role from within Grafana, set `skip_org_role_sync` to `true`.
+> Available in Grafana v10.1.0 and later versions.
+
+With team sync, you can easily add users to teams by utilizing their Google groups. To set up team sync for Google OAuth, refer to the following example.
+
+1. Enable the Google Cloud Identity API on your [organization's dashboard](https://console.cloud.google.com/apis/api/cloudidentity.googleapis.com/).
+
+1. Add the `https://www.googleapis.com/auth/cloud-identity.groups.readonly` scope to your Grafana `[auth.google]` configuration:
+
+   Example:
+
+   ```ini
+   [auth.google]
+   # ..
+   scopes = openid email profile https://www.googleapis.com/auth/cloud-identity.groups.readonly
+   ```
+
+1. Configure team sync in your Grafana team's `External group sync` tab.
+   The external group ID for a Google group is the group's email address, such as `dev@grafana.com`.
+
+To learn more about Team Sync, refer to [Configure Team Sync]({{< relref "../../configure-team-sync" >}}).
+
+### Configure allowed groups
+
+> Available in Grafana v10.2.0 and later versions.
+
+To limit access to authenticated users that are members of one or more groups, set `allowed_groups`
+to a comma or space separated list of groups.
+
+Google groups are referenced by the group email key. For example, `developers@google.com`.
+
+> Note: Add the `https://www.googleapis.com/auth/cloud-identity.groups.readonly` scope to your Grafana `[auth.google]` scopes configuration to retrieve groups
+
+## Configure role mapping
+
+> Available in Grafana v10.2.0 and later versions.
+
+Unless `skip_org_role_sync` option is enabled, the user's role will be set to the role mapped from Google upon user login. If no mapping is set the default instance role is used.
+
+The user's role is retrieved using a [JMESPath](http://jmespath.org/examples.html) expression from the `role_attribute_path` configuration option.
+To map the server administrator role, use the `allow_assign_grafana_admin` configuration option.
+
+If no valid role is found, the user is assigned the role specified by [the `auto_assign_org_role` option]({{< relref "../../../configure-grafana#auto_assign_org_role" >}}).
+You can disable this default role assignment by setting `role_attribute_strict = true`.
+This setting denies user access if no role or an invalid role is returned.
+
+To ease configuration of a proper JMESPath expression, go to [JMESPath](http://jmespath.org/) to test and evaluate expressions with custom payloads.
+
+> By default skip_org_role_sync is enabled. skip_org_role_sync will default to false in Grafana v10.3.0 and later versions.
+
+### Role mapping examples
+
+This section includes examples of JMESPath expressions used for role mapping.
+
+#### Map roles using user information from OAuth token
+
+In this example, the user with email `admin@company.com` has been granted the `Admin` role.
+All other users are granted the `Viewer` role.
 
 ```ini
-[auth.google]
-# ..
-skip_org_role_sync = true
+role_attribute_path = email=='admin@company.com' && 'Admin' || 'Viewer'
+skip_org_role_sync = false
+```
+
+#### Map roles using groups
+
+In this example, the user from Google group 'example-group@google.com' have been granted the `Editor` role.
+All other users are granted the `Viewer` role.
+
+```ini
+role_attribute_path = contains(groups[*], 'example-group@google.com') && 'Editor' || 'Viewer'
+skip_org_role_sync = false
+```
+
+> Note: Add the `https://www.googleapis.com/auth/cloud-identity.groups.readonly` scope to your Grafana `[auth.google]` scopes configuration to retrieve groups
+
+#### Map server administrator role
+
+In this example, the user with email `admin@company.com` has been granted the `Admin` organization role as well as the Grafana server admin role.
+All other users are granted the `Viewer` role.
+
+```ini
+allow_assign_grafana_admin = true
+skip_org_role_sync = false
+role_attribute_path = email=='admin@company.com' && 'GrafanaAdmin' || 'Viewer'
 ```

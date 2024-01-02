@@ -3,6 +3,7 @@ package proxyutil
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/middleware/requestmeta"
 	"github.com/grafana/grafana/pkg/services/contexthandler"
 	"github.com/grafana/grafana/pkg/setting"
 )
@@ -21,6 +23,8 @@ func TestReverseProxy(t *testing.T) {
 		upstream := newUpstreamServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			actualReq = req
 			http.SetCookie(w, &http.Cookie{Name: "test"})
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+			w.Header().Set("X-Custom-Hdr", "Ok!")
 			w.WriteHeader(http.StatusOK)
 		}))
 		t.Cleanup(upstream.Close)
@@ -52,11 +56,14 @@ func TestReverseProxy(t *testing.T) {
 		require.Empty(t, actualReq.Header.Get("Referer"))
 		require.Equal(t, "https://test.com/api", actualReq.Header.Get("X-Grafana-Referer"))
 		require.Equal(t, "value", actualReq.Header.Get("X-KEY"))
+		require.Empty(t, actualReq.Header.Get("Authorization"))
 		resp := rec.Result()
 		require.Empty(t, resp.Cookies())
 		require.Equal(t, "sandbox", resp.Header.Get("Content-Security-Policy"))
+		require.Contains(t, resp.Header, "X-Custom-Hdr")
+		require.NotContains(t, resp.Header, "Strict-Transport-Security")
+		require.Contains(t, resp.Header.Get("Via"), "grafana")
 		require.NoError(t, resp.Body.Close())
-		require.Empty(t, actualReq.Header.Get("Authorization"))
 	})
 
 	t.Run("When proxying a request using WithModifyResponse should call it before default ModifyResponse func", func(t *testing.T) {
@@ -92,7 +99,7 @@ func TestReverseProxy(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 	})
 
-	t.Run("Error handling should convert status codes depending on what kind of error it is", func(t *testing.T) {
+	t.Run("Error handling should convert status codes depending on what kind of error it is and set downstream status source", func(t *testing.T) {
 		timedOutTransport := http.DefaultTransport.(*http.Transport)
 		timedOutTransport.ResponseHeaderTimeout = time.Millisecond
 
@@ -131,7 +138,12 @@ func TestReverseProxy(t *testing.T) {
 				}))
 				t.Cleanup(upstream.Close)
 				rec := httptest.NewRecorder()
+
+				ctx := requestmeta.SetRequestMetaData(context.Background(), requestmeta.RequestMetaData{
+					StatusSource: requestmeta.StatusSourceServer,
+				})
 				req := httptest.NewRequest(http.MethodGet, upstream.URL, nil)
+				req = req.WithContext(ctx)
 
 				rp := NewReverseProxy(
 					log.New("test"),
@@ -146,6 +158,56 @@ func TestReverseProxy(t *testing.T) {
 				resp := rec.Result()
 				require.Equal(t, tc.expectedStatusCode, resp.StatusCode)
 				require.NoError(t, resp.Body.Close())
+
+				rmd := requestmeta.GetRequestMetaData(ctx)
+				require.Equal(t, requestmeta.StatusSourceDownstream, rmd.StatusSource)
+			})
+		}
+	})
+
+	t.Run("5xx response status codes should set downstream status source", func(t *testing.T) {
+		testCases := []struct {
+			status         int
+			expectedSource requestmeta.StatusSource
+		}{
+			{status: http.StatusOK, expectedSource: requestmeta.StatusSourceServer},
+			{status: http.StatusBadRequest, expectedSource: requestmeta.StatusSourceServer},
+			{status: http.StatusForbidden, expectedSource: requestmeta.StatusSourceServer},
+			{status: http.StatusUnauthorized, expectedSource: requestmeta.StatusSourceServer},
+			{status: http.StatusInternalServerError, expectedSource: requestmeta.StatusSourceDownstream},
+			{status: http.StatusBadGateway, expectedSource: requestmeta.StatusSourceDownstream},
+			{status: http.StatusGatewayTimeout, expectedSource: requestmeta.StatusSourceDownstream},
+			{status: 599, expectedSource: requestmeta.StatusSourceDownstream},
+		}
+
+		for _, testCase := range testCases {
+			tc := testCase
+			t.Run(fmt.Sprintf("status %d => source %s ", tc.status, tc.expectedSource), func(t *testing.T) {
+				upstream := newUpstreamServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+					w.WriteHeader(tc.status)
+				}))
+				t.Cleanup(upstream.Close)
+				rec := httptest.NewRecorder()
+
+				ctx := requestmeta.SetRequestMetaData(context.Background(), requestmeta.RequestMetaData{
+					StatusSource: requestmeta.StatusSourceServer,
+				})
+				req := httptest.NewRequest(http.MethodGet, upstream.URL, nil)
+				req = req.WithContext(ctx)
+
+				rp := NewReverseProxy(
+					log.New("test"),
+					func(req *http.Request) {},
+				)
+				require.NotNil(t, rp)
+				rp.ServeHTTP(rec, req)
+
+				resp := rec.Result()
+				require.Equal(t, tc.status, resp.StatusCode)
+				require.NoError(t, resp.Body.Close())
+
+				rmd := requestmeta.GetRequestMetaData(ctx)
+				require.Equal(t, tc.expectedSource, rmd.StatusSource)
 			})
 		}
 	})

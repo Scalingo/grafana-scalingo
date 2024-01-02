@@ -9,10 +9,11 @@ import (
 
 	"github.com/grafana/grafana/pkg/infra/db"
 	ac "github.com/grafana/grafana/pkg/services/accesscontrol"
-	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/auth/identity"
+	"github.com/grafana/grafana/pkg/services/dashboards/dashboardaccess"
 	"github.com/grafana/grafana/pkg/services/team"
-	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/setting"
+	"github.com/grafana/grafana/pkg/util"
 )
 
 type store interface {
@@ -22,28 +23,31 @@ type store interface {
 	Search(ctx context.Context, query *team.SearchTeamsQuery) (team.SearchTeamQueryResult, error)
 	GetByID(ctx context.Context, query *team.GetTeamByIDQuery) (*team.TeamDTO, error)
 	GetByUser(ctx context.Context, query *team.GetTeamsByUserQuery) ([]*team.TeamDTO, error)
-	AddMember(userID, orgID, teamID int64, isExternal bool, permission dashboards.PermissionType) error
+	GetIDsByUser(ctx context.Context, query *team.GetTeamIDsByUserQuery) ([]int64, error)
+	RemoveUsersMemberships(ctx context.Context, userID int64) error
+	AddMember(userID, orgID, teamID int64, isExternal bool, permission dashboardaccess.PermissionType) error
 	UpdateMember(ctx context.Context, cmd *team.UpdateTeamMemberCommand) error
 	IsMember(orgId int64, teamId int64, userId int64) (bool, error)
 	RemoveMember(ctx context.Context, cmd *team.RemoveTeamMemberCommand) error
 	GetMemberships(ctx context.Context, orgID, userID int64, external bool) ([]*team.TeamMemberDTO, error)
 	GetMembers(ctx context.Context, query *team.GetTeamMembersQuery) ([]*team.TeamMemberDTO, error)
-	IsAdmin(ctx context.Context, query *team.IsAdminOfTeamsQuery) (bool, error)
+	RegisterDelete(query string)
 }
 
 type xormStore struct {
-	db  db.DB
-	cfg *setting.Cfg
+	db      db.DB
+	cfg     *setting.Cfg
+	deletes []string
 }
 
-func getFilteredUsers(signedInUser *user.SignedInUser, hiddenUsers map[string]struct{}) []string {
+func getFilteredUsers(signedInUser identity.Requester, hiddenUsers map[string]struct{}) []string {
 	filteredUsers := make([]string, 0, len(hiddenUsers))
-	if signedInUser == nil || signedInUser.IsGrafanaAdmin {
+	if signedInUser == nil || signedInUser.IsNil() || signedInUser.GetIsGrafanaAdmin() {
 		return filteredUsers
 	}
 
 	for u := range hiddenUsers {
-		if u == signedInUser.Login {
+		if u == signedInUser.GetLogin() {
 			continue
 		}
 		filteredUsers = append(filteredUsers, u)
@@ -67,6 +71,7 @@ func getTeamMemberCount(db db.DB, filteredUsers []string) string {
 func getTeamSelectSQLBase(db db.DB, filteredUsers []string) string {
 	return `SELECT
 		team.id as id,
+		team.uid,
 		team.org_id,
 		team.name as name,
 		team.email as email, ` +
@@ -74,20 +79,9 @@ func getTeamSelectSQLBase(db db.DB, filteredUsers []string) string {
 		` FROM team as team `
 }
 
-func getTeamSelectWithPermissionsSQLBase(db db.DB, filteredUsers []string) string {
-	return `SELECT
-		team.id AS id,
-		team.org_id,
-		team.name AS name,
-		team.email AS email,
-		team_member.permission, ` +
-		getTeamMemberCount(db, filteredUsers) +
-		` FROM team AS team
-		INNER JOIN team_member ON team.id = team_member.team_id AND team_member.user_id = ? `
-}
-
 func (ss *xormStore) Create(name, email string, orgID int64) (team.Team, error) {
 	t := team.Team{
+		UID:     util.GenerateShortUID(),
 		Name:    name,
 		Email:   email,
 		OrgID:   orgID,
@@ -151,6 +145,8 @@ func (ss *xormStore) Delete(ctx context.Context, cmd *team.DeleteTeamCommand) er
 			"DELETE FROM team_role WHERE org_id=? and team_id = ?",
 		}
 
+		deletes = append(deletes, ss.deletes...)
+
 		for _, sql := range deletes {
 			_, err := sess.Exec(sql, cmd.OrgID, cmd.ID)
 			if err != nil {
@@ -196,20 +192,14 @@ func (ss *xormStore) Search(ctx context.Context, query *team.SearchTeamsQuery) (
 		queryWithWildcards := "%" + query.Query + "%"
 
 		var sql bytes.Buffer
-		params := make([]interface{}, 0)
+		params := make([]any, 0)
 
 		filteredUsers := getFilteredUsers(query.SignedInUser, query.HiddenUsers)
 		for _, user := range filteredUsers {
 			params = append(params, user)
 		}
 
-		if query.UserIDFilter == team.FilterIgnoreUser {
-			sql.WriteString(getTeamSelectSQLBase(ss.db, filteredUsers))
-		} else {
-			sql.WriteString(getTeamSelectWithPermissionsSQLBase(ss.db, filteredUsers))
-			params = append(params, query.UserIDFilter)
-		}
-
+		sql.WriteString(getTeamSelectSQLBase(ss.db, filteredUsers))
 		sql.WriteString(` WHERE team.org_id = ?`)
 		params = append(params, query.OrgID)
 
@@ -223,20 +213,31 @@ func (ss *xormStore) Search(ctx context.Context, query *team.SearchTeamsQuery) (
 			params = append(params, query.Name)
 		}
 
-		var (
-			acFilter ac.SQLFilter
-			err      error
-		)
-		if !ac.IsDisabled(ss.cfg) {
-			acFilter, err = ac.Filter(query.SignedInUser, "team.id", "teams:id:", ac.ActionTeamsRead)
-			if err != nil {
-				return err
+		if len(query.TeamIds) > 0 {
+			sql.WriteString(` and team.id IN (?` + strings.Repeat(",?", len(query.TeamIds)-1) + ")")
+			for _, id := range query.TeamIds {
+				params = append(params, id)
 			}
-			sql.WriteString(` and` + acFilter.Where)
-			params = append(params, acFilter.Args...)
 		}
 
-		sql.WriteString(` order by team.name asc`)
+		acFilter, err := ac.Filter(query.SignedInUser, "team.id", "teams:id:", ac.ActionTeamsRead)
+		if err != nil {
+			return err
+		}
+		sql.WriteString(` and` + acFilter.Where)
+		params = append(params, acFilter.Args...)
+
+		if len(query.SortOpts) > 0 {
+			orderBy := ` order by `
+			for i := range query.SortOpts {
+				for j := range query.SortOpts[i].Filter {
+					orderBy += query.SortOpts[i].Filter[j].OrderBy() + ","
+				}
+			}
+			sql.WriteString(orderBy[:len(orderBy)-1])
+		} else {
+			sql.WriteString(` order by team.name asc`)
+		}
 
 		if query.Limit != 0 {
 			offset := query.Limit * (query.Page - 1)
@@ -259,22 +260,8 @@ func (ss *xormStore) Search(ctx context.Context, query *team.SearchTeamsQuery) (
 			countSess.Where("name=?", query.Name)
 		}
 
-		// If we're not retrieving all results, then only search for teams that this user has access to
-		if query.UserIDFilter != team.FilterIgnoreUser {
-			countSess.
-				Where(`
-			team.id IN (
-				SELECT
-				team_id
-				FROM team_member
-				WHERE team_member.user_id = ?
-			)`, query.UserIDFilter)
-		}
-
 		// Only count teams user can see
-		if !ac.IsDisabled(ss.cfg) {
-			countSess.Where(acFilter.Where, acFilter.Args...)
-		}
+		countSess.Where(acFilter.Where, acFilter.Args...)
 
 		count, err := countSess.Count(&t)
 		queryResult.TotalCount = count
@@ -291,17 +278,12 @@ func (ss *xormStore) GetByID(ctx context.Context, query *team.GetTeamByIDQuery) 
 	var queryResult *team.TeamDTO
 	err := ss.db.WithDbSession(ctx, func(sess *db.Session) error {
 		var sql bytes.Buffer
-		params := make([]interface{}, 0)
+		params := make([]any, 0)
 
 		filteredUsers := getFilteredUsers(query.SignedInUser, query.HiddenUsers)
 		sql.WriteString(getTeamSelectSQLBase(ss.db, filteredUsers))
 		for _, user := range filteredUsers {
 			params = append(params, user)
-		}
-
-		if query.UserIdFilter != team.FilterIgnoreUser {
-			sql.WriteString(` INNER JOIN team_member ON team.id = team_member.team_id AND team_member.user_id = ?`)
-			params = append(params, query.UserIdFilter)
 		}
 
 		sql.WriteString(` WHERE team.org_id = ? and team.id = ?`)
@@ -332,23 +314,21 @@ func (ss *xormStore) GetByUser(ctx context.Context, query *team.GetTeamsByUserQu
 	queryResult := make([]*team.TeamDTO, 0)
 	err := ss.db.WithDbSession(ctx, func(sess *db.Session) error {
 		var sql bytes.Buffer
-		var params []interface{}
+		var params []any
 		params = append(params, query.OrgID, query.UserID)
 
 		sql.WriteString(getTeamSelectSQLBase(ss.db, []string{}))
 		sql.WriteString(` INNER JOIN team_member on team.id = team_member.team_id`)
 		sql.WriteString(` WHERE team.org_id = ? and team_member.user_id = ?`)
 
-		if !ac.IsDisabled(ss.cfg) {
-			acFilter, err := ac.Filter(query.SignedInUser, "team.id", "teams:id:", ac.ActionTeamsRead)
-			if err != nil {
-				return err
-			}
-			sql.WriteString(` and` + acFilter.Where)
-			params = append(params, acFilter.Args...)
+		acFilter, err := ac.Filter(query.SignedInUser, "team.id", "teams:id:", ac.ActionTeamsRead)
+		if err != nil {
+			return err
 		}
+		sql.WriteString(` and` + acFilter.Where)
+		params = append(params, acFilter.Args...)
 
-		err := sess.SQL(sql.String(), params...).Find(&queryResult)
+		err = sess.SQL(sql.String(), params...).Find(&queryResult)
 		return err
 	})
 	if err != nil {
@@ -357,8 +337,24 @@ func (ss *xormStore) GetByUser(ctx context.Context, query *team.GetTeamsByUserQu
 	return queryResult, nil
 }
 
+// GetIDsByUser returns a list of team IDs for the given user
+func (ss *xormStore) GetIDsByUser(ctx context.Context, query *team.GetTeamIDsByUserQuery) ([]int64, error) {
+	queryResult := make([]int64, 0)
+
+	err := ss.db.WithDbSession(ctx, func(sess *db.Session) error {
+		return sess.SQL(`SELECT tm.team_id
+FROM team_member as tm
+WHERE tm.user_id=? AND tm.org_id=?;`, query.UserID, query.OrgID).Find(&queryResult)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get team IDs by user: %w", err)
+	}
+
+	return queryResult, nil
+}
+
 // AddTeamMember adds a user to a team
-func (ss *xormStore) AddMember(userID, orgID, teamID int64, isExternal bool, permission dashboards.PermissionType) error {
+func (ss *xormStore) AddMember(userID, orgID, teamID int64, isExternal bool, permission dashboardaccess.PermissionType) error {
 	return ss.db.WithTransactionalDbSession(context.Background(), func(sess *db.Session) error {
 		if isMember, err := isTeamMember(sess, orgID, teamID, userID); err != nil {
 			return err
@@ -416,7 +412,7 @@ func isTeamMember(sess *db.Session, orgId int64, teamId int64, userId int64) (bo
 
 // AddOrUpdateTeamMemberHook is called from team resource permission service
 // it adds user to a team or updates user permissions in a team within the given transaction session
-func AddOrUpdateTeamMemberHook(sess *db.Session, userID, orgID, teamID int64, isExternal bool, permission dashboards.PermissionType) error {
+func AddOrUpdateTeamMemberHook(sess *db.Session, userID, orgID, teamID int64, isExternal bool, permission dashboardaccess.PermissionType) error {
 	isMember, err := isTeamMember(sess, orgID, teamID, userID)
 	if err != nil {
 		return err
@@ -431,7 +427,7 @@ func AddOrUpdateTeamMemberHook(sess *db.Session, userID, orgID, teamID int64, is
 	return err
 }
 
-func addTeamMember(sess *db.Session, orgID, teamID, userID int64, isExternal bool, permission dashboards.PermissionType) error {
+func addTeamMember(sess *db.Session, orgID, teamID, userID int64, isExternal bool, permission dashboardaccess.PermissionType) error {
 	if _, err := teamExists(orgID, teamID, sess); err != nil {
 		return err
 	}
@@ -450,13 +446,13 @@ func addTeamMember(sess *db.Session, orgID, teamID, userID int64, isExternal boo
 	return err
 }
 
-func updateTeamMember(sess *db.Session, orgID, teamID, userID int64, permission dashboards.PermissionType) error {
+func updateTeamMember(sess *db.Session, orgID, teamID, userID int64, permission dashboardaccess.PermissionType) error {
 	member, err := getTeamMember(sess, orgID, teamID, userID)
 	if err != nil {
 		return err
 	}
 
-	if permission != dashboards.PERMISSION_ADMIN {
+	if permission != dashboardaccess.PERMISSION_ADMIN {
 		permission = 0 // make sure we don't get invalid permission levels in store
 	}
 
@@ -496,6 +492,16 @@ func removeTeamMember(sess *db.Session, cmd *team.RemoveTeamMemberCommand) error
 	return err
 }
 
+// RemoveUsersMemberships removes all the team membership entries for the given user.
+// Only used when removing a user from a Grafana instance.
+func (ss *xormStore) RemoveUsersMemberships(ctx context.Context, userID int64) error {
+	return ss.db.WithTransactionalDbSession(ctx, func(sess *db.Session) error {
+		var rawSQL = "DELETE FROM team_member WHERE user_id = ?"
+		_, err := sess.Exec(rawSQL, userID)
+		return err
+	})
+}
+
 // GetUserTeamMemberships return a list of memberships to teams granted to a user
 // If external is specified, only memberships provided by an external auth provider will be listed
 // This function doesn't perform any accesscontrol filtering.
@@ -517,12 +523,10 @@ func (ss *xormStore) GetMembers(ctx context.Context, query *team.GetTeamMembersQ
 	// With accesscontrol we filter out users based on the SignedInUser's permissions
 	// Note we assume that checking SignedInUser is allowed to see team members for this team has already been performed
 	// If the signed in user is not set no member will be returned
-	if !ac.IsDisabled(ss.cfg) {
-		sqlID := fmt.Sprintf("%s.%s", ss.db.GetDialect().Quote("user"), ss.db.GetDialect().Quote("id"))
-		*acFilter, err = ac.Filter(query.SignedInUser, sqlID, "users:id:", ac.ActionOrgUsersRead)
-		if err != nil {
-			return nil, err
-		}
+	sqlID := fmt.Sprintf("%s.%s", ss.db.GetDialect().Quote("user"), ss.db.GetDialect().Quote("id"))
+	*acFilter, err = ac.Filter(query.SignedInUser, sqlID, "users:id:", ac.ActionOrgUsersRead)
+	if err != nil {
+		return nil, err
 	}
 
 	return ss.getTeamMembers(ctx, query, acFilter)
@@ -536,6 +540,7 @@ func (ss *xormStore) getTeamMembers(ctx context.Context, query *team.GetTeamMemb
 		sess.Join("INNER", ss.db.GetDialect().Quote("user"),
 			fmt.Sprintf("team_member.user_id=%s.%s", ss.db.GetDialect().Quote("user"), ss.db.GetDialect().Quote("id")),
 		)
+		sess.Join("INNER", "team", "team.id=team_member.team_id")
 
 		// explicitly check for serviceaccounts
 		sess.Where(fmt.Sprintf("%s.is_service_account=?", ss.db.GetDialect().Quote("user")), ss.db.GetDialect().BooleanStr(false))
@@ -545,11 +550,12 @@ func (ss *xormStore) getTeamMembers(ctx context.Context, query *team.GetTeamMemb
 		}
 
 		// Join with only most recent auth module
-		authJoinCondition := `(
-		SELECT id from user_auth
+		authJoinCondition := `user_auth.id=(
+			SELECT id
+			FROM user_auth
 			WHERE user_auth.user_id = team_member.user_id
-			ORDER BY user_auth.created DESC `
-		authJoinCondition = "user_auth.id=" + authJoinCondition + ss.db.GetDialect().Limit(1) + ")"
+			ORDER BY user_auth.created DESC ` +
+			ss.db.GetDialect().Limit(1) + ")"
 		sess.Join("LEFT", "user_auth", authJoinCondition)
 
 		if query.OrgID != 0 {
@@ -557,6 +563,9 @@ func (ss *xormStore) getTeamMembers(ctx context.Context, query *team.GetTeamMemb
 		}
 		if query.TeamID != 0 {
 			sess.Where("team_member.team_id=?", query.TeamID)
+		}
+		if query.TeamUID != "" {
+			sess.Where("team.uid=?", query.TeamUID)
 		}
 		if query.UserID != 0 {
 			sess.Where("team_member.user_id=?", query.UserID)
@@ -574,6 +583,7 @@ func (ss *xormStore) getTeamMembers(ctx context.Context, query *team.GetTeamMemb
 			"team_member.external",
 			"team_member.permission",
 			"user_auth.auth_module",
+			"team.uid",
 		)
 		sess.Asc("user.login", "user.email")
 
@@ -586,27 +596,7 @@ func (ss *xormStore) getTeamMembers(ctx context.Context, query *team.GetTeamMemb
 	return queryResult, nil
 }
 
-func (ss *xormStore) IsAdmin(ctx context.Context, query *team.IsAdminOfTeamsQuery) (bool, error) {
-	var queryResult bool
-	err := ss.db.WithDbSession(ctx, func(sess *db.Session) error {
-		sql := "SELECT COUNT(team.id) AS count FROM team INNER JOIN team_member ON team_member.team_id = team.id WHERE team.org_id = ? AND team_member.user_id = ? AND team_member.permission = ?"
-		params := []interface{}{query.SignedInUser.OrgID, query.SignedInUser.UserID, dashboards.PERMISSION_ADMIN}
-
-		type teamCount struct {
-			Count int64
-		}
-
-		resp := make([]*teamCount, 0)
-		if err := sess.SQL(sql, params...).Find(&resp); err != nil {
-			return err
-		}
-
-		queryResult = len(resp) > 0 && resp[0].Count > 0
-
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-	return queryResult, nil
+// RegisterDelete registers a delete query to be executed when the transaction is committed
+func (ss *xormStore) RegisterDelete(query string) {
+	ss.deletes = append(ss.deletes, query)
 }

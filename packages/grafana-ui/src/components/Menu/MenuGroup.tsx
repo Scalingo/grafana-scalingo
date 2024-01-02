@@ -9,7 +9,7 @@ import { useStyles2 } from '../../themes';
 import { MenuItemProps } from './MenuItem';
 
 /** @internal */
-export interface MenuItemsGroup<T = any> {
+export interface MenuItemsGroup<T = unknown> {
   /** Label for the menu items group */
   label?: string;
   /** Aria label for accessibility support */
@@ -45,10 +45,10 @@ MenuGroup.displayName = 'MenuGroup';
 /** @internal */
 const getStyles = (theme: GrafanaTheme2) => {
   return {
-    groupLabel: css`
-      color: ${theme.colors.text.secondary};
-      font-size: ${theme.typography.size.sm};
-      padding: ${theme.spacing(0.5, 1)};
-    `,
+    groupLabel: css({
+      color: theme.colors.text.secondary,
+      fontSize: theme.typography.size.sm,
+      padding: theme.spacing(0.5, 1),
+    }),
   };
 };

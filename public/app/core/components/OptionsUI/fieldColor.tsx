@@ -2,7 +2,7 @@ import { css } from '@emotion/css';
 import React, { CSSProperties, FC } from 'react';
 
 import {
-  FieldConfigEditorProps,
+  StandardEditorProps,
   FieldColorModeId,
   SelectableValue,
   FieldColor,
@@ -17,7 +17,7 @@ import { useStyles2, useTheme2, Field, RadioButtonGroup, Select } from '@grafana
 
 import { ColorValueEditor } from './color';
 
-type Props = FieldConfigEditorProps<FieldColor | undefined, FieldColorConfigSettings>;
+type Props = StandardEditorProps<FieldColor | undefined, FieldColorConfigSettings>;
 
 export const FieldColorEditor = ({ value, onChange, item, id }: Props) => {
   const theme = useTheme2();
@@ -68,7 +68,7 @@ export const FieldColorEditor = ({ value, onChange, item, id }: Props) => {
 
   const mode = value?.mode ?? FieldColorModeId.Thresholds;
 
-  if (mode === FieldColorModeId.Fixed) {
+  if (mode === FieldColorModeId.Fixed || mode === FieldColorModeId.Shades) {
     return (
       <div className={styles.group}>
         <Select
@@ -150,12 +150,12 @@ const FieldColorModeViz: FC<ModeProps> = ({ mode, theme }) => {
 
 const getStyles = (theme: GrafanaTheme2) => {
   return {
-    group: css`
-      display: flex;
-    `,
-    select: css`
-      margin-right: 8px;
-      flex-grow: 1;
-    `,
+    group: css({
+      display: 'flex',
+    }),
+    select: css({
+      marginRight: theme.spacing(1),
+      flexGrow: 1,
+    }),
   };
 };

@@ -17,13 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/grafana/pkg/components/simplejson"
-	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/tsdb/azuremonitor/loganalytics"
 	"github.com/grafana/grafana/pkg/tsdb/azuremonitor/types"
 )
-
-var logger = log.New("test")
 
 func TestBuildingAzureResourceGraphQueries(t *testing.T) {
 	datasource := &AzureResourceGraphDatasource{}
@@ -75,9 +71,9 @@ func TestBuildingAzureResourceGraphQueries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			queries, err := datasource.buildQueries(logger, tt.queryModel, types.DatasourceInfo{})
+			queries, err := datasource.buildQueries(tt.queryModel, types.DatasourceInfo{})
 			tt.Err(t, err)
-			if diff := cmp.Diff(tt.azureResourceGraphQueries, queries, cmpopts.IgnoreUnexported(simplejson.Json{})); diff != "" {
+			if diff := cmp.Diff(tt.azureResourceGraphQueries, queries, cmpopts.IgnoreUnexported(struct{}{})); diff != "" {
 				t.Errorf("Result mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -107,7 +103,7 @@ func TestAzureResourceGraphCreateRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ds := AzureResourceGraphDatasource{}
-			req, err := ds.createRequest(ctx, logger, []byte{}, url)
+			req, err := ds.createRequest(ctx, []byte{}, url)
 			tt.Err(t, err)
 			if req.URL.String() != tt.expectedURL {
 				t.Errorf("Expecting %s, got %s", tt.expectedURL, req.URL.String())
@@ -125,7 +121,7 @@ func TestAddConfigData(t *testing.T) {
 	frame := data.Frame{
 		Fields: []*data.Field{&field},
 	}
-	frameWithLink := loganalytics.AddConfigLinks(frame, "http://ds")
+	frameWithLink := loganalytics.AddConfigLinks(frame, "http://ds", nil)
 	expectedFrameWithLink := data.Frame{
 		Fields: []*data.Field{
 			{
@@ -142,7 +138,7 @@ func TestAddConfigData(t *testing.T) {
 
 func TestGetAzurePortalUrl(t *testing.T) {
 	clouds := []string{azsettings.AzurePublic, azsettings.AzureChina, azsettings.AzureUSGovernment}
-	expectedAzurePortalUrl := map[string]interface{}{
+	expectedAzurePortalUrl := map[string]any{
 		azsettings.AzurePublic:       "https://portal.azure.com",
 		azsettings.AzureChina:        "https://portal.azure.cn",
 		azsettings.AzureUSGovernment: "https://portal.azure.us",
@@ -159,7 +155,7 @@ func TestGetAzurePortalUrl(t *testing.T) {
 
 func TestUnmarshalResponse400(t *testing.T) {
 	datasource := &AzureResourceGraphDatasource{}
-	res, err := datasource.unmarshalResponse(logger, &http.Response{
+	res, err := datasource.unmarshalResponse(&http.Response{
 		StatusCode: 400,
 		Status:     "400 Bad Request",
 		Body:       io.NopCloser(strings.NewReader(("Azure Error Message"))),
@@ -173,7 +169,7 @@ func TestUnmarshalResponse400(t *testing.T) {
 
 func TestUnmarshalResponse200Invalid(t *testing.T) {
 	datasource := &AzureResourceGraphDatasource{}
-	res, err := datasource.unmarshalResponse(logger, &http.Response{
+	res, err := datasource.unmarshalResponse(&http.Response{
 		StatusCode: 200,
 		Status:     "OK",
 		Body:       io.NopCloser(strings.NewReader(("Azure Data"))),
@@ -188,7 +184,7 @@ func TestUnmarshalResponse200Invalid(t *testing.T) {
 
 func TestUnmarshalResponse200(t *testing.T) {
 	datasource := &AzureResourceGraphDatasource{}
-	res, err2 := datasource.unmarshalResponse(logger, &http.Response{
+	res, err2 := datasource.unmarshalResponse(&http.Response{
 		StatusCode: 200,
 		Status:     "OK",
 		Body:       io.NopCloser(strings.NewReader("{}")),

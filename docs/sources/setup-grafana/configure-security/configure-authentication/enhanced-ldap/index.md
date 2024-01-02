@@ -10,19 +10,23 @@ keywords:
   - ldap
   - active directory
   - enterprise
-title: Configure enhanced LDAP integration
+labels:
+  products:
+    - cloud
+    - enterprise
 menuTitle: Enhanced LDAP
+title: Configure enhanced LDAP integration
 weight: 400
 ---
 
 # Configure enhanced LDAP integration
 
-The enhanced LDAP integration adds additional functionality on top of the [LDAP integration]({{< relref "ldap/" >}}) available in the open source edition of Grafana.
+The enhanced LDAP integration adds additional functionality on top of the [LDAP integration]({{< relref "../ldap" >}}) available in the open source edition of Grafana.
 
-> **Note:** Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise/" >}}) and [Grafana Cloud Advanced](/docs/grafana-cloud).
+> **Note:** Available in [Grafana Enterprise]({{< relref "../../../../introduction/grafana-enterprise" >}}) and [Grafana Cloud](/docs/grafana-cloud).
 > If you are a Grafana Cloud customer, please [open a support ticket in the Cloud Portal](/profile/org#support) to request this feature.
 
-> To control user access with role-based permissions, refer to [role-based access control]({{< relref "../../../../administration/roles-and-permissions/access-control/" >}}).
+> To control user access with role-based permissions, refer to [role-based access control]({{< relref "../../../../administration/roles-and-permissions/access-control" >}}).
 
 ## LDAP group synchronization for teams
 
@@ -35,7 +39,7 @@ Grafana keeps track of all synchronized users in teams, and you can see which us
 This mechanism allows Grafana to remove an existing synchronized user from a team when its LDAP group membership changes. This mechanism also allows you to manually add
 a user as member of a team, and it will not be removed when the user signs in. This gives you flexibility to combine LDAP group memberships and Grafana team memberships.
 
-[Learn more about team sync.]({{< relref "../../configure-team-sync/" >}})
+[Learn more about team sync.]({{< relref "../../configure-team-sync" >}})
 
 <div class="clearfix"></div>
 
@@ -54,11 +58,11 @@ Removed users are automatically logged out and their account disabled. These acc
 ...
 
 # You can use the Cron syntax or several predefined schedulers -
-# @yearly (or @annually) | Run once a year, midnight, Jan. 1st        | 0 0 0 1 1 *
-# @monthly               | Run once a month, midnight, first of month | 0 0 0 1 * *
-# @weekly                | Run once a week, midnight between Sat/Sun  | 0 0 0 * * 0
-# @daily (or @midnight)  | Run once a day, midnight                   | 0 0 0 * * *
-# @hourly                | Run once an hour, beginning of hour        | 0 0 * * * *
+# @yearly (or @annually) | Run once a year, midnight, Jan. 1st        | 0 0 1 1 *
+# @monthly               | Run once a month, midnight, first of month | 0 0 1 * *
+# @weekly                | Run once a week, midnight between Sat/Sun  | 0 0 * * 0
+# @daily (or @midnight)  | Run once a day, midnight                   | 0 0 * * *
+# @hourly                | Run once an hour, beginning of hour        | 0 * * * *
 sync_cron = "0 1 * * *" # This is default value (At 1 am every day)
 # This cron expression format uses 5 space-separated fields, for example
 # sync_cron = "*/10 * * * *"
@@ -68,7 +72,7 @@ sync_cron = "0 1 * * *" # This is default value (At 1 am every day)
 active_sync_enabled = true # enabled by default
 ```
 
-Single bind configuration (as in the [Single bind example]({{< relref "ldap/#single-bind-example" >}})) is not supported with active LDAP synchronization because Grafana needs user information to perform LDAP searches.
+Single bind configuration (as in the [Single bind example]({{< relref "../ldap#single-bind-example" >}})) is not supported with active LDAP synchronization because Grafana needs user information to perform LDAP searches.
 
 For the synchronization to work, the `servers.search_filter` and `servers.attributes.username` in the ldap.toml config file must match. By default, the `servers.attributes.username` is `cn`, so if you use another attribute as the search filter, you must also update the username attribute.
 

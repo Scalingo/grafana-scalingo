@@ -12,12 +12,10 @@ import (
 	"github.com/grafana/grafana/pkg/services/apikey"
 	"github.com/grafana/grafana/pkg/services/quota"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
-	"github.com/grafana/grafana/pkg/setting"
 )
 
 type sqlStore struct {
-	db  db.DB
-	cfg *setting.Cfg
+	db db.DB
 }
 
 // timeNow makes it possible to test usage of time
@@ -39,13 +37,11 @@ func (ss *sqlStore) GetAPIKeys(ctx context.Context, query *apikey.GetApiKeysQuer
 
 		sess = sess.Where("service_account_id IS NULL")
 
-		if !accesscontrol.IsDisabled(ss.cfg) {
-			filter, err := accesscontrol.Filter(query.User, "id", "apikeys:id:", accesscontrol.ActionAPIKeyRead)
-			if err != nil {
-				return err
-			}
-			sess.And(filter.Where, filter.Args...)
+		filter, err := accesscontrol.Filter(query.User, "id", "apikeys:id:", accesscontrol.ActionAPIKeyRead)
+		if err != nil {
+			return err
 		}
+		sess.And(filter.Where, filter.Args...)
 
 		res = make([]*apikey.APIKey, 0)
 		return sess.Find(&res)

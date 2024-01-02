@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/grafana/pkg/infra/kvstore"
 	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/infra/usagestats"
+	"github.com/grafana/grafana/pkg/services/accesscontrol/acimpl"
 	"github.com/grafana/grafana/pkg/services/accesscontrol/actest"
 	"github.com/grafana/grafana/pkg/services/supportbundles/supportbundlestest"
 	"github.com/grafana/grafana/pkg/setting"
@@ -41,10 +42,10 @@ func TestMetrics(t *testing.T) {
 	const metricName = "stats.test_metric.count"
 
 	sqlStore := dbtest.NewFakeDB()
-	uss := createService(t, setting.Cfg{}, sqlStore, false)
+	uss := createService(t, sqlStore, false)
 
-	uss.RegisterMetricsFunc(func(context.Context) (map[string]interface{}, error) {
-		return map[string]interface{}{metricName: 1}, nil
+	uss.RegisterMetricsFunc(func(context.Context) (map[string]any, error) {
+		return map[string]any{metricName: 1}, nil
 	})
 
 	_, err := uss.sendUsageStats(context.Background())
@@ -131,7 +132,7 @@ func TestMetrics(t *testing.T) {
 
 		require.NotNil(t, resp.responseBuffer)
 
-		j := make(map[string]interface{})
+		j := make(map[string]any)
 		err = json.Unmarshal(resp.responseBuffer.Bytes(), &j)
 		require.NoError(t, err)
 
@@ -142,7 +143,7 @@ func TestMetrics(t *testing.T) {
 		usageId := uss.GetUsageStatsId(context.Background())
 		assert.NotEmpty(t, usageId)
 
-		metrics, ok := j["metrics"].(map[string]interface{})
+		metrics, ok := j["metrics"].(map[string]any)
 		require.True(t, ok)
 		assert.EqualValues(t, 1, metrics[metricName])
 	})
@@ -150,11 +151,11 @@ func TestMetrics(t *testing.T) {
 
 func TestGetUsageReport_IncludesMetrics(t *testing.T) {
 	sqlStore := dbtest.NewFakeDB()
-	uss := createService(t, setting.Cfg{}, sqlStore, true)
+	uss := createService(t, sqlStore, true)
 	metricName := "stats.test_metric.count"
 
-	uss.RegisterMetricsFunc(func(context.Context) (map[string]interface{}, error) {
-		return map[string]interface{}{metricName: 1}, nil
+	uss.RegisterMetricsFunc(func(context.Context) (map[string]any, error) {
+		return map[string]any{metricName: 1}, nil
 	})
 
 	report, err := uss.GetUsageReport(context.Background())
@@ -168,17 +169,17 @@ func TestRegisterMetrics(t *testing.T) {
 	const goodMetricName = "stats.test_external_metric.count"
 
 	sqlStore := dbtest.NewFakeDB()
-	uss := createService(t, setting.Cfg{}, sqlStore, false)
-	metrics := map[string]interface{}{"stats.test_metric.count": 1, "stats.test_metric_second.count": 2}
+	uss := createService(t, sqlStore, false)
+	metrics := map[string]any{"stats.test_metric.count": 1, "stats.test_metric_second.count": 2}
 
-	uss.RegisterMetricsFunc(func(context.Context) (map[string]interface{}, error) {
-		return map[string]interface{}{goodMetricName: 1}, nil
+	uss.RegisterMetricsFunc(func(context.Context) (map[string]any, error) {
+		return map[string]any{goodMetricName: 1}, nil
 	})
 
 	{
 		extMetrics, err := uss.externalMetrics[0](context.Background())
 		require.NoError(t, err)
-		assert.Equal(t, map[string]interface{}{goodMetricName: 1}, extMetrics)
+		assert.Equal(t, map[string]any{goodMetricName: 1}, extMetrics)
 	}
 
 	uss.gatherMetrics(context.Background(), metrics)
@@ -188,8 +189,8 @@ func TestRegisterMetrics(t *testing.T) {
 	t.Run("do not add metrics that return an error when fetched", func(t *testing.T) {
 		const badMetricName = "stats.test_external_metric_error.count"
 
-		uss.RegisterMetricsFunc(func(context.Context) (map[string]interface{}, error) {
-			return map[string]interface{}{badMetricName: 1}, errors.New("some error")
+		uss.RegisterMetricsFunc(func(context.Context) (map[string]any, error) {
+			return map[string]any{badMetricName: 1}, errors.New("some error")
 		})
 		uss.gatherMetrics(context.Background(), metrics)
 
@@ -209,18 +210,19 @@ type httpResp struct {
 	err            error
 }
 
-func createService(t *testing.T, cfg setting.Cfg, sqlStore db.DB, withDB bool) *UsageStats {
+func createService(t *testing.T, sqlStore db.DB, withDB bool) *UsageStats {
 	t.Helper()
 	if withDB {
 		sqlStore = db.InitTestDB(t)
 	}
 
+	cfg := setting.NewCfg()
 	service, _ := ProvideService(
-		&cfg,
+		cfg,
 		kvstore.ProvideService(sqlStore),
 		routing.NewRouteRegister(),
 		tracing.InitializeTracerForTest(),
-		actest.FakeAccessControl{ExpectedDisabled: true},
+		acimpl.ProvideAccessControl(cfg),
 		actest.FakeService{},
 		supportbundlestest.NewFakeBundleService(),
 	)

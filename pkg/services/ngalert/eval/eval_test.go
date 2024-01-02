@@ -2,6 +2,7 @@ package eval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -13,10 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/grafana/pkg/expr"
+	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	fakes "github.com/grafana/grafana/pkg/services/datasources/fakes"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/ngalert/models"
+	"github.com/grafana/grafana/pkg/services/pluginsintegration/pluginstore"
 	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
@@ -356,7 +360,7 @@ func TestEvaluateExecutionResultsNoData(t *testing.T) {
 func TestValidate(t *testing.T) {
 	type services struct {
 		cache        *fakes.FakeCacheService
-		pluginsStore *plugins.FakePluginStore
+		pluginsStore *pluginstore.FakePluginStore
 	}
 
 	testCases := []struct {
@@ -384,7 +388,7 @@ func TestValidate(t *testing.T) {
 					Type: util.GenerateShortUID(),
 				}
 				services.cache.DataSources = append(services.cache.DataSources, ds)
-				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, plugins.PluginDTO{
+				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, pluginstore.Plugin{
 					JSONData: plugins.JSONData{
 						ID:      ds.Type,
 						Backend: true,
@@ -410,7 +414,7 @@ func TestValidate(t *testing.T) {
 					Type: util.GenerateShortUID(),
 				}
 				services.cache.DataSources = append(services.cache.DataSources, ds)
-				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, plugins.PluginDTO{
+				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, pluginstore.Plugin{
 					JSONData: plugins.JSONData{
 						ID:      ds.Type,
 						Backend: true,
@@ -473,12 +477,12 @@ func TestValidate(t *testing.T) {
 					Type: util.GenerateShortUID(),
 				}
 				services.cache.DataSources = append(services.cache.DataSources, ds1, ds2)
-				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, plugins.PluginDTO{
+				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, pluginstore.Plugin{
 					JSONData: plugins.JSONData{
 						ID:      ds1.Type,
 						Backend: false,
 					},
-				}, plugins.PluginDTO{
+				}, pluginstore.Plugin{
 					JSONData: plugins.JSONData{
 						ID:      ds2.Type,
 						Backend: true,
@@ -504,7 +508,7 @@ func TestValidate(t *testing.T) {
 					Type: util.GenerateShortUID(),
 				}
 				services.cache.DataSources = append(services.cache.DataSources, ds)
-				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, plugins.PluginDTO{
+				services.pluginsStore.PluginList = append(services.pluginsStore.PluginList, pluginstore.Plugin{
 					JSONData: plugins.JSONData{
 						ID:      ds.Type,
 						Backend: true,
@@ -527,13 +531,13 @@ func TestValidate(t *testing.T) {
 
 		t.Run(testCase.name, func(t *testing.T) {
 			cacheService := &fakes.FakeCacheService{}
-			store := &plugins.FakePluginStore{}
+			store := &pluginstore.FakePluginStore{}
 			condition := testCase.condition(services{
 				cache:        cacheService,
 				pluginsStore: store,
 			})
 
-			evaluator := NewEvaluatorFactory(setting.UnifiedAlertingSettings{}, cacheService, expr.ProvideService(&setting.Cfg{ExpressionsEnabled: true}, nil, nil), store)
+			evaluator := NewEvaluatorFactory(setting.UnifiedAlertingSettings{}, cacheService, expr.ProvideService(&setting.Cfg{ExpressionsEnabled: true}, nil, nil, &featuremgmt.FeatureManager{}, nil, tracing.InitializeTracerForTest()), store)
 			evalCtx := NewContext(context.Background(), u)
 
 			err := evaluator.Validate(evalCtx, condition)
@@ -559,11 +563,23 @@ func TestEvaluate(t *testing.T) {
 			Data: []models.AlertQuery{{
 				RefID:         "A",
 				DatasourceUID: "test",
+			}, {
+				RefID:         "B",
+				DatasourceUID: expr.DatasourceUID,
+			}, {
+				RefID:         "C",
+				DatasourceUID: expr.OldDatasourceUID,
+			}, {
+				RefID:         "D",
+				DatasourceUID: expr.MLDatasourceUID,
 			}},
 		},
 		resp: backend.QueryDataResponse{
 			Responses: backend.Responses{
 				"A": {Frames: nil},
+				"B": {Frames: []*data.Frame{{Fields: nil}}},
+				"C": {Frames: nil},
+				"D": {Frames: []*data.Frame{{Fields: nil}}},
 			},
 		},
 		expected: Results{{
@@ -752,6 +768,70 @@ func TestEvaluateRaw(t *testing.T) {
 		_, err := e.EvaluateRaw(context.Background(), time.Now())
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
+}
+
+func TestResults_HasNonRetryableErrors(t *testing.T) {
+	tc := []struct {
+		name     string
+		eval     Results
+		expected bool
+	}{
+		{
+			name: "with non-retryable errors",
+			eval: Results{
+				{
+					State: Error,
+					Error: &invalidEvalResultFormatError{refID: "A", reason: "unable to get frame row length", err: errors.New("weird error")},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "with retryable errors",
+			eval: Results{
+				{
+					State: Error,
+					Error: errors.New("some weird error"),
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.eval.HasNonRetryableErrors())
+		})
+	}
+}
+
+func TestResults_Error(t *testing.T) {
+	tc := []struct {
+		name     string
+		eval     Results
+		expected string
+	}{
+		{
+			name: "with non-retryable errors",
+			eval: Results{
+				{
+					State: Error,
+					Error: &invalidEvalResultFormatError{refID: "A", reason: "unable to get frame row length", err: errors.New("weird error")},
+				},
+				{
+					State: Error,
+					Error: errors.New("unable to get a data frame"),
+				},
+			},
+			expected: "invalid format of evaluation results for the alert definition A: unable to get frame row length: weird error\nunable to get a data frame",
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.eval.Error().Error())
+		})
+	}
 }
 
 type fakeExpressionService struct {

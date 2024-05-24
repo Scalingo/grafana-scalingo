@@ -20,6 +20,7 @@ import setupMimirFlavoredServer, { MIMIR_DATASOURCE_UID } from './__mocks__/mimi
 import setupVanillaAlertmanagerFlavoredServer, {
   VANILLA_ALERTMANAGER_DATASOURCE_UID,
 } from './__mocks__/vanillaAlertmanagerServer';
+import { RouteReference } from './utils';
 
 /**
  * There are lots of ways in which we test our pages and components. Here's my opinionated approach to testing them.
@@ -126,7 +127,14 @@ describe('contact points', () => {
         await userEvent.click(button);
         const deleteButton = await screen.queryByRole('menuitem', { name: 'delete' });
         expect(deleteButton).toBeDisabled();
+        // click outside the menu to close it otherwise we can't interact with the rest of the page
+        await userEvent.click(document.body);
       }
+
+      // check buttons in Notification Templates
+      const notificationTemplatesTab = screen.getByRole('tab', { name: 'Tab Notification Templates' });
+      await userEvent.click(notificationTemplatesTab);
+      expect(screen.getByRole('link', { name: 'Add notification template' })).toHaveAttribute('aria-disabled', 'true');
     });
 
     it('should call delete when clicked and not disabled', async () => {
@@ -178,13 +186,19 @@ describe('contact points', () => {
       expect(deleteButton).toBeDisabled();
     });
 
-    it('should disable delete when contact point is linked to at least one notification policy', async () => {
-      render(
-        <ContactPoint name={'my-contact-point'} provisioned={true} receivers={[]} policies={1} onDelete={noop} />,
+    it('should disable delete when contact point is linked to at least one normal notification policy', async () => {
+      const policies: RouteReference[] = [
         {
-          wrapper,
-        }
-      );
+          receiver: 'my-contact-point',
+          route: {
+            type: 'normal',
+          },
+        },
+      ];
+
+      render(<ContactPoint name={'my-contact-point'} receivers={[]} policies={policies} onDelete={noop} />, {
+        wrapper,
+      });
 
       expect(screen.getByRole('link', { name: 'is used by 1 notification policy' })).toBeInTheDocument();
 
@@ -193,6 +207,27 @@ describe('contact points', () => {
 
       const deleteButton = screen.getByRole('menuitem', { name: /delete/i });
       expect(deleteButton).toBeDisabled();
+    });
+
+    it('should not disable delete when contact point is linked only to auto-generated notification policy', async () => {
+      const policies: RouteReference[] = [
+        {
+          receiver: 'my-contact-point',
+          route: {
+            type: 'auto-generated',
+          },
+        },
+      ];
+
+      render(<ContactPoint name={'my-contact-point'} receivers={[]} policies={policies} onDelete={noop} />, {
+        wrapper,
+      });
+
+      const moreActions = screen.getByRole('button', { name: 'more-actions' });
+      await userEvent.click(moreActions);
+
+      const deleteButton = screen.getByRole('menuitem', { name: /delete/i });
+      expect(deleteButton).not.toBeDisabled();
     });
 
     it('should be able to search', async () => {
@@ -326,6 +361,11 @@ describe('contact points', () => {
       const viewProvisioned = screen.getByRole('link', { name: 'view-action' });
       expect(viewProvisioned).toBeInTheDocument();
       expect(viewProvisioned).not.toBeDisabled();
+
+      // check buttons in Notification Templates
+      const notificationTemplatesTab = screen.getByRole('tab', { name: 'Tab Notification Templates' });
+      await userEvent.click(notificationTemplatesTab);
+      expect(screen.queryByRole('link', { name: 'Add notification template' })).not.toBeInTheDocument();
     });
   });
 });

@@ -29,7 +29,11 @@ import {
 import { CanvasContextMenu } from 'app/plugins/panel/canvas/components/CanvasContextMenu';
 import { CanvasTooltip } from 'app/plugins/panel/canvas/components/CanvasTooltip';
 import { CONNECTION_ANCHOR_DIV_ID } from 'app/plugins/panel/canvas/components/connections/ConnectionAnchors';
-import { Connections } from 'app/plugins/panel/canvas/components/connections/Connections';
+import {
+  Connections,
+  CONNECTION_VERTEX_ADD_ID,
+  CONNECTION_VERTEX_ID,
+} from 'app/plugins/panel/canvas/components/connections/Connections';
 import { AnchorPoint, CanvasTooltipPayload, LayerActionID } from 'app/plugins/panel/canvas/types';
 import { getParent, getTransformInstance } from 'app/plugins/panel/canvas/utils';
 
@@ -390,6 +394,22 @@ export class Scene {
     return targetElements;
   };
 
+  disableCustomables = () => {
+    this.moveable!.props = {
+      dimensionViewable: false,
+      constraintViewable: false,
+      settingsViewable: false,
+    };
+  };
+
+  enableCustomables = () => {
+    this.moveable!.props = {
+      dimensionViewable: true,
+      constraintViewable: true,
+      settingsViewable: true,
+    };
+  };
+
   initMoveable = (destroySelecto = false, allowChanges = true) => {
     const targetElements = this.generateTargetElements(this.root.elements);
 
@@ -413,6 +433,10 @@ export class Scene {
       draggable: allowChanges && !this.editModeEnabled.getValue(),
       resizable: allowChanges,
 
+      // Setup rotatable
+      rotatable: allowChanges,
+      throttleRotate: 5,
+
       // Setup snappable
       snappable: allowChanges,
       snapDirections: snapDirections,
@@ -428,6 +452,29 @@ export class Scene {
       origin: false,
       className: this.styles.selected,
     })
+      .on('rotateStart', () => {
+        this.disableCustomables();
+      })
+      .on('rotate', (event) => {
+        const targetedElement = this.findElementByTarget(event.target);
+
+        if (targetedElement) {
+          targetedElement.applyRotate(event);
+        }
+      })
+      .on('rotateGroup', (e) => {
+        for (let event of e.events) {
+          const targetedElement = this.findElementByTarget(event.target);
+          if (targetedElement) {
+            targetedElement.applyRotate(event);
+          }
+        }
+      })
+      .on('rotateEnd', () => {
+        this.enableCustomables();
+        // Update the editor with the new rotation
+        this.moved.next(Date.now());
+      })
       .on('click', (event) => {
         const targetedElement = this.findElementByTarget(event.target);
         let elementSupportsEditing = false;
@@ -620,6 +667,20 @@ export class Scene {
       // If selected target is a connection control, eject to handle connection event
       if (selectedTarget.id === CONNECTION_ANCHOR_DIV_ID) {
         this.connections.handleConnectionDragStart(selectedTarget, event.inputEvent.clientX, event.inputEvent.clientY);
+        event.stop();
+        return;
+      }
+
+      // If selected target is a vertex, eject to handle vertex event
+      if (selectedTarget.id === CONNECTION_VERTEX_ID) {
+        this.connections.handleVertexDragStart(selectedTarget);
+        event.stop();
+        return;
+      }
+
+      // If selected target is an add vertex point, eject to handle add vertex event
+      if (selectedTarget.id === CONNECTION_VERTEX_ADD_ID) {
+        this.connections.handleVertexAddDragStart(selectedTarget);
         event.stop();
         return;
       }

@@ -40,6 +40,9 @@ ARG GO_BUILD_TAGS="oss"
 ARG WIRE_TAGS="oss"
 ARG BINGO="true"
 
+# This is required to allow building on arm64 due to https://github.com/golang/go/issues/22040
+RUN apk add --no-cache binutils-gold
+
 # Install build dependencies
 RUN if grep -i -q alpine /etc/issue; then \
       apk add --no-cache gcc g++ make git; \
@@ -52,6 +55,9 @@ COPY .bingo .bingo
 
 # Include vendored dependencies
 COPY pkg/util/xorm/go.* pkg/util/xorm/
+COPY pkg/apiserver/go.* pkg/apiserver/
+COPY pkg/apimachinery/go.* pkg/apimachinery/
+COPY pkg/promlib/go.* pkg/promlib/
 
 RUN go mod download
 RUN if [[ "$BINGO" = "true" ]]; then \

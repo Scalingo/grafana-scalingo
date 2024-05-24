@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/grafana/pkg/services/accesscontrol/acimpl"
 	"github.com/grafana/grafana/pkg/services/accesscontrol/actest"
 	acmock "github.com/grafana/grafana/pkg/services/accesscontrol/mock"
-	"github.com/grafana/grafana/pkg/services/alerting"
 	contextmodel "github.com/grafana/grafana/pkg/services/contexthandler/model"
 	"github.com/grafana/grafana/pkg/services/dashboards"
 	"github.com/grafana/grafana/pkg/services/dashboards/database"
@@ -299,14 +298,13 @@ func createDashboard(t *testing.T, sqlStore db.DB, user user.SignedInUser, dash 
 	quotaService := quotatest.New(false, nil)
 	dashboardStore, err := database.ProvideDashboardStore(sqlStore, cfg, features, tagimpl.ProvideService(sqlStore), quotaService)
 	require.NoError(t, err)
-	dashAlertExtractor := alerting.ProvideDashAlertExtractorService(nil, nil, nil)
 	ac := actest.FakeAccessControl{ExpectedEvaluate: true}
 	folderPermissions := acmock.NewMockedPermissionsService()
 	dashboardPermissions := acmock.NewMockedPermissionsService()
 	dashboardPermissions.On("SetPermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]accesscontrol.ResourcePermission{}, nil)
 	folderStore := folderimpl.ProvideDashboardFolderStore(sqlStore)
 	service, err := dashboardservice.ProvideDashboardServiceImpl(
-		cfg, dashboardStore, folderStore, dashAlertExtractor,
+		cfg, dashboardStore, folderStore,
 		features, folderPermissions, dashboardPermissions, ac,
 		foldertest.NewFakeService(),
 		nil,
@@ -329,7 +327,7 @@ func createFolder(t *testing.T, sc scenarioContext, title string) *folder.Folder
 	require.NoError(t, err)
 
 	folderStore := folderimpl.ProvideDashboardFolderStore(sc.sqlStore)
-	s := folderimpl.ProvideService(ac, bus.ProvideBus(tracing.InitializeTracerForTest()), cfg, dashboardStore, folderStore, sc.sqlStore, features, nil)
+	s := folderimpl.ProvideService(ac, bus.ProvideBus(tracing.InitializeTracerForTest()), cfg, dashboardStore, folderStore, sc.sqlStore, features, supportbundlestest.NewFakeBundleService(), nil)
 	t.Logf("Creating folder with title and UID %q", title)
 	ctx := appcontext.WithUser(context.Background(), &sc.user)
 	folder, err := s.Create(ctx, &folder.CreateFolderCommand{
@@ -390,7 +388,7 @@ func scenarioWithPanel(t *testing.T, desc string, fn func(t *testing.T, sc scena
 	dashboardPermissions := acmock.NewMockedPermissionsService()
 	folderStore := folderimpl.ProvideDashboardFolderStore(sqlStore)
 	dashboardService, svcErr := dashboardservice.ProvideDashboardServiceImpl(
-		sqlStore.Cfg, dashboardStore, folderStore, nil,
+		sqlStore.Cfg, dashboardStore, folderStore,
 		features, folderPermissions, dashboardPermissions, ac,
 		foldertest.NewFakeService(),
 		nil,
@@ -451,7 +449,7 @@ func testScenario(t *testing.T, desc string, fn func(t *testing.T, sc scenarioCo
 		dashboardPermissions := acmock.NewMockedPermissionsService()
 		folderStore := folderimpl.ProvideDashboardFolderStore(sqlStore)
 		dashService, dashSvcErr := dashboardservice.ProvideDashboardServiceImpl(
-			sqlStore.Cfg, dashboardStore, folderStore, nil,
+			sqlStore.Cfg, dashboardStore, folderStore,
 			features, folderPermissions, dashboardPermissions, ac,
 			foldertest.NewFakeService(),
 			nil,
@@ -462,7 +460,7 @@ func testScenario(t *testing.T, desc string, fn func(t *testing.T, sc scenarioCo
 			Cfg:           sqlStore.Cfg,
 			features:      featuremgmt.WithFeatures(),
 			SQLStore:      sqlStore,
-			folderService: folderimpl.ProvideService(ac, bus.ProvideBus(tracing.InitializeTracerForTest()), sqlStore.Cfg, dashboardStore, folderStore, sqlStore, features, nil),
+			folderService: folderimpl.ProvideService(ac, bus.ProvideBus(tracing.InitializeTracerForTest()), sqlStore.Cfg, dashboardStore, folderStore, sqlStore, features, supportbundlestest.NewFakeBundleService(), nil),
 		}
 
 		// deliberate difference between signed in user and user in db to make it crystal clear

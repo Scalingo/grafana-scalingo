@@ -13,7 +13,7 @@ mkdir -p $pluginDir
 
 for plugin in $GRAFANA_PLUGINS ; do
   echo "Installing $plugin"
-  ./bin/grafana-cli --pluginsDir=$pluginDir plugins install $plugin
+  ./bin/grafana cli --pluginsDir=$pluginDir plugins install $plugin
 done
 
 IFS=$OLD_IFS

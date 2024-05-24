@@ -36,6 +36,8 @@ import {
 import { PanelQueryRunner } from '../../query/state/PanelQueryRunner';
 import { TimeOverrideResult } from '../utils/panel';
 
+import { getPanelPluginToMigrateTo } from './getPanelPluginToMigrateTo';
+
 export interface GridPos {
   x: number;
   y: number;
@@ -96,6 +98,7 @@ const mustKeepProps: { [str: string]: boolean } = {
   links: true,
   fullscreen: true,
   isEditing: true,
+  isViewing: true,
   hasRefreshed: true,
   events: true,
   cacheTimeout: true,
@@ -148,7 +151,7 @@ export const autoMigrateAngular: Record<string, string> = {
   'grafana-worldmap-panel': 'geomap',
 };
 
-const autoMigratePanelType: Record<string, string> = {
+export const autoMigrateRemovedPanelPlugins: Record<string, string> = {
   'heatmap-new': 'heatmap', // this was a temporary development panel that is now standard
 };
 
@@ -257,7 +260,7 @@ export class PanelModel implements DataConfigSource, IPanelModel {
       (this as any)[property] = model[property];
     }
 
-    const newType = autoMigratePanelType[this.type];
+    const newType = getPanelPluginToMigrateTo(this);
     if (newType) {
       this.autoMigrateFrom = this.type;
       this.type = newType;

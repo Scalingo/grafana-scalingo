@@ -1,6 +1,4 @@
 ---
-aliases:
-  - ../../provision-alerting-resources/file-provisioning/
 canonical: https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/
 description: Create and manage resources using file provisioning
 keywords:
@@ -593,7 +591,7 @@ templates:
   - orgId: 1
     # <string, required> name of the template, must be unique
     name: my_first_template
-    # <string, required> content of the the template
+    # <string, required> content of the template
     template: |
       {{ define "my_first_template" }}
         Custom notification message
@@ -708,46 +706,6 @@ resetPolicies:
   - 1
 ```
 
-## Import templates
-
-Create or delete templates in your Grafana instance(s).
-
-1. Create a YAML or JSON configuration file.
-
-   Example configuration files can be found below.
-
-1. Add the file(s) to your GitOps workflow, so that they deploy alongside your Grafana instance(s).
-
-Here is an example of a configuration file for creating templates.
-
-```yaml
-# config file version
-apiVersion: 1
-
-# List of templates to import or update
-templates:
-  # <int> organization ID, default = 1
-  - orgId: 1
-    # <string, required> name of the template, must be unique
-    name: my_first_template
-    # <string, required> content of the template
-    template: Alerting with a custom text template
-```
-
-Here is an example of a configuration file for deleting templates.
-
-```yaml
-# config file version
-apiVersion: 1
-
-# List of alert rule UIDs that should be deleted
-deleteTemplates:
-  # <int> organization ID, default = 1
-  - orgId: 1
-    # <string, required> name of the template, must be unique
-    name: my_first_template
-```
-
 ## Import mute timings
 
 Create or delete mute timings via provisioning files using provisioning files in your Grafana instance(s).
@@ -799,40 +757,6 @@ deleteMuteTimes:
     name: mti_1
 ```
 
-## Template variable interpolation
-
-Provisioning interpolates environment variables using the `$variable` syntax.
-
-```yaml
-contactPoints:
-  - orgId: 1
-    name: My Contact Email Point
-    receivers:
-      - uid: 1
-        type: email
-        settings:
-          addresses: $EMAIL
-```
-
-In this example, provisioning replaces `$EMAIL` with the value of the `EMAIL` environment variable or an empty string if it is not present. For more information, refer to [Using environment variables in the Provision documentation][provisioning_env_vars].
-
-In alerting resources, most properties support template variable interpolation, with a few exceptions:
-
-- Alert rule annotations: `groups[].rules[].annotations`
-- Alert rule time range: `groups[].rules[].relativeTimeRange`
-- Alert rule query model: `groups[].rules[].data.model`
-- Mute timings name: `muteTimes[].name`
-- Mute timings time intervals: `muteTimes[].time_intervals[]`
-- Notification template name: `templates[].name`
-- Notification template content: `templates[].template`
-
-Note for properties that support interpolation, you may unexpectedly substitute template variables when not intended. To avoid this, you can escape the `$variable` with `$$variable`.
-
-For example, when provisioning a `subject` property in a `contactPoints.receivers.settings` object that is meant to use the `$labels` variable.
-
-1. `subject: '{{ $labels }}'` will interpolate, incorrectly defining the subject as `subject: '{{ }}'`.
-1. `subject: '{{ $$labels }}'` will not interpolate, correctly defining the subject as `subject: '{{ $labels }}'`.
-
 ## More examples
 
 For more examples on the concept of this guide:
@@ -859,7 +783,6 @@ For more examples on the concept of this guide:
 [export_mute_timings]: "/docs/grafana-cloud/ -> /docs/grafana-cloud/alerting-and-irm/alerting/set-up/provision-alerting-resources/export-alerting-resources#export-mute-timings"
 
 [provisioning]: "/docs/ -> /docs/grafana/<GRAFANA_VERSION>/administration/provisioning"
-[provisioning_env_vars]: "/docs/ -> /docs/grafana/<GRAFANA_VERSION>/administration/provisioning#using-environment-variables"
 
 [reload-provisioning-configurations]: "/docs/ -> /docs/grafana/<GRAFANA_VERSION>/developers/http_api/admin#reload-provisioning-configurations"
 

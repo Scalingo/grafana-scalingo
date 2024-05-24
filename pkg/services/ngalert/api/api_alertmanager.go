@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-openapi/strfmt"
+
 	alertingNotify "github.com/grafana/alerting/notify"
 
 	"github.com/grafana/grafana/pkg/api/response"
@@ -50,7 +51,12 @@ func (srv AlertmanagerSrv) RouteGetAMStatus(c *contextmodel.ReqContext) response
 		return errResp
 	}
 
-	return response.JSON(http.StatusOK, am.GetStatus())
+	status := am.GetStatus()
+	if !c.SignedInUser.HasRole(org.RoleAdmin) {
+		notifier.RemoveAutogenConfigIfExists(status.Config.Route)
+	}
+
+	return response.JSON(http.StatusOK, status)
 }
 
 func (srv AlertmanagerSrv) RouteCreateSilence(c *contextmodel.ReqContext, postableSilence apimodels.PostableSilence) response.Response {
@@ -296,7 +302,7 @@ func (srv AlertmanagerSrv) RoutePostAlertingConfig(c *contextmodel.ReqContext, b
 		return response.Error(http.StatusConflict, err.Error(), err)
 	}
 
-	return ErrResp(http.StatusInternalServerError, err, "")
+	return response.ErrOrFallback(http.StatusInternalServerError, err.Error(), err)
 }
 
 func (srv AlertmanagerSrv) RouteGetReceivers(c *contextmodel.ReqContext) response.Response {

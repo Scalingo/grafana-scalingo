@@ -1,0 +1,9 @@
+dependencies = []
+description = "One click deploy for Grafana on Scalingo"
+destination_server = []
+flags = ["scalingo-app"]
+languages = ["typescript", "go"]
+owner = "tech@scalingo.com"
+team = "Tech"
+tier = 2
+version = "1.1.4"

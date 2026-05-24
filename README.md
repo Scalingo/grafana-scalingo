@@ -10,7 +10,7 @@ To login, use the environment variables value defined in:
 * `GF_SECURITY_ADMIN_USER`
 * `GF_SECURITY_ADMIN_PASSWORD`
 
-Default Version: v10.4.3
+Default Version: v11.0.0
 
 [![Deploy](https://cdn.scalingo.com/deploy/button.svg)](https://dashboard.scalingo.com/create/app?source=https://github.com/Scalingo/grafana-scalingo)
 

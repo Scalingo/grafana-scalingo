@@ -4,12 +4,11 @@
 //     public/app/plugins/gen.go
 // Using jennies:
 //     TSTypesJenny
-//     LatestMajorsOrXJenny
-//     PluginEachMajorJenny
+//     PluginTsTypesJenny
 //
 // Run 'make gen-cue' from repository root to regenerate.
 
-export const pluginVersion = "10.4.3";
+export const pluginVersion = "11.0.0";
 
 export interface Options {
   limit: number;

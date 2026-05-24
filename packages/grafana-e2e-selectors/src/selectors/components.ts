@@ -212,6 +212,11 @@ export const Components = {
       rcContentWrapper: () => '.rc-drawer-content-wrapper',
       subtitle: 'data-testid drawer subtitle',
     },
+    DashboardSaveDrawer: {
+      saveButton: 'data-testid Save dashboard drawer button',
+      saveAsButton: 'data-testid Save as dashboard drawer button',
+      saveAsTitleInput: 'Save dashboard title field',
+    },
   },
   PanelEditor: {
     General: {
@@ -221,6 +226,7 @@ export const Components = {
       content: 'Panel editor option pane content',
       select: 'Panel editor option pane select',
       fieldLabel: (type: string) => `${type} field property editor`,
+      fieldInput: (title: string) => `data-testid Panel editor option pane field input ${title}`,
     },
     // not sure about the naming *DataPane*
     DataPane: {
@@ -277,6 +283,8 @@ export const Components = {
     queryInspectorButton: 'Query inspector button',
     queryHistoryButton: 'data-testid query-history-button',
     addQuery: 'data-testid query-tab-add-query',
+    queryGroupTopSection: 'data-testid query group top section',
+    addExpression: 'data-testid query-tab-add-expression',
   },
   QueryHistory: {
     queryText: 'Query text',
@@ -291,6 +299,11 @@ export const Components = {
   },
   AlertTab: {
     content: 'data-testid Alert editor tab content',
+  },
+  AlertRules: {
+    groupToggle: 'data-testid group-collapse-toggle',
+    toggle: 'data-testid collapse-toggle',
+    expandedContent: 'data-testid expanded-content',
   },
   Alert: {
     /**
@@ -355,7 +368,25 @@ export const Components = {
   },
   NavToolbar: {
     container: 'data-testid Nav toolbar',
+    shareDashboard: 'data-testid Share dashboard',
+    markAsFavorite: 'data-testid Mark as favorite',
+    editDashboard: {
+      editButton: 'data-testid Edit dashboard button',
+      saveButton: 'data-testid Save dashboard button',
+      exitButton: 'data-testid Exit edit mode button',
+      settingsButton: 'data-testid Dashboard settings',
+      addRowButton: 'data-testid Add row button',
+      addLibraryPanelButton: 'data-testid Add a panel from the panel library button',
+      addVisualizationButton: 'data-testid Add new visualization menu item',
+      pastePanelButton: 'data-testid Paste panel button',
+      discardChangesButton: 'data-testid Discard changes button',
+      discardLibraryPanelButton: 'data-testid Discard library panel button',
+      unlinkLibraryPanelButton: 'data-testid Unlink library panel button',
+      saveLibraryPanelButton: 'data-testid Save library panel button',
+      backToDashboardButton: 'data-testid Back to dashboard button',
+    },
   },
+
   PageToolbar: {
     container: () => '.page-toolbar',
     item: (tooltip: string) => `${tooltip}`,
@@ -416,6 +447,7 @@ export const Components = {
      */
     container: 'Time zone picker select container',
     containerV2: 'data-testid Time zone picker select container',
+    changeTimeSettingsButton: 'data-testid Time zone picker Change time settings button',
   },
   WeekStartPicker: {
     /**
@@ -527,8 +559,30 @@ export const Components = {
   Annotations: {
     annotationsTypeInput: 'annotations-type-input',
     annotationsChoosePanelInput: 'choose-panels-input',
+    editor: {
+      testButton: 'data-testid annotations-test-button',
+      resultContainer: 'data-testid annotations-query-result-container',
+    },
   },
   Tooltip: {
     container: 'data-testid tooltip',
+  },
+  ReturnToPrevious: {
+    buttonGroup: 'data-testid dismissable button group',
+    backButton: 'data-testid back',
+    dismissButton: 'data-testid dismiss',
+  },
+  SQLQueryEditor: {
+    selectColumn: 'data-testid select-column',
+    selectAggregation: 'data-testid select-aggregation',
+    selectAlias: 'data-testid select-alias',
+    filterConjunction: 'data-testid filter-conjunction',
+    filterField: 'data-testid filter-field',
+    filterOperator: 'data-testid filter-operator',
+    headerTableSelector: 'data-testid header-table-selector',
+    headerFilterSwitch: 'data-testid header-filter-switch',
+    headerGroupSwitch: 'data-testid header-group-switch',
+    headerOrderSwitch: 'data-testid header-order-switch',
+    headerPreviewSwitch: 'data-testid header-preview-switch',
   },
 };

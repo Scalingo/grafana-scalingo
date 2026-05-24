@@ -71,7 +71,7 @@ func queryData(ctx context.Context, req *backend.QueryDataRequest, dsInfo *es.Da
 		return &backend.QueryDataResponse{}, fmt.Errorf("query contains no queries")
 	}
 
-	client, err := es.NewClient(ctx, dsInfo, req.Queries[0].TimeRange, logger, tracer)
+	client, err := es.NewClient(ctx, dsInfo, logger, tracer)
 	if err != nil {
 		return &backend.QueryDataResponse{}, err
 	}
@@ -157,11 +157,6 @@ func newInstanceSettings(httpClientProvider httpclient.Provider) datasource.Inst
 			includeFrozen = false
 		}
 
-		xpack, ok := jsonData["xpack"].(bool)
-		if !ok {
-			xpack = false
-		}
-
 		configuredFields := es.ConfiguredFields{
 			TimeField:       timeField,
 			LogLevelField:   logLevelField,
@@ -177,7 +172,6 @@ func newInstanceSettings(httpClientProvider httpclient.Provider) datasource.Inst
 			ConfiguredFields:           configuredFields,
 			Interval:                   interval,
 			IncludeFrozen:              includeFrozen,
-			XPack:                      xpack,
 		}
 		return model, nil
 	}

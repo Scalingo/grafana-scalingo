@@ -616,6 +616,7 @@ func (s *Service) dsTLSOptions(ctx context.Context, ds *datasources.DataSource) 
 
 		if tlsClientAuth {
 			if val, exists, err := s.DecryptedValue(ctx, ds, "tlsClientCert"); err == nil {
+				fmt.Print("\n\n\n\n", val, exists, err, "\n\n\n\n")
 				if exists && len(val) > 0 {
 					opts.ClientCertificate = val
 				}
@@ -677,7 +678,7 @@ func (s *Service) getCustomHeaders(jsonData *simplejson.Json, decryptedValues ma
 		// skip a header with name that corresponds to auth proxy header's name
 		// to make sure that data source proxy isn't used to circumvent auth proxy.
 		// For more context take a look at CVE-2022-35957
-		if s.cfg.AuthProxyEnabled && http.CanonicalHeaderKey(key) == http.CanonicalHeaderKey(s.cfg.AuthProxyHeaderName) {
+		if s.cfg.AuthProxy.Enabled && http.CanonicalHeaderKey(key) == http.CanonicalHeaderKey(s.cfg.AuthProxy.HeaderName) {
 			continue
 		}
 
